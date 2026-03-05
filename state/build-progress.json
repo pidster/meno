@@ -1,0 +1,97 @@
+{
+  "project": "cognitive-architecture-agent",
+  "created": "2026-03-05",
+  "last_updated": "2026-03-05",
+  "phases": {
+    "0": {
+      "name": "Environment Setup",
+      "status": "not_started",
+      "validation": {
+        "surrealdb_running": false,
+        "python_connectivity": false,
+        "project_structure": false,
+        "progress_file_exists": false
+      }
+    },
+    "1": {
+      "name": "Memory Graph Schema",
+      "status": "not_started",
+      "validation": {
+        "node_types_working": false,
+        "edge_types_working": false,
+        "seed_data_loaded": false,
+        "vector_fields_defined": false,
+        "distinct_register_tables": false,
+        "edge_weights_updatable": false
+      }
+    },
+    "2": {
+      "name": "Retrieval Engine",
+      "status": "not_started",
+      "validation": {
+        "entry_point_identification": false,
+        "spreading_activation": false,
+        "multi_path_accumulation": false,
+        "ghost_signals": false,
+        "hebbian_learning": false,
+        "working_memory_limit": false
+      }
+    },
+    "3": {
+      "name": "Forgetting and Vitality",
+      "status": "not_started",
+      "validation": {
+        "edge_decay": false,
+        "node_decay": false,
+        "islanding_detection": false,
+        "ghost_signal_pathway": false,
+        "embedding_reconnection": false,
+        "vitality_score": false,
+        "leading_indicators": false,
+        "consolidation_routine": false
+      }
+    },
+    "4": {
+      "name": "Default Mode Loop",
+      "status": "not_started",
+      "validation": {
+        "all_stages_execute": false,
+        "repertoire_selector": false,
+        "state_persistence": false,
+        "curiosity_decay": false,
+        "impulse_pressure_build": false,
+        "asymmetry_alerts": false,
+        "recursion_monitor": false,
+        "rest_mode": false
+      }
+    },
+    "5": {
+      "name": "Multi-Instance and Sensorium",
+      "status": "not_started",
+      "validation": {
+        "concurrent_instances": false,
+        "independent_operation": false,
+        "supervisory_routing": false,
+        "task_suspension": false,
+        "task_reconstruction": false,
+        "non_filesystem_channel": false
+      }
+    },
+    "6": {
+      "name": "Self-Authored Skills",
+      "status": "not_started",
+      "validation": {
+        "pattern_detection": false,
+        "skill_extraction": false,
+        "skill_authoring": false,
+        "skill_integration": false,
+        "first_self_authored_skill": false
+      }
+    }
+  },
+  "notes": [
+    "Phase 0 should be completed first in Claude Code",
+    "Each phase requires validation before advancing",
+    "Architecture docs are in docs/ — read only what the current phase requires"
+  ]
+}
