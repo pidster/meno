@@ -5,88 +5,102 @@
   "phases": {
     "0": {
       "name": "Environment Setup",
-      "status": "not_started",
+      "status": "complete",
       "validation": {
-        "surrealdb_running": false,
-        "python_connectivity": false,
-        "project_structure": false,
-        "progress_file_exists": false
-      }
+        "surrealdb_running": true,
+        "python_connectivity": true,
+        "project_structure": true,
+        "progress_file_exists": true
+      },
+      "completed": "2026-03-05",
+      "notes": "SurrealDB 3.0.2 in-memory with --unauthenticated flag. Python 3.9.6 with surrealdb client via websocket."
     },
     "1": {
       "name": "Memory Graph Schema",
-      "status": "not_started",
+      "status": "complete",
       "validation": {
-        "node_types_working": false,
-        "edge_types_working": false,
-        "seed_data_loaded": false,
-        "vector_fields_defined": false,
-        "distinct_register_tables": false,
-        "edge_weights_updatable": false
-      }
+        "node_types_working": true,
+        "edge_types_working": true,
+        "seed_data_loaded": true,
+        "vector_fields_defined": true,
+        "distinct_register_tables": true,
+        "edge_weights_updatable": true
+      },
+      "completed": "2026-03-05",
+      "theory_check": "Experience nodes store cues rather than complete records because memory is reconstructive. Meaning is rebuilt at retrieval through spreading activation, shaped by connections made since encoding. A cue activated through different pathways at different times yields different understanding. This is the difference between a log and a mind — the same experience, approached from a new angle, reveals new significance."
     },
     "2": {
       "name": "Retrieval Engine",
-      "status": "not_started",
+      "status": "complete",
       "validation": {
-        "entry_point_identification": false,
-        "spreading_activation": false,
-        "multi_path_accumulation": false,
-        "ghost_signals": false,
-        "hebbian_learning": false,
-        "working_memory_limit": false
-      }
+        "entry_point_identification": true,
+        "spreading_activation": true,
+        "multi_path_accumulation": true,
+        "ghost_signals": true,
+        "hebbian_learning": true,
+        "working_memory_limit": true
+      },
+      "completed": "2026-03-05",
+      "theory_check": "A node weakly connected to 3 active nodes (hub: 0.63) activates more strongly than a node with 1 strong connection (leaf: 0.56). This is associative surprise — the system surfaces unexpected connections that are densely woven into the current activation pattern. This is the difference between search (you know what you want) and remembering (relevant memories announce themselves through accumulated resonance across multiple paths)."
     },
     "3": {
       "name": "Forgetting and Vitality",
-      "status": "not_started",
+      "status": "complete",
       "validation": {
-        "edge_decay": false,
-        "node_decay": false,
-        "islanding_detection": false,
-        "ghost_signal_pathway": false,
-        "embedding_reconnection": false,
-        "vitality_score": false,
-        "leading_indicators": false,
-        "consolidation_routine": false
-      }
+        "edge_decay": true,
+        "node_decay": true,
+        "islanding_detection": true,
+        "ghost_signal_pathway": true,
+        "embedding_reconnection": true,
+        "vitality_score": true,
+        "leading_indicators": true,
+        "consolidation_routine": true
+      },
+      "completed": "2026-03-05",
+      "theory_check": "Created node with strong edges (0.8, 0.7). After aggressive decay: edges at 0.005 but node salience at 0.74 — available but inaccessible. Spreading activation confirms inaccessibility. New semantically similar node triggers embedding-based reconnection, creating a 'rediscovered' edge. This sequence models the difference between availability and accessibility: a memory can exist but be unreachable. Ghost signals are the 'I know I knew this' feeling. Rediscovery through a new experience creating a fresh bridge is recovering something you thought was lost via a path that didn't exist when you first forgot it."
     },
     "4": {
       "name": "Default Mode Loop",
-      "status": "not_started",
+      "status": "complete",
       "validation": {
-        "all_stages_execute": false,
-        "repertoire_selector": false,
-        "state_persistence": false,
-        "curiosity_decay": false,
-        "impulse_pressure_build": false,
-        "asymmetry_alerts": false,
-        "recursion_monitor": false,
-        "rest_mode": false
-      }
+        "all_stages_execute": true,
+        "repertoire_selector": true,
+        "state_persistence": true,
+        "curiosity_decay": true,
+        "impulse_pressure_build": true,
+        "asymmetry_alerts": true,
+        "recursion_monitor": true,
+        "rest_mode": true
+      },
+      "completed": "2026-03-05",
+      "theory_check": "Curiosity (0.7->0.31) decays while impulse (0.7->2.95) builds pressure over same 5 cycles. Curiosities are about the world and fade when unattended. Impulses are about incomplete cognition and insist until acted on. REST produces zero new nodes — it is a mode, not the absence of one. The tick-5 insight from the reflection doc emerged from deliberate stillness, not from production. The repertoire selector is not a pipeline: different state conditions produce different mode combinations, including redirecting away from self-referential depth."
     },
     "5": {
       "name": "Multi-Instance and Sensorium",
-      "status": "not_started",
+      "status": "complete",
       "validation": {
-        "concurrent_instances": false,
-        "independent_operation": false,
-        "supervisory_routing": false,
-        "task_suspension": false,
-        "task_reconstruction": false,
-        "non_filesystem_channel": false
-      }
+        "concurrent_instances": true,
+        "independent_operation": true,
+        "supervisory_routing": true,
+        "task_suspension": true,
+        "task_reconstruction": true,
+        "non_filesystem_channel": true
+      },
+      "completed": "2026-03-05",
+      "theory_check": "Suspended a 'naming' task. While suspended, created concept:shower_insight with edges to anamnetron and meno. Reconstructed the task via spreading activation — shower_insight appeared at activation 2.44 in the reconstructed context. The agent returned to the task with understanding it didn't have when it left. This is not a simulation of the shower thought — it is a genuine mechanism: reconstruction through spreading activation naturally incorporates new graph structure created during the suspension."
     },
     "6": {
       "name": "Self-Authored Skills",
-      "status": "not_started",
+      "status": "complete",
       "validation": {
-        "pattern_detection": false,
-        "skill_extraction": false,
-        "skill_authoring": false,
-        "skill_integration": false,
-        "first_self_authored_skill": false
-      }
+        "pattern_detection": true,
+        "skill_extraction": true,
+        "skill_authoring": true,
+        "skill_integration": true,
+        "first_self_authored_skill": true
+      },
+      "completed": "2026-03-05",
+      "theory_check": "With no behavioural history, compile produces zero skills — no hallucinated templates. With 1 reflection, still nothing — threshold respected. Only with 3+ repeated consolidation reflections does the system compile a graph_consolidation skill. Skills emerge from accumulated evidence in the graph, not from predefined templates applied to empty data. The difference between a skill library and procedural memory is that procedural memory requires the procedures to have actually been performed."
     }
   },
   "notes": [
