@@ -23,6 +23,7 @@ from journal import (  # noqa: E402
     unknown_residue,
 )
 from dreaming import run_dream_cycle  # noqa: E402
+from rehearsal import run_rehearsal_cycle  # noqa: E402
 
 
 def make_store():
@@ -117,6 +118,36 @@ def append_dream(store):
         actor="meno",
         source="test",
     )["dream_event"]
+
+
+def append_failed_outcome(store):
+    source = append_conversation(
+        store,
+        "source for rehearsal",
+        epistemic_status="observed",
+        residue_value=residue(tension="source for dry run"),
+    )
+    return store.append_event(
+        event_type="outcome",
+        epistemic_status="observed",
+        actor="tool",
+        source="test",
+        capture_method="manual",
+        payload={
+            "expected_outcome_link": source["id"],
+            "observed_result": "prior attempt failed",
+            "match": False,
+        },
+        context=context(),
+        residue=residue(tension="prior attempt failed"),
+        links=[
+            {
+                "type": "derived_from",
+                "target_event_id": source["id"],
+                "rationale": "failed attempt seeds rehearsal",
+            }
+        ],
+    )
 
 
 def reflection_payload(source_ids):
@@ -442,21 +473,8 @@ def test_dream_and_rehearsal_replay_as_provisional_not_factual():
     try:
         append_conversation(store, "source for dream", residue_value=residue(tension="loose association"))
         dream = append_dream(store)
-        rehearsal = store.append_event(
-            event_type="rehearsal",
-            epistemic_status="simulation",
-            actor="meno",
-            source="test",
-            capture_method="manual",
-            payload={
-                "target": "journal implementation",
-                "strategy_variant": "validate first",
-                "simulated_trace": ["append", "replay", "validate"],
-                "predicted_failure_modes": ["blob payloads"],
-            },
-            context=context(),
-            residue=residue(tension="dry run"),
-        )
+        append_failed_outcome(store)
+        rehearsal = run_rehearsal_cycle(store, immediate_context={"label": "journal implementation"})["rehearsal_event"]
 
         replay = store.replay_context()
 

@@ -78,9 +78,13 @@
     },
     "7": {
       "name": "Rehearsal",
-      "status": "design_ready",
+      "status": "complete",
       "plan_section": "docs/rethink/02-build-plan.md#phase-7-rehearsal",
-      "next_action": "Implement the Phase 7 rehearsal workflow and tests against the tightened contract."
+      "primary_module": "src/rehearsal.py",
+      "tests": [
+        "tests/test_rehearsal.py"
+      ],
+      "next_action": "Start Phase 8 design review for drives and attention."
     },
     "8": {
       "name": "Drives And Attention",
@@ -93,7 +97,7 @@
   },
   "validation": {
     "command": ".venv/bin/python -m pytest",
-    "last_result": "62 passed",
+    "last_result": "67 passed",
     "last_validated": "2026-05-23"
   },
   "notes": [

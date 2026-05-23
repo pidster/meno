@@ -26,6 +26,9 @@ EDGE_FACTORS = {
     "dream_association": 0.30,
     "rehearsal_candidate": 0.30,
     "outcome_confirmation": 0.60,
+    "outcome_falsification": 0.25,
+    "outcome_partial_match": 0.40,
+    "outcome_inconclusive": 0.20,
     "temporal_sequence": 0.35,
     "participation": 0.45,
 }
@@ -37,6 +40,9 @@ RELATION_FACTORS = {
     "corrects": 0.25,
     "corroborates": 0.55,
     "outcome_confirms": 0.60,
+    "outcome_falsifies": 0.25,
+    "outcome_partially_matches": 0.40,
+    "outcome_inconclusive_for": 0.20,
 }
 
 CONFIDENCE_FACTORS = {
@@ -347,7 +353,7 @@ class TypedRetriever:
         }
 
     def _edge_allowed_directions(self, edge_type: str, stored_direction: str) -> set[str]:
-        if edge_type == "outcome_confirmation":
+        if edge_type in {"outcome_confirmation", "outcome_falsification", "outcome_partial_match", "outcome_inconclusive"}:
             return {"forward"}
         if edge_type in {"temporal_sequence", "dream_association", "rehearsal_candidate", "correction", "explicit_claim", "reflective_interpretation"}:
             return {"forward"} if stored_direction != "reverse" else {"reverse"}
@@ -358,7 +364,7 @@ class TypedRetriever:
         return {"forward"}
 
     def _relation_allowed_directions(self, relation_type: str, stored_direction: str) -> set[str]:
-        if relation_type == "outcome_confirms":
+        if relation_type in {"outcome_confirms", "outcome_falsifies", "outcome_partially_matches", "outcome_inconclusive_for"}:
             return {"forward"}
         if relation_type == "conflicts_with":
             return {"forward", "reverse"}
@@ -643,7 +649,7 @@ class TypedRetriever:
                 data["paths"],
                 key=lambda path: (-path["total_transmission"], len(path["steps"]), path["target_candidate_id"]),
             )
-            result_semantics = self._result_semantics(paths)
+            result_semantics = self._result_semantics(paths, candidate)
             result = {
                 "candidate_id": cid,
                 "kind": candidate["kind"],
@@ -681,7 +687,7 @@ class TypedRetriever:
             ),
         )
 
-    def _result_semantics(self, paths: list[dict[str, Any]]) -> dict[str, Any]:
+    def _result_semantics(self, paths: list[dict[str, Any]], candidate: dict[str, Any]) -> dict[str, Any]:
         conflict_steps = []
         hypothesis_steps = []
         simulation_steps = []
@@ -693,13 +699,14 @@ class TypedRetriever:
                     hypothesis_steps.append(step)
                 if step.get("edge_type") == "rehearsal_candidate":
                     simulation_steps.append(step)
+        direct_simulation = candidate.get("epistemic_status") == "simulation"
         return {
-            "ordinary_recall": not conflict_steps and not hypothesis_steps and not simulation_steps,
+            "ordinary_recall": not conflict_steps and not hypothesis_steps and not simulation_steps and not direct_simulation,
             "conflict_material": bool(conflict_steps),
             "hypothesis_material": bool(hypothesis_steps),
             "dream_material": bool(hypothesis_steps),
-            "not_factual": bool(hypothesis_steps or simulation_steps),
-            "simulation_material": bool(simulation_steps),
+            "not_factual": bool(hypothesis_steps or simulation_steps or direct_simulation),
+            "simulation_material": bool(simulation_steps or direct_simulation),
             "terminal": any(step["scope_decision"].get("terminal", False) for step in conflict_steps),
         }
 

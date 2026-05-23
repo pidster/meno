@@ -16,6 +16,7 @@ sys.path.insert(0, sys_path)
 from journal import DEFAULT_PRIVACY_SCOPE, DEFAULT_RESOURCE_SCOPE, JournalStore, unknown_residue  # noqa: E402
 from dreaming import run_dream_cycle  # noqa: E402
 from memory_projection import ProjectionError, ProjectionStore, ProjectionValidationError  # noqa: E402
+from rehearsal import append_rehearsal_outcome, run_rehearsal_cycle  # noqa: E402
 
 
 REQUIRED_TABLES = {
@@ -120,6 +121,31 @@ def append_observation(journal, subject, evidence):
         },
         context=context(),
         residue=residue(tension="observed cooccurrence"),
+    )
+
+
+def append_failed_outcome(journal, observed_result="generic graph builder failed"):
+    source = append_observation(journal, "attempt", "prior approach")
+    return journal.append_event(
+        event_type="outcome",
+        epistemic_status="observed",
+        actor="tool",
+        source="test",
+        capture_method="manual",
+        payload={
+            "expected_outcome_link": source["id"],
+            "observed_result": observed_result,
+            "match": False,
+        },
+        context=context(),
+        residue=residue(tension=observed_result),
+        links=[
+            {
+                "type": "derived_from",
+                "target_event_id": source["id"],
+                "rationale": "failed outcome seeds rehearsal",
+            }
+        ],
     )
 
 
@@ -358,39 +384,22 @@ def test_dream_only_input_cannot_create_factual_entities_or_cooccurrence():
 def test_rehearsal_prediction_and_observed_outcome_are_linked_without_promoting_simulation():
     tmp, journal, projection = make_stores()
     try:
-        rehearsal = journal.append_event(
-            event_type="rehearsal",
-            epistemic_status="simulation",
-            actor="meno",
-            source="test",
-            capture_method="manual",
-            payload={
-                "target": "projection implementation",
-                "strategy_variant": "fixture-first",
-                "simulated_trace": ["schema", "projection", "tests"],
-                "predicted_failure_modes": ["generic graph builder"],
-            },
-            context=context(),
-            residue=residue(tension="dry-run strategy"),
-        )
-        journal.append_event(
-            event_type="outcome",
-            epistemic_status="observed",
-            actor="tool",
-            source="test",
-            capture_method="manual",
-            payload={
-                "expected_outcome_link": rehearsal["id"],
-                "observed_result": "fixture-first worked",
-                "match": True,
-            },
-            context=context(),
-            residue=residue(tension="confirmed strategy"),
-            links=[
+        append_failed_outcome(journal)
+        rehearsal = run_rehearsal_cycle(
+            journal,
+            immediate_context={"label": "projection implementation"},
+        )["rehearsal_event"]
+        prediction_id = rehearsal["payload"]["predicted_observations"][0]["prediction_id"]
+        append_rehearsal_outcome(
+            journal,
+            rehearsal_event_id=rehearsal["id"],
+            observed_result="fixture-first worked",
+            match=True,
+            prediction_results=[
                 {
-                    "type": "derived_from",
-                    "target_event_id": rehearsal["id"],
-                    "rationale": "outcome checks rehearsal prediction",
+                    "prediction_id": prediction_id,
+                    "result": "confirmed",
+                    "rationale": "observed execution avoided the cited failure",
                 }
             ],
         )
@@ -398,17 +407,19 @@ def test_rehearsal_prediction_and_observed_outcome_are_linked_without_promoting_
         _candidates, edges, relations, _rejections = project(journal, projection)
 
         rehearsal_candidate = projection.candidate(
-            "rehearsal", "projection implementation via fixture-first"
+            "rehearsal",
+            "projection implementation via evidence-first dry run for projection implementation",
         )
         assert rehearsal_candidate["epistemic_status"] == "simulation"
         assert rehearsal_candidate["acceptance_status"] == "provisional"
         assert {
             ref["source_selector"] for ref in rehearsal_candidate["source_refs"]
         } >= {
-            "payload.target",
-            "payload.strategy_variant",
+            "payload.target_refs.0.value",
+            "payload.strategy_variants.0.label",
             "payload.simulated_trace",
             "payload.predicted_failure_modes",
+            "payload.not_executed",
         }
         assert any(edge["edge_type"] == "outcome_confirmation" for edge in edges)
         assert any(relation["relation_type"] == "outcome_confirms" for relation in relations)
@@ -421,35 +432,19 @@ def test_rehearsal_prediction_and_observed_outcome_are_linked_without_promoting_
 def test_rehearsal_only_input_cannot_create_accepted_outcome_or_factual_claim():
     tmp, journal, projection = make_stores()
     try:
-        journal.append_event(
-            event_type="rehearsal",
-            epistemic_status="simulation",
-            actor="meno",
-            source="test",
-            capture_method="manual",
-            payload={
-                "target": "projection implementation",
-                "strategy_variant": "fixture-first",
-                "simulated_trace": ["schema", "projection", "tests"],
-                "predicted_failure_modes": ["generic graph builder"],
-            },
-            context=context(),
-            residue=residue(tension="dry-run strategy"),
-        )
+        append_failed_outcome(journal)
+        run_rehearsal_cycle(journal, immediate_context={"label": "projection implementation"})
 
         candidates, edges, relations, _rejections = project(journal, projection)
 
-        assert projection.candidate(
-            "rehearsal", "projection implementation via fixture-first"
-        )["acceptance_status"] == "provisional"
+        rehearsal_candidate = next(candidate for candidate in candidates if candidate["kind"] == "rehearsal")
+        assert rehearsal_candidate["acceptance_status"] == "provisional"
         assert all(
-            not (
-                candidate["kind"] in {"entity", "concept"}
-                and candidate["acceptance_status"] == "accepted"
-            )
+            candidate["acceptance_status"] == "provisional"
             for candidate in candidates
+            if candidate["kind"] in {"rehearsal", "procedure"}
         )
-        assert edges == []
+        assert all(edge["edge_type"] != "outcome_confirmation" for edge in edges)
         assert relations == []
     finally:
         journal.close()

@@ -98,7 +98,26 @@ PAYLOAD_REQUIRED_KEYS: dict[str, set[str]] = {
         "observed_evidence_event_ids",
         "not_factual",
     },
-    "rehearsal": {"target", "strategy_variant", "simulated_trace", "predicted_failure_modes"},
+    "rehearsal": {
+        "policy_version",
+        "target_refs",
+        "problem_context",
+        "current_or_failed_approach",
+        "strategy_variants",
+        "selected_variant_id",
+        "improvement_hypothesis",
+        "assumptions",
+        "simulated_trace",
+        "predicted_observations",
+        "predicted_failure_modes",
+        "validation_criteria",
+        "falsification_criteria",
+        "candidate_procedure_updates",
+        "resource_scope_decision",
+        "privacy_scope_decision",
+        "review_status",
+        "not_executed",
+    },
     "decision": {"options_considered", "selected_option", "reason", "constraints"},
     "correction": {"target", "corrected_claim", "reason"},
     "outcome": {"expected_outcome_link", "observed_result", "match"},
@@ -255,6 +274,27 @@ DREAM_REVIEW_DECISIONS = {
     "leave_raw",
     "propose_provisional",
     "corroborate_observation",
+}
+REHEARSAL_TARGET_CATEGORIES = {
+    "failed_outcome",
+    "repeated_workflow",
+    "correction",
+    "fragile_commitment",
+    "reflection_deferred_action",
+}
+REHEARSAL_REVIEW_STATUSES = {
+    "review_pending",
+    "rejected",
+    "deferred",
+    "provisional",
+    "validated",
+    "falsified",
+}
+REHEARSAL_PREDICTION_RESULTS = {
+    "confirmed",
+    "falsified",
+    "partially_matched",
+    "inconclusive",
 }
 
 
@@ -800,6 +840,8 @@ class JournalStore:
     ) -> None:
         if not isinstance(payload, dict):
             raise JournalValidationError("payload must be an object")
+        if event_type == "rehearsal" and capture_method != "rehearsal_workflow":
+            raise JournalValidationError("rehearsal events must use rehearsal workflow")
         required = PAYLOAD_REQUIRED_KEYS[event_type]
         missing = sorted(required - payload.keys())
         if missing:
@@ -823,6 +865,10 @@ class JournalStore:
             self._validate_dream_payload(payload)
         if event_type == "dream_review":
             self._validate_dream_review_payload(payload)
+        if event_type == "rehearsal":
+            self._validate_rehearsal_payload(payload)
+        if event_type == "outcome":
+            self._validate_outcome_payload(payload, links)
         if event_type == "graph_update_proposal" and not payload.get("source_event_ids"):
             raise JournalValidationError("graph update proposal requires source events")
         for source_event_id in payload.get("cited_source_event_ids", []):
@@ -952,6 +998,150 @@ class JournalStore:
                 raise JournalValidationError("dream review cites unknown observed evidence")
             if event["event_type"] not in FACTUAL_EVENT_TYPES or event["epistemic_status"] != "observed":
                 raise JournalValidationError("dream review observed evidence must be observed factual evidence")
+
+    def _validate_rehearsal_payload(self, payload: dict[str, Any]) -> None:
+        required = {
+            "policy_version",
+            "target_refs",
+            "problem_context",
+            "current_or_failed_approach",
+            "strategy_variants",
+            "selected_variant_id",
+            "improvement_hypothesis",
+            "assumptions",
+            "simulated_trace",
+            "predicted_observations",
+            "predicted_failure_modes",
+            "validation_criteria",
+            "falsification_criteria",
+            "candidate_procedure_updates",
+            "resource_scope_decision",
+            "privacy_scope_decision",
+            "review_status",
+            "not_executed",
+        }
+        missing = sorted(required - payload.keys())
+        if missing:
+            raise JournalValidationError(f"rehearsal payload missing keys: {missing}")
+        if payload["not_executed"] is not True:
+            raise JournalValidationError("rehearsal must be explicitly not_executed")
+        if payload["review_status"] not in REHEARSAL_REVIEW_STATUSES:
+            raise JournalValidationError("rehearsal has invalid review status")
+        target_refs = payload.get("target_refs")
+        if not isinstance(target_refs, list) or not target_refs:
+            raise JournalValidationError("rehearsal requires structured target refs")
+        target_ids: set[str] = set()
+        for ref in target_refs:
+            if not isinstance(ref, dict):
+                raise JournalValidationError("rehearsal target refs must be objects")
+            ref_required = {
+                "target_ref_id",
+                "source_event_id",
+                "source_event_hash",
+                "source_event_type",
+                "source_epistemic_status",
+                "target_field",
+                "scope_decision",
+                "target_category",
+                "selection_reason",
+                "selection_weight",
+            }
+            missing = sorted(ref_required - ref.keys())
+            if missing:
+                raise JournalValidationError(f"rehearsal target ref missing keys: {missing}")
+            if ref["target_category"] not in REHEARSAL_TARGET_CATEGORIES:
+                raise JournalValidationError("rehearsal target ref has invalid category")
+            if ref.get("scope_decision", {}).get("decision") != "included":
+                raise JournalValidationError("rehearsal target must record included scope decision")
+            source = self.get_event(str(ref["source_event_id"]))
+            if source is None:
+                raise JournalValidationError("rehearsal target cites unknown source event")
+            if source["content_hash"] != ref["source_event_hash"]:
+                raise JournalValidationError("rehearsal target source hash mismatch")
+            if source["event_type"] != ref["source_event_type"]:
+                raise JournalValidationError("rehearsal target source type mismatch")
+            if source["epistemic_status"] != ref["source_epistemic_status"]:
+                raise JournalValidationError("rehearsal target source status mismatch")
+            target_ids.add(str(ref["target_ref_id"]))
+        variants = payload.get("strategy_variants")
+        if not isinstance(variants, list) or not variants:
+            raise JournalValidationError("rehearsal requires strategy variants")
+        variant_ids = {variant.get("variant_id") for variant in variants if isinstance(variant, dict)}
+        if payload["selected_variant_id"] not in variant_ids:
+            raise JournalValidationError("selected rehearsal variant is unknown")
+        step_ids: set[str] = set()
+        for step in payload.get("simulated_trace", []):
+            if not isinstance(step, dict):
+                raise JournalValidationError("rehearsal simulated trace steps must be objects")
+            if step.get("simulated") is not True:
+                raise JournalValidationError("rehearsal trace steps must be simulated")
+            if step.get("variant_id") not in variant_ids:
+                raise JournalValidationError("rehearsal trace step cites unknown variant")
+            if not step.get("step_id"):
+                raise JournalValidationError("rehearsal trace step requires step id")
+            step_ids.add(str(step["step_id"]))
+        if not step_ids:
+            raise JournalValidationError("rehearsal requires simulated trace steps")
+        prediction_ids = self._rehearsal_prediction_ids(payload)
+        if not prediction_ids:
+            raise JournalValidationError("rehearsal requires predictions")
+        for update in payload.get("candidate_procedure_updates", []):
+            if not isinstance(update, dict):
+                raise JournalValidationError("procedure updates must be objects")
+            if update.get("source_variant_id") not in variant_ids:
+                raise JournalValidationError("procedure update cites unknown variant")
+            if update.get("review_status") not in {"provisional", "review_pending"}:
+                raise JournalValidationError("procedure updates must remain provisional")
+            if update.get("not_accepted") is not True:
+                raise JournalValidationError("procedure updates must be explicitly not accepted")
+        for criterion_key in ("validation_criteria", "falsification_criteria"):
+            for criterion in payload.get(criterion_key, []):
+                ids = criterion.get("prediction_ids", [])
+                if not set(ids).issubset(prediction_ids):
+                    raise JournalValidationError("rehearsal criterion cites unknown prediction")
+
+    def _validate_outcome_payload(self, payload: dict[str, Any], links: list[dict[str, Any]]) -> None:
+        target_id = payload.get("expected_outcome_link")
+        if not target_id:
+            raise JournalValidationError("outcome requires expected_outcome_link")
+        target = self.get_event(str(target_id))
+        if target is None:
+            raise JournalValidationError("outcome target is unknown")
+        derived_targets = {
+            link.get("target_event_id")
+            for link in links
+            if link.get("type") == "derived_from"
+        }
+        if target_id not in derived_targets:
+            raise JournalValidationError("outcome requires derived_from link to expected outcome")
+        if target["event_type"] != "rehearsal":
+            return
+        prediction_results = payload.get("prediction_results")
+        if not isinstance(prediction_results, list) or not prediction_results:
+            raise JournalValidationError("rehearsal outcome requires prediction_results")
+        prediction_ids = self._rehearsal_prediction_ids(target["payload"])
+        for result in prediction_results:
+            if not isinstance(result, dict):
+                raise JournalValidationError("prediction result must be an object")
+            if result.get("prediction_id") not in prediction_ids:
+                raise JournalValidationError("outcome cites unknown rehearsal prediction")
+            if result.get("result") not in REHEARSAL_PREDICTION_RESULTS:
+                raise JournalValidationError("outcome has invalid prediction result")
+            if not result.get("rationale"):
+                raise JournalValidationError("prediction result requires rationale")
+
+    def _rehearsal_prediction_ids(self, payload: dict[str, Any]) -> set[str]:
+        prediction_ids: set[str] = set()
+        for key in ("predicted_observations", "predicted_failure_modes"):
+            for prediction in payload.get(key, []):
+                if not isinstance(prediction, dict):
+                    raise JournalValidationError("rehearsal predictions must be objects")
+                if not prediction.get("prediction_id"):
+                    raise JournalValidationError("rehearsal prediction requires id")
+                if prediction.get("variant_id") != payload.get("selected_variant_id"):
+                    raise JournalValidationError("rehearsal prediction must cite selected variant")
+                prediction_ids.add(str(prediction["prediction_id"]))
+        return prediction_ids
 
     def _validate_reflection_payload(self, payload: dict[str, Any]) -> None:
         snapshot = payload.get("retrieval_result_snapshot")

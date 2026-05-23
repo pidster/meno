@@ -1026,19 +1026,23 @@ class ProjectionStore:
                 )
 
     def _project_rehearsal(self, run_id: str, event: dict[str, Any], created: set[str]) -> None:
-        target = str(event["payload"]["target"])
-        strategy = str(event["payload"]["strategy_variant"])
-        label = f"{target} via {strategy}"
-        ref = self._evidence_ref(
+        selected_variant_id = event["payload"]["selected_variant_id"]
+        variant_index, variant = next(
+            (index, item)
+            for index, item in enumerate(event["payload"]["strategy_variants"])
+            if item["variant_id"] == selected_variant_id
+        )
+        label = f"{event['payload']['problem_context']} via {variant['label']}"
+        variant_ref = self._evidence_ref(
             event,
-            payload_path="payload.strategy_variant",
-            source_selector="payload.strategy_variant",
+            payload_path=f"payload.strategy_variants.{variant_index}.label",
+            source_selector=f"payload.strategy_variants.{variant_index}.label",
             rationale="rehearsal is a dry-run strategy simulation",
         )
         target_ref = self._evidence_ref(
             event,
-            payload_path="payload.target",
-            source_selector="payload.target",
+            payload_path="payload.target_refs.0.value",
+            source_selector="payload.target_refs.0.value",
             rationale="rehearsal projection retains target scenario",
         )
         trace_ref = self._evidence_ref(
@@ -1047,13 +1051,19 @@ class ProjectionStore:
             source_selector="payload.simulated_trace",
             rationale="rehearsal projection retains simulated trace",
         )
-        failure_ref = self._evidence_ref(
+        prediction_ref = self._evidence_ref(
             event,
             payload_path="payload.predicted_failure_modes",
             source_selector="payload.predicted_failure_modes",
             rationale="rehearsal projection retains predicted failure modes",
         )
-        self._upsert_candidate(
+        not_executed_ref = self._evidence_ref(
+            event,
+            payload_path="payload.not_executed",
+            source_selector="payload.not_executed",
+            rationale="rehearsal projection records that simulation was not executed",
+        )
+        rehearsal_id = self._upsert_candidate(
             run_id=run_id,
             kind="rehearsal",
             label=label,
@@ -1061,11 +1071,43 @@ class ProjectionStore:
             acceptance_status="provisional",
             relation_status="active",
             confidence=self._confidence("simulation", "dry-run trace"),
-            evidence_refs=[target_ref, ref, trace_ref, failure_ref],
+            evidence_refs=[target_ref, variant_ref, trace_ref, prediction_ref, not_executed_ref],
             rule_id="rehearsal_simulation",
             reason="rehearsal remains simulation until outcome confirms it",
             created=created,
         )
+        for update_index, update in enumerate(event["payload"].get("candidate_procedure_updates", [])):
+            update_ref = self._evidence_ref(
+                event,
+                payload_path=f"payload.candidate_procedure_updates.{update_index}.proposed_delta",
+                source_selector=f"payload.candidate_procedure_updates.{update_index}.proposed_delta",
+                rationale="rehearsal procedure update is a provisional simulation draft",
+            )
+            procedure_id = self._upsert_candidate(
+                run_id=run_id,
+                kind="procedure",
+                label=str(update["proposed_delta"]),
+                epistemic_status="simulation",
+                acceptance_status="provisional",
+                relation_status="active",
+                confidence=self._confidence("simulation", "candidate procedure draft"),
+                evidence_refs=[update_ref, not_executed_ref],
+                rule_id="rehearsal_procedure_candidate",
+                reason="procedure candidate remains provisional until observed validation",
+                created=created,
+            )
+            self._upsert_edge(
+                run_id,
+                rehearsal_id,
+                procedure_id,
+                edge_type="rehearsal_candidate",
+                direction="directed",
+                epistemic_status="simulation",
+                confidence=self._confidence("simulation", "rehearsal proposes provisional procedure"),
+                evidence_refs=[update_ref, not_executed_ref],
+                privacy_scope=event["privacy_scope"],
+                resource_scope=event["resource_scope"],
+            )
 
     def _project_outcome(self, run_id: str, event: dict[str, Any], created: set[str]) -> None:
         result = str(event["payload"]["observed_result"])
@@ -1102,11 +1144,29 @@ class ProjectionStore:
             target_event = {"id": link["target_event_id"]}
             rehearsal = self._find_candidate_by_event("rehearsal", target_event["id"])
             if rehearsal:
+                results = event["payload"].get("prediction_results", [])
+                result_statuses = {result.get("result") for result in results}
+                if "confirmed" in result_statuses:
+                    edge_type = "outcome_confirmation"
+                    relation_type = "outcome_confirms"
+                    reason = "observed outcome confirms rehearsal result path"
+                elif "falsified" in result_statuses:
+                    edge_type = "outcome_falsification"
+                    relation_type = "outcome_falsifies"
+                    reason = "observed outcome falsifies rehearsal prediction"
+                elif "partially_matched" in result_statuses:
+                    edge_type = "outcome_partial_match"
+                    relation_type = "outcome_partially_matches"
+                    reason = "observed outcome partially matches rehearsal prediction"
+                else:
+                    edge_type = "outcome_inconclusive"
+                    relation_type = "outcome_inconclusive_for"
+                    reason = "observed outcome is inconclusive for rehearsal prediction"
                 self._upsert_edge(
                     run_id,
                     rehearsal["candidate_id"],
                     outcome_id,
-                    edge_type="outcome_confirmation",
+                    edge_type=edge_type,
                     direction="directed",
                     epistemic_status="observed",
                     confidence=self._confidence("observed", "outcome linked to rehearsal"),
@@ -1116,12 +1176,12 @@ class ProjectionStore:
                 )
                 self._upsert_relation(
                     run_id,
-                    relation_type="outcome_confirms",
+                    relation_type=relation_type,
                     source_candidate_id=outcome_id,
                     target_candidate_id=rehearsal["candidate_id"],
                     direction="directed",
                     evidence_refs=[ref, outcome_link_ref],
-                    reason="observed outcome confirms rehearsal result path",
+                    reason=reason,
                 )
 
     def _project_decision(self, run_id: str, event: dict[str, Any], created: set[str]) -> None:
