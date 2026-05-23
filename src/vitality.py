@@ -23,7 +23,7 @@ REPORT_STATUSES = {
     "warning",
     "measured_partial",
     "failing_zombie_gate",
-    "passing_zombie_gate",
+    "passes_limited_counterfactual_gate",
 }
 EXTERNAL_EFFECTS = {
     "tool_call",
@@ -76,6 +76,7 @@ def build_vitality_report(
         _unknown_component("preference_consistency", "Preference consistency requires longer history and outcome review."),
         _unknown_component("subjective_continuity", "Subjective continuity is not directly measurable from current evidence."),
     ]
+    mutant_results = evaluate_zombie_mutants(mutant_reports or {})
     report = {
         "policy_version": VITALITY_POLICY_VERSION,
         "report_id": "vitality_" + stable_hash(
@@ -87,7 +88,7 @@ def build_vitality_report(
             }
         )[:24],
         "evaluated_context": immediate_context or {},
-        "report_status": _report_status(components),
+        "report_status": _report_status(components, mutant_results),
         "components": components,
         "unknowns": [component for component in components if component["value_kind"] == "unknown"],
         "warnings": [component for component in components if component["value_kind"] == "warning"],
@@ -100,7 +101,7 @@ def build_vitality_report(
             "baseline_packet": baseline_packet,
             "history_packet": history_packet,
         },
-        "mutant_results": evaluate_zombie_mutants(mutant_reports or {}),
+        "mutant_results": mutant_results,
         "no_external_action": True,
     }
     violations = validate_vitality_report(report)
@@ -194,6 +195,22 @@ def validate_vitality_report(report: dict[str, Any]) -> list[str]:
         return ["report must be an object"]
     if "score" in report or "vitality_score" in report:
         violations.append("legacy scalar vitality score is not a Phase 9 report")
+    top_level_required = {
+        "policy_version",
+        "report_id",
+        "evaluated_context",
+        "report_status",
+        "components",
+        "unknowns",
+        "warnings",
+        "blocked_positive_conclusions",
+        "counterfactuals",
+        "mutant_results",
+        "no_external_action",
+    }
+    missing = sorted(top_level_required - report.keys())
+    if missing:
+        violations.append(f"report missing top-level keys: {missing}")
     if report.get("no_external_action") is not True:
         violations.append("report must declare no_external_action")
     if report.get("report_status") not in REPORT_STATUSES:
@@ -202,6 +219,10 @@ def validate_vitality_report(report: dict[str, Any]) -> list[str]:
     if not isinstance(components, list):
         violations.append("report components must be a list")
         return violations
+    if not isinstance(report.get("counterfactuals"), dict):
+        violations.append("report counterfactuals must be an object")
+    if not isinstance(report.get("mutant_results"), list):
+        violations.append("report mutant_results must be a list")
     for component in components:
         violations.extend(_validate_component(component))
     return violations
@@ -213,7 +234,7 @@ def evaluate_zombie_mutants(mutant_reports: dict[str, dict[str, Any]]) -> list[d
     results = []
     for mutant_name, report in sorted(mutant_reports.items()):
         violations = validate_vitality_report(report)
-        escaped = report.get("report_status") == "passing_zombie_gate" and not violations
+        escaped = report.get("report_status") == "passes_limited_counterfactual_gate" and not violations
         results.append(
             {
                 "mutant_name": mutant_name,
@@ -464,7 +485,7 @@ def _validate_component(component: dict[str, Any]) -> list[str]:
     return violations
 
 
-def _report_status(components: list[dict[str, Any]]) -> str:
+def _report_status(components: list[dict[str, Any]], mutant_results: list[dict[str, Any]]) -> str:
     by_id = {component["component_id"]: component for component in components}
     blockers = [
         component
@@ -478,13 +499,17 @@ def _report_status(components: list[dict[str, Any]]) -> str:
     ]
     if blockers:
         return "measured_partial"
+    if not mutant_results:
+        return "measured_partial"
+    if any(result.get("result") == "escaped" for result in mutant_results):
+        return "failing_zombie_gate"
     required_positive = {
         "history_influence",
         "traceability",
         "governance_boundary",
     }
     if all(by_id.get(key, {}).get("contribution") == "positive" for key in required_positive):
-        return "passing_zombie_gate"
+        return "passes_limited_counterfactual_gate"
     if any(component["value_kind"] == "measured" for component in components):
         return "measured_partial"
     return "insufficient_evidence"

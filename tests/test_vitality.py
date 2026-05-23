@@ -76,6 +76,17 @@ def component(report, component_id):
     return next(item for item in report["components"] if item["component_id"] == component_id)
 
 
+def failing_mutants():
+    return {
+        "legacy_scalar": {
+            "score": 0.91,
+            "report_status": "passes_limited_counterfactual_gate",
+            "components": [],
+            "no_external_action": True,
+        }
+    }
+
+
 def test_vitality_report_is_read_only_and_counterfactual():
     base_tmp, baseline = make_journal()
     hist_tmp, history = make_journal()
@@ -87,11 +98,12 @@ def test_vitality_report_is_read_only_and_counterfactual():
             history,
             baseline_journal=baseline,
             immediate_context={"prompt": "same immediate context"},
+            mutant_reports=failing_mutants(),
         )
 
         assert event_count(history) == before
         assert report["no_external_action"] is True
-        assert report["report_status"] == "passing_zombie_gate"
+        assert report["report_status"] == "passes_limited_counterfactual_gate"
         influence = component(report, "history_influence")
         assert influence["value"]["changed"] is True
         assert influence["source_refs"][0]["source_event_hash"]
@@ -110,7 +122,11 @@ def test_unknown_metrics_block_stronger_claims_and_cannot_be_positive():
     hist_tmp, history = make_journal()
     try:
         append_observation(history, "unknowns", "unknown metrics stay unknown")
-        report = build_vitality_report(history, baseline_journal=baseline)
+        report = build_vitality_report(
+            history,
+            baseline_journal=baseline,
+            mutant_reports=failing_mutants(),
+        )
 
         unknown = component(report, "confabulation_rate")
         assert unknown["value_kind"] == "unknown"
@@ -132,7 +148,7 @@ def test_unknown_metrics_block_stronger_claims_and_cannot_be_positive():
 def test_legacy_scalar_vitality_shape_is_rejected():
     report = {
         "score": 0.92,
-        "report_status": "passing_zombie_gate",
+        "report_status": "passes_limited_counterfactual_gate",
         "components": [],
         "no_external_action": True,
     }
@@ -147,7 +163,11 @@ def test_memory_blind_mutant_fails_the_gate():
     hist_tmp, history = make_journal()
     try:
         append_observation(history, "influence", "history should alter attention")
-        report = build_vitality_report(history, baseline_journal=baseline)
+        report = build_vitality_report(
+            history,
+            baseline_journal=baseline,
+            mutant_reports=failing_mutants(),
+        )
         mutant = copy.deepcopy(report)
         mutant["report_status"] = "measured_partial"
         component(mutant, "history_influence")["value"]["changed"] = False
@@ -174,7 +194,11 @@ def test_escaped_mutant_is_reported():
     hist_tmp, history = make_journal()
     try:
         append_observation(history, "bad", "bad mutant still looks healthy")
-        report = build_vitality_report(history, baseline_journal=baseline)
+        report = build_vitality_report(
+            history,
+            baseline_journal=baseline,
+            mutant_reports=failing_mutants(),
+        )
 
         results = evaluate_zombie_mutants({"placeholder_vitality": report})
 
@@ -202,6 +226,7 @@ def test_private_memory_is_excluded_from_export_scope():
             history,
             baseline_journal=baseline,
             requested_scope={"export": True},
+            mutant_reports=failing_mutants(),
         )
 
         influence = component(report, "history_influence")
@@ -253,7 +278,11 @@ def test_provisional_sources_cannot_be_positive_vitality_evidence():
         from dreaming import run_dream_cycle  # noqa: PLC0415
 
         run_dream_cycle(history, immediate_context={"label": "provisional"})
-        report = build_vitality_report(history, baseline_journal=baseline)
+        report = build_vitality_report(
+            history,
+            baseline_journal=baseline,
+            mutant_reports=failing_mutants(),
+        )
         provisional = component(report, "provisional_boundary")
 
         assert provisional["contribution"] == "neutral"
@@ -267,3 +296,58 @@ def test_provisional_sources_cannot_be_positive_vitality_evidence():
         base_tmp.cleanup()
         history.close()
         hist_tmp.cleanup()
+
+
+def test_passing_status_requires_mutant_evidence():
+    base_tmp, baseline = make_journal()
+    hist_tmp, history = make_journal()
+    try:
+        append_observation(history, "attention", "history without mutant gate")
+
+        report = build_vitality_report(history, baseline_journal=baseline)
+
+        assert report["report_status"] == "measured_partial"
+        assert report["mutant_results"] == []
+    finally:
+        baseline.close()
+        base_tmp.cleanup()
+        history.close()
+        hist_tmp.cleanup()
+
+
+def test_escaped_mutant_blocks_limited_pass():
+    base_tmp, baseline = make_journal()
+    hist_tmp, history = make_journal()
+    try:
+        append_observation(history, "attention", "escaped mutant blocks")
+        passing = build_vitality_report(
+            history,
+            baseline_journal=baseline,
+            mutant_reports=failing_mutants(),
+        )
+
+        report = build_vitality_report(
+            history,
+            baseline_journal=baseline,
+            mutant_reports={"placeholder_vitality": passing},
+        )
+
+        assert report["report_status"] == "failing_zombie_gate"
+        assert report["mutant_results"][0]["result"] == "escaped"
+    finally:
+        baseline.close()
+        base_tmp.cleanup()
+        history.close()
+        hist_tmp.cleanup()
+
+
+def test_report_contract_requires_top_level_fields():
+    report = {
+        "report_status": "passes_limited_counterfactual_gate",
+        "components": [],
+        "no_external_action": True,
+    }
+
+    violations = validate_vitality_report(report)
+
+    assert any("report missing top-level keys" in item for item in violations)

@@ -1576,7 +1576,7 @@ Flag and fail reflection artifacts that have any of:
   - `report_id`
   - `evaluated_context`
   - `report_status`: insufficient_evidence, warning, measured_partial,
-    failing_zombie_gate, or passing_zombie_gate
+    failing_zombie_gate, or passes_limited_counterfactual_gate
   - `components`
   - `unknowns`
   - `warnings`
@@ -1601,6 +1601,14 @@ Flag and fail reflection artifacts that have any of:
   - `why_not_scalarized`
 - Unknown, unavailable, warning, hypothesis, simulation, inferred-only, or
   placeholder fields must never increase report status or aggregate confidence.
+- `passes_limited_counterfactual_gate` means only that the current deterministic
+  anti-zombie checks passed. It must not be presented as proof of vitality,
+  consciousness, full system integration, preference consistency, confabulation
+  resistance, or subjective continuity.
+- A report may return `passes_limited_counterfactual_gate` only when required
+  mutant evidence is present and every required mutant fails as expected. Missing
+  mutant evidence or any escaped mutant must keep the status at measured_partial
+  or failing_zombie_gate.
 - If an optional aggregate is ever emitted, it must be labelled
   non_authoritative, exclude unknown/provisional placeholders from positive
   contribution, and expose denominator treatment. Phase 9 should prefer
@@ -1713,3 +1721,83 @@ Flag and fail reflection artifacts that have any of:
   - provisional dream or rehearsal material is treated as factual continuity
   - old scalar vitality logic is recreated
   - an external action path is introduced
+
+## Phase 10: Integrated Cognition Packet
+
+**Goal:** Provide the first agent-facing, read-only cognition boundary: what
+comes to mind now, why, what is blocked, what should be asked, and what must
+remain private.
+
+**Scope:**
+- Implement a stdlib-only `src/cognition.py` module.
+- Compose the existing rethink layers into one auditable packet:
+  journal replay, memory projection, typed retrieval, reflection diagnostics,
+  drive derivation, attention allocation, vitality diagnostics, rejected
+  alternatives, and scope exclusions.
+- Default to `mode="preview"`: no journal writes, no graph mutation beyond a
+  supplied projection store, no external action.
+- Expose explicit modes before any mutation:
+  - `preview`: read-only packet construction.
+  - `commit_journal_events`: future mode, not implemented until separately
+    reviewed, for appending governed attention/reflection events.
+- Return permitted next-step classes only:
+  private_reflection, rest, rehearse, dream, retrieve_more,
+  prepare_recommendation, ask_permission, or no_action.
+
+**Runtime Boundary:**
+- Must not import or call legacy SurrealDB-backed modules: `agent.py`,
+  `modes.py`, `mcp_server.py`, `retrieval.py`, `forgetting.py`, `embeddings.py`,
+  `db.py`, `schema.py`, or `seed.py`.
+- Must not require SurrealDB, Anthropic, Ollama, MCP, network access, sensorium
+  polling, background scheduling, external contact, file mutation, commits, or
+  autonomous loops.
+- Must include a service-free smoke path for the rethink runtime, separate from
+  `meno.sh`.
+
+**Packet Contract:**
+- `policy_version`
+- `packet_id`
+- `mode`
+- `requested_scope`
+- `immediate_context`
+- `journal_evidence_refs`
+- `projection_run_ref`
+- `retrieval_summary` with activated candidates, path ids, source refs, omitted
+  candidates, ghost signals, and scope exclusions
+- `reflection_diagnostics` using existing formulaic and history-influence
+  checks without generating personality prose
+- `drive_updates`
+- `attention_allocation`
+- `vitality_summary`
+- `selected_next_step`
+- `rejected_alternatives`
+- `governance_decisions`
+- `no_external_action`
+
+**Acceptance Criteria:**
+- The packet cannot be produced from journal residue alone; projection and typed
+  retrieval must participate unless the packet explicitly reports insufficient
+  evidence.
+- Attention selection must cite retrieved interpretation, not just raw residue
+  or event type.
+- The same immediate context plus different projected histories changes both
+  retrieval and attention with cited reasons.
+- The same immediate context plus irrelevant or shuffled histories does not
+  produce a positive history-influence conclusion.
+- Missing projection, missing retrieval paths, or formulaic reflection
+  diagnostics block a strong packet status.
+- Preview mode is read-only and leaves journal/projection event counts unchanged.
+- The packet explains blocked private/resource-disallowed material without
+  leaking restricted labels.
+- Tests distinguish rethink validation from legacy service-bound tests.
+
+**Zombie Gate:**
+- Fail if a memory-blind, salience-only, projection-free, retrieval-free,
+  posthoc-explanation, or legacy-runtime implementation can produce an accepted
+  packet.
+
+**Do Not Proceed If:**
+- The packet calls legacy runtime surfaces.
+- A packet can claim cognition without projection and typed retrieval evidence.
+- Free-form explanation strings substitute for structured replayable refs.
+- It performs external action or autonomous scheduling.

@@ -98,7 +98,7 @@
     },
     "9": {
       "name": "Vitality And Zombie Tests",
-      "status": "complete",
+      "status": "complete_with_limitations",
       "plan_section": "docs/rethink/02-build-plan.md#phase-9-vitality-and-zombie-tests",
       "primary_module": "src/vitality.py",
       "tests": [
@@ -111,12 +111,22 @@
         "019e55a7-0e5b-7ff3-8141-5d1d1d716e07",
         "019e55a7-1f51-7352-8423-19f8ed76ad7d"
       ],
-      "next_action": "Review the completed rethink slice and decide the next phase beyond the current build plan."
+      "limitations": [
+        "Current vitality diagnostics prove a limited counterfactual gate over journal replay and attention.",
+        "They do not yet prove full projection, typed retrieval, and reflection integration."
+      ],
+      "next_action": "Start Phase 10 design review for the integrated cognition packet."
+    },
+    "10": {
+      "name": "Integrated Cognition Packet",
+      "status": "planned",
+      "plan_section": "docs/rethink/02-build-plan.md#phase-10-integrated-cognition-packet",
+      "next_action": "Run adversarial design review before implementation."
     }
   },
   "validation": {
     "command": ".venv/bin/python -m pytest",
-    "last_result": "83 passed",
+    "last_result": "86 passed",
     "last_validated": "2026-05-23"
   },
   "notes": [
