@@ -54,6 +54,24 @@ STATUS_FACTORS = {
     "rejected": 0.0,
 }
 
+CANDIDATE_LIFECYCLE_FACTORS = {
+    "active": 1.0,
+    "dormant": 0.25,
+    "rediscovered": 0.85,
+    "pruning_proposed": 0.20,
+    "tombstoned": 0.0,
+}
+
+EDGE_LIFECYCLE_FACTORS = {
+    "active": 1.0,
+    "weakened": 0.45,
+    "archived": 0.0,
+    "rediscovered_bridge": 0.80,
+    "pruning_proposed": 0.20,
+    "released": 0.0,
+    "tombstoned": 0.0,
+}
+
 EPISTEMIC_FACTORS = {
     "observed": 1.0,
     "authored": 0.80,
@@ -179,6 +197,8 @@ class TypedRetriever:
                             "candidate_confidence_record": to_candidate["confidence"],
                             "record_confidence_record": record["confidence"],
                             "record_epistemic_status": record["epistemic_status"],
+                            "record_lifecycle": record["lifecycle"],
+                            "candidate_lifecycle": to_candidate["lifecycle"],
                             "retrieval_weight": weight,
                             "scope_decision": scope_decision,
                             "source_refs": record["source_refs"],
@@ -316,6 +336,14 @@ class TypedRetriever:
             "source_refs": record["source_refs"],
             "privacy_scope": record["privacy_scope"],
             "resource_scope": record["resource_scope"],
+            "lifecycle": record.get(
+                "lifecycle",
+                {
+                    "lifecycle_state": "active",
+                    "accessibility": 1.0,
+                    "traversal_factor": 1.0,
+                },
+            ),
         }
 
     def _edge_allowed_directions(self, edge_type: str, stored_direction: str) -> set[str]:
@@ -360,6 +388,9 @@ class TypedRetriever:
         acceptance = candidate["acceptance_status"]
         relation = candidate["relation_status"]
         epistemic = candidate["epistemic_status"]
+        lifecycle = candidate.get("lifecycle", {})
+        if lifecycle.get("lifecycle_state") == "tombstoned":
+            return self._blocked("tombstoned", scope_checked=["candidate_lifecycle"])
         if acceptance == "rejected":
             return self._blocked("rejected", scope_checked=["candidate"])
         if relation in {"invalidated", "superseded"}:
@@ -387,6 +418,9 @@ class TypedRetriever:
     ) -> dict[str, Any]:
         edge_type = record.get("edge_type")
         relation_type = record.get("relation_type")
+        lifecycle = record.get("lifecycle", {})
+        if lifecycle.get("lifecycle_state") in {"archived", "released", "tombstoned"}:
+            return self._blocked("archived", scope_checked=["edge_lifecycle"])
         if edge_type == "dream_association" and not query.include_hypotheses:
             return self._blocked("hypothesis_suppressed", scope_checked=["edge"])
         if edge_type == "rehearsal_candidate" and not query.include_simulations:
@@ -502,9 +536,11 @@ class TypedRetriever:
     ) -> dict[str, Any]:
         edge_factor = EDGE_FACTORS.get(record.get("edge_type"), 1.0) if record["record_type"] == "edge" else 1.0
         relation_factor = RELATION_FACTORS.get(record.get("relation_type"), 1.0) if record["record_type"] == "relation" else 1.0
+        record_confidence = dict(record["confidence"])
+        record_confidence["_lifecycle"] = record.get("lifecycle", {})
         return self._weight(
             candidate=candidate,
-            record_confidence=record["confidence"],
+            record_confidence=record_confidence,
             edge_type_factor=edge_factor,
             relation_type_factor=relation_factor,
             hop=hop,
@@ -536,6 +572,18 @@ class TypedRetriever:
     ) -> dict[str, Any]:
         status_factor = STATUS_FACTORS.get(candidate["acceptance_status"], 0.4)
         epistemic_factor = EPISTEMIC_FACTORS.get(candidate["epistemic_status"], 0.5)
+        candidate_lifecycle = candidate.get("lifecycle", {})
+        candidate_lifecycle_factor = CANDIDATE_LIFECYCLE_FACTORS.get(
+            candidate_lifecycle.get("lifecycle_state", "active"),
+            0.5,
+        ) * float(candidate_lifecycle.get("accessibility", 1.0))
+        record_lifecycle_factor = 1.0
+        if record_confidence is not None:
+            record_lifecycle = record_confidence.get("_lifecycle", {})
+            record_lifecycle_factor = EDGE_LIFECYCLE_FACTORS.get(
+                record_lifecycle.get("lifecycle_state", "active"),
+                0.5,
+            ) * float(record_lifecycle.get("traversal_factor", 1.0))
         candidate_confidence_factor = CONFIDENCE_FACTORS.get(candidate["confidence"].get("level", "weak"), 0.75)
         record_confidence_factor = (
             CONFIDENCE_FACTORS.get(record_confidence.get("level", "weak"), 0.75)
@@ -551,6 +599,8 @@ class TypedRetriever:
             * relation_type_factor
             * status_factor
             * epistemic_factor
+            * candidate_lifecycle_factor
+            * record_lifecycle_factor
             * candidate_confidence_factor
             * record_confidence_factor
             * evidence_factor
@@ -564,6 +614,8 @@ class TypedRetriever:
             "relation_type_factor": relation_type_factor,
             "status_factor": status_factor,
             "epistemic_factor": epistemic_factor,
+            "candidate_lifecycle_factor": round(candidate_lifecycle_factor, 6),
+            "record_lifecycle_factor": round(record_lifecycle_factor, 6),
             "candidate_confidence_factor": candidate_confidence_factor,
             "record_confidence_factor": record_confidence_factor,
             "confidence_factor": round(candidate_confidence_factor * record_confidence_factor, 6),
@@ -596,6 +648,7 @@ class TypedRetriever:
                 "acceptance_status": candidate["acceptance_status"],
                 "relation_status": candidate["relation_status"],
                 "epistemic_status": candidate["epistemic_status"],
+                "lifecycle": candidate["lifecycle"],
                 "activation_score": round(float(data["score"]), 6),
                 "retrieval_weight": data["weight"],
                 "activation_paths": paths,

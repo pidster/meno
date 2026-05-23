@@ -32,6 +32,14 @@ EVENT_STATUS_MATRIX: dict[str, set[str]] = {
     "outcome": {"observed"},
     "rest": {"authored"},
     "administrative_repair": {"administrative"},
+    "retrieval_use_trace": {"observed"},
+    "consolidation_run": {"authored"},
+    "edge_decay_assessment": {"inferred"},
+    "edge_archival": {"inferred"},
+    "candidate_dormancy_mark": {"inferred"},
+    "rediscovery": {"inferred"},
+    "pruning_proposal": {"inferred"},
+    "pruning_decision": {"authored"},
 }
 
 ALLOWED_EVENT_TYPES = set(EVENT_STATUS_MATRIX)
@@ -48,6 +56,11 @@ ALLOWED_LINK_TYPES = {
     "contradicts",
     "caused_by",
     "proposes_from",
+    "assesses",
+    "archives",
+    "marks_dormant",
+    "rediscovers",
+    "decides_pruning",
 }
 
 PAYLOAD_REQUIRED_KEYS: dict[str, set[str]] = {
@@ -82,6 +95,78 @@ PAYLOAD_REQUIRED_KEYS: dict[str, set[str]] = {
     "outcome": {"expected_outcome_link", "observed_result", "match"},
     "rest": {"tensions_left_unresolved", "deliberate_non_action_reason", "consolidation_notes"},
     "administrative_repair": {"repair_target", "before_after_hash_evidence", "reason"},
+    "retrieval_use_trace": {
+        "retrieval_result_hash",
+        "used_candidate_ids",
+        "used_record_ids",
+        "activated_path_ids",
+        "retrieval_result_snapshot",
+    },
+    "consolidation_run": {
+        "policy_version",
+        "source_event_ids",
+        "target_summary",
+        "actions_taken",
+        "no_action_reason",
+    },
+    "edge_decay_assessment": {
+        "consolidation_event_id",
+        "edge_id",
+        "previous_lifecycle_state",
+        "new_lifecycle_state",
+        "previous_accessibility",
+        "new_accessibility",
+        "decay_basis",
+        "source_event_ids",
+    },
+    "edge_archival": {
+        "consolidation_event_id",
+        "edge_id",
+        "previous_lifecycle_state",
+        "new_lifecycle_state",
+        "previous_accessibility",
+        "new_accessibility",
+        "archive_reason",
+        "source_event_ids",
+        "rediscovery_recipe",
+    },
+    "candidate_dormancy_mark": {
+        "consolidation_event_id",
+        "candidate_id",
+        "previous_lifecycle_state",
+        "new_lifecycle_state",
+        "previous_accessibility",
+        "new_accessibility",
+        "dormancy_reason",
+        "source_event_ids",
+        "rediscovery_recipe",
+    },
+    "rediscovery": {
+        "consolidation_event_id",
+        "dormant_candidate_id",
+        "new_evidence_event_id",
+        "bridge_edge_id",
+        "source_event_ids",
+        "reflection_event_id",
+        "reflection_required",
+        "rediscovery_reason",
+    },
+    "pruning_proposal": {
+        "target_kind",
+        "target_id",
+        "source_event_ids",
+        "affected_path_ids",
+        "rejected_alternatives",
+        "reversibility_check",
+        "rediscovery_recipe",
+        "release_rationale",
+    },
+    "pruning_decision": {
+        "proposal_event_id",
+        "selected_option",
+        "reason",
+        "constraints",
+    },
 }
 
 RESIDUE_FIELDS = {
@@ -685,6 +770,14 @@ class JournalStore:
         for source_event_id in payload.get("source_event_ids", []):
             if self.get_event(source_event_id) is None:
                 raise JournalValidationError(f"unknown source event: {source_event_id}")
+        for event_id_field in (
+            "consolidation_event_id",
+            "new_evidence_event_id",
+            "proposal_event_id",
+            "reflection_event_id",
+        ):
+            if payload.get(event_id_field) and self.get_event(payload[event_id_field]) is None:
+                raise JournalValidationError(f"unknown {event_id_field}: {payload[event_id_field]}")
         if event_type == "graph_update_proposal":
             source_ids = set(payload["source_event_ids"])
             propose_link_targets = {

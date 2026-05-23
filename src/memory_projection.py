@@ -326,6 +326,65 @@ class ProjectionStore:
                 FOREIGN KEY (projection_record_id)
                     REFERENCES projection_decisions(projection_record_id)
             );
+
+            CREATE TABLE IF NOT EXISTS candidate_lifecycle (
+                candidate_id TEXT PRIMARY KEY,
+                lifecycle_state TEXT NOT NULL CHECK (
+                    lifecycle_state IN (
+                        'active', 'dormant', 'rediscovered',
+                        'pruning_proposed', 'tombstoned'
+                    )
+                ),
+                accessibility REAL NOT NULL CHECK (accessibility >= 0.0 AND accessibility <= 1.0),
+                last_reinforced_event_id TEXT,
+                last_maintenance_event_id TEXT NOT NULL,
+                decay_basis_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (candidate_id) REFERENCES memory_candidates(candidate_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS edge_lifecycle (
+                edge_id TEXT PRIMARY KEY,
+                lifecycle_state TEXT NOT NULL CHECK (
+                    lifecycle_state IN (
+                        'active', 'weakened', 'archived',
+                        'rediscovered_bridge', 'pruning_proposed',
+                        'released', 'tombstoned'
+                    )
+                ),
+                accessibility REAL NOT NULL CHECK (accessibility >= 0.0 AND accessibility <= 1.0),
+                traversal_factor REAL NOT NULL CHECK (traversal_factor >= 0.0 AND traversal_factor <= 1.0),
+                last_reinforced_event_id TEXT,
+                last_maintenance_event_id TEXT NOT NULL,
+                decay_basis_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (edge_id) REFERENCES memory_edges(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS lifecycle_history (
+                id TEXT PRIMARY KEY,
+                target_type TEXT NOT NULL CHECK (target_type IN ('candidate', 'edge')),
+                target_id TEXT NOT NULL,
+                from_lifecycle_state TEXT,
+                to_lifecycle_state TEXT NOT NULL,
+                from_accessibility REAL,
+                to_accessibility REAL NOT NULL,
+                maintenance_event_id TEXT NOT NULL,
+                basis_json TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE TRIGGER IF NOT EXISTS memory_candidates_no_delete
+            BEFORE DELETE ON memory_candidates
+            BEGIN
+                SELECT RAISE(ABORT, 'memory_candidates cannot be deleted without audited pruning');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS memory_edges_no_delete
+            BEFORE DELETE ON memory_edges
+            BEGIN
+                SELECT RAISE(ABORT, 'memory_edges cannot be deleted without audited pruning');
+            END;
             """
         )
         self._conn.commit()
@@ -442,21 +501,31 @@ class ProjectionStore:
             raise ProjectionValidationError("evidence ref source value hash mismatch")
 
     def candidates(self) -> list[dict[str, Any]]:
-        return [self._row_candidate(row) for row in self._conn.execute(
+        candidates = [self._row_candidate(row) for row in self._conn.execute(
             "SELECT * FROM memory_candidates ORDER BY kind, label"
         ).fetchall()]
+        for candidate in candidates:
+            candidate["lifecycle"] = self.candidate_lifecycle(candidate["candidate_id"])
+        return candidates
 
     def candidate(self, kind: str, label: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM memory_candidates WHERE kind = ? AND label = ?",
             (kind, label),
         ).fetchone()
-        return self._row_candidate(row) if row else None
+        if row is None:
+            return None
+        candidate = self._row_candidate(row)
+        candidate["lifecycle"] = self.candidate_lifecycle(candidate["candidate_id"])
+        return candidate
 
     def edges(self) -> list[dict[str, Any]]:
-        return [self._row_json(row) for row in self._conn.execute(
+        edges = [self._row_json(row) for row in self._conn.execute(
             "SELECT * FROM memory_edges ORDER BY edge_type, id"
         ).fetchall()]
+        for edge in edges:
+            edge["lifecycle"] = self.edge_lifecycle(edge["id"])
+        return edges
 
     def decisions(self) -> list[dict[str, Any]]:
         return [self._row_json(row) for row in self._conn.execute(
@@ -482,6 +551,184 @@ class ProjectionStore:
         return [self._row_json(row) for row in self._conn.execute(
             "SELECT * FROM projection_evidence_refs ORDER BY id"
         ).fetchall()]
+
+    def candidate_lifecycle(self, candidate_id: str | None = None) -> dict[str, Any] | list[dict[str, Any]]:
+        if candidate_id is None:
+            return [
+                self._row_json(row)
+                for row in self._conn.execute(
+                    "SELECT * FROM candidate_lifecycle ORDER BY candidate_id"
+                ).fetchall()
+            ]
+        row = self._conn.execute(
+            "SELECT * FROM candidate_lifecycle WHERE candidate_id = ?",
+            (candidate_id,),
+        ).fetchone()
+        if row is None:
+            return {
+                "candidate_id": candidate_id,
+                "lifecycle_state": "active",
+                "accessibility": 1.0,
+                "last_reinforced_event_id": None,
+                "last_maintenance_event_id": None,
+                "decay_basis": {},
+                "updated_at": None,
+            }
+        return self._row_json(row)
+
+    def edge_lifecycle(self, edge_id: str | None = None) -> dict[str, Any] | list[dict[str, Any]]:
+        if edge_id is None:
+            return [
+                self._row_json(row)
+                for row in self._conn.execute(
+                    "SELECT * FROM edge_lifecycle ORDER BY edge_id"
+                ).fetchall()
+            ]
+        row = self._conn.execute(
+            "SELECT * FROM edge_lifecycle WHERE edge_id = ?",
+            (edge_id,),
+        ).fetchone()
+        if row is None:
+            return {
+                "edge_id": edge_id,
+                "lifecycle_state": "active",
+                "accessibility": 1.0,
+                "traversal_factor": 1.0,
+                "last_reinforced_event_id": None,
+                "last_maintenance_event_id": None,
+                "decay_basis": {},
+                "updated_at": None,
+            }
+        return self._row_json(row)
+
+    def lifecycle_history(self) -> list[dict[str, Any]]:
+        return [
+            self._row_json(row)
+            for row in self._conn.execute(
+                "SELECT * FROM lifecycle_history ORDER BY timestamp, id"
+            ).fetchall()
+        ]
+
+    def record_candidate_lifecycle(
+        self,
+        *,
+        journal: JournalStore,
+        candidate_id: str,
+        lifecycle_state: str,
+        accessibility: float,
+        maintenance_event: dict[str, Any],
+        decay_basis: dict[str, Any],
+        last_reinforced_event_id: str | None = None,
+    ) -> None:
+        self._validate_maintenance_event(
+            journal,
+            maintenance_event,
+            allowed_types={"candidate_dormancy_mark", "rediscovery", "pruning_decision"},
+            target_type="candidate",
+            target_id=candidate_id,
+            lifecycle_state=lifecycle_state,
+        )
+        if self._get_candidate_by_id(candidate_id) is None:
+            raise ProjectionValidationError("candidate lifecycle target is missing")
+        previous = self.candidate_lifecycle(candidate_id)
+        now = utc_now()
+        self._conn.execute(
+            """
+            INSERT INTO candidate_lifecycle (
+                candidate_id, lifecycle_state, accessibility,
+                last_reinforced_event_id, last_maintenance_event_id,
+                decay_basis_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(candidate_id) DO UPDATE SET
+                lifecycle_state = excluded.lifecycle_state,
+                accessibility = excluded.accessibility,
+                last_reinforced_event_id = excluded.last_reinforced_event_id,
+                last_maintenance_event_id = excluded.last_maintenance_event_id,
+                decay_basis_json = excluded.decay_basis_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                candidate_id,
+                lifecycle_state,
+                float(accessibility),
+                last_reinforced_event_id,
+                maintenance_event["id"],
+                canonical_json(decay_basis),
+                now,
+            ),
+        )
+        self._record_lifecycle_history(
+            target_type="candidate",
+            target_id=candidate_id,
+            previous=previous,
+            new_state=lifecycle_state,
+            new_accessibility=float(accessibility),
+            maintenance_event_id=maintenance_event["id"],
+            basis=decay_basis,
+        )
+        self._conn.commit()
+
+    def record_edge_lifecycle(
+        self,
+        *,
+        journal: JournalStore,
+        edge_id: str,
+        lifecycle_state: str,
+        accessibility: float,
+        traversal_factor: float,
+        maintenance_event: dict[str, Any],
+        decay_basis: dict[str, Any],
+        last_reinforced_event_id: str | None = None,
+    ) -> None:
+        self._validate_maintenance_event(
+            journal,
+            maintenance_event,
+            allowed_types={"edge_decay_assessment", "edge_archival", "rediscovery", "pruning_decision"},
+            target_type="edge",
+            target_id=edge_id,
+            lifecycle_state=lifecycle_state,
+        )
+        if self._conn.execute("SELECT 1 FROM memory_edges WHERE id = ?", (edge_id,)).fetchone() is None:
+            raise ProjectionValidationError("edge lifecycle target is missing")
+        previous = self.edge_lifecycle(edge_id)
+        now = utc_now()
+        self._conn.execute(
+            """
+            INSERT INTO edge_lifecycle (
+                edge_id, lifecycle_state, accessibility, traversal_factor,
+                last_reinforced_event_id, last_maintenance_event_id,
+                decay_basis_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(edge_id) DO UPDATE SET
+                lifecycle_state = excluded.lifecycle_state,
+                accessibility = excluded.accessibility,
+                traversal_factor = excluded.traversal_factor,
+                last_reinforced_event_id = excluded.last_reinforced_event_id,
+                last_maintenance_event_id = excluded.last_maintenance_event_id,
+                decay_basis_json = excluded.decay_basis_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                edge_id,
+                lifecycle_state,
+                float(accessibility),
+                float(traversal_factor),
+                last_reinforced_event_id,
+                maintenance_event["id"],
+                canonical_json(decay_basis),
+                now,
+            ),
+        )
+        self._record_lifecycle_history(
+            target_type="edge",
+            target_id=edge_id,
+            previous=previous,
+            new_state=lifecycle_state,
+            new_accessibility=float(accessibility),
+            maintenance_event_id=maintenance_event["id"],
+            basis=decay_basis,
+        )
+        self._conn.commit()
 
     def runs(self) -> list[dict[str, Any]]:
         return [self._row_json(row) for row in self._conn.execute(
@@ -1324,6 +1571,90 @@ class ProjectionStore:
             ),
         )
 
+    def _record_lifecycle_history(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        previous: dict[str, Any],
+        new_state: str,
+        new_accessibility: float,
+        maintenance_event_id: str,
+        basis: dict[str, Any],
+    ) -> None:
+        hid = "life_" + stable_hash(
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "from_lifecycle_state": previous.get("lifecycle_state"),
+                "to_lifecycle_state": new_state,
+                "from_accessibility": previous.get("accessibility"),
+                "to_accessibility": new_accessibility,
+                "maintenance_event_id": maintenance_event_id,
+                "basis": basis,
+            }
+        )[:24]
+        self._conn.execute(
+            """
+            INSERT INTO lifecycle_history (
+                id, target_type, target_id, from_lifecycle_state,
+                to_lifecycle_state, from_accessibility, to_accessibility,
+                maintenance_event_id, basis_json, timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                hid,
+                target_type,
+                target_id,
+                previous.get("lifecycle_state"),
+                new_state,
+                previous.get("accessibility"),
+                new_accessibility,
+                maintenance_event_id,
+                canonical_json(basis),
+                utc_now(),
+            ),
+        )
+
+    def _validate_maintenance_event(
+        self,
+        journal: JournalStore,
+        event: dict[str, Any],
+        *,
+        allowed_types: set[str],
+        target_type: str,
+        target_id: str,
+        lifecycle_state: str,
+    ) -> None:
+        if not isinstance(event, dict):
+            raise ProjectionValidationError("maintenance event must be a journal event envelope")
+        persisted = journal.get_event(event.get("id", ""))
+        if persisted is None:
+            raise ProjectionValidationError("maintenance event is not persisted in journal")
+        if persisted["content_hash"] != event.get("content_hash"):
+            raise ProjectionValidationError("maintenance event hash does not match journal")
+        if event.get("event_type") not in allowed_types:
+            raise ProjectionValidationError("maintenance event type is not valid for lifecycle update")
+        if event.get("content_hash") != content_hash(event):
+            raise ProjectionValidationError("maintenance event failed integrity check")
+        if event.get("event_type") == "rediscovery" and not event.get("payload", {}).get("reflection_event_id"):
+            raise ProjectionValidationError("rediscovery lifecycle updates require a reflection event")
+        payload = event.get("payload", {})
+        if target_type == "candidate":
+            if event["event_type"] == "candidate_dormancy_mark":
+                if payload.get("candidate_id") != target_id or payload.get("new_lifecycle_state") != lifecycle_state:
+                    raise ProjectionValidationError("candidate lifecycle event target mismatch")
+            elif event["event_type"] == "rediscovery":
+                if payload.get("dormant_candidate_id") != target_id or lifecycle_state != "rediscovered":
+                    raise ProjectionValidationError("candidate rediscovery event target mismatch")
+        if target_type == "edge":
+            if event["event_type"] in {"edge_decay_assessment", "edge_archival"}:
+                if payload.get("edge_id") != target_id or payload.get("new_lifecycle_state") != lifecycle_state:
+                    raise ProjectionValidationError("edge lifecycle event target mismatch")
+            elif event["event_type"] == "rediscovery":
+                if payload.get("bridge_edge_id") != target_id or lifecycle_state != "rediscovered_bridge":
+                    raise ProjectionValidationError("edge rediscovery event target mismatch")
+
     def _transition_candidate(
         self,
         run_id: str,
@@ -1776,7 +2107,11 @@ class ProjectionStore:
         row = self._conn.execute(
             "SELECT * FROM memory_candidates WHERE candidate_id = ?", (cid,)
         ).fetchone()
-        return self._row_candidate(row) if row else None
+        if row is None:
+            return None
+        candidate = self._row_candidate(row)
+        candidate["lifecycle"] = self.candidate_lifecycle(candidate["candidate_id"])
+        return candidate
 
     def _row_candidate(self, row: sqlite3.Row) -> dict[str, Any]:
         return self._row_json(row)
