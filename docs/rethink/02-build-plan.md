@@ -1060,28 +1060,142 @@ Flag and fail reflection artifacts that have any of:
 **Goal:** Generate candidate associations under loosened constraints.
 
 **Scope:**
-- Dream residue selection.
-- Dream records and fragments.
-- Candidate edges marked as dream-derived.
-- Waking review workflow.
+- A stdlib-only, deterministic dreaming workflow over journal replay, typed
+  retrieval snapshots, projection state, and consolidation lifecycle metadata.
+  Do not use SurrealDB, Ollama, embeddings, network access, autonomous
+  scheduling, or model-generated text in this phase.
+- Journal-first dream generation. Dreaming appends validated `dream` events
+  only. It does not mutate projection rows, lifecycle state, confidence,
+  retrieval weights, skills, or factual graph state directly.
+- Bounded dream residue selection. Eligible residue sources:
+  - salient journal residue fields: open tensions, uncertainty,
+    attention targets, importance reasons, affect valence, expected outcomes,
+    drive refs, and salience
+  - recent retrieval-use traces, omitted candidates, and ghost signals
+  - dormant or archived lifecycle material from consolidation
+  - unresolved reflection questions, rejected interpretations,
+    future-attention markers, and deferred graph updates
+  - conflict material and corrections that remain unsettled
+- Residue exclusions:
+  - private or resource-restricted material that the requested dream scope
+    cannot access
+  - factual observations with no unresolved tension or associative role
+  - dream residue from prior dreams unless explicitly included as hypothesis
+    material
+  - rehearsal simulations unless explicitly included as simulation material
+  - any material whose source event fails journal integrity checks
+- Residue trace contract. Every selected residue must cite:
+  - source event id and content hash
+  - source event type and epistemic status
+  - residue field or retrieval path id
+  - privacy/resource scope decision
+  - selection reason and selection weight
+  - whether it is evidence, interpretation, hypothesis, simulation, conflict,
+    dormant material, or future-attention material
+- Typed dream fragments. `generated_candidates` must be a list of structured
+  fragments, not arbitrary strings. Each fragment must include:
+  - stable fragment id
+  - label
+  - fragment kind: association, metaphor, question, tension, image,
+    counterfactual, or bridge
+  - source residue refs
+  - association rationale
+  - uncertainty note
+  - useful-if rationale tied to a concrete unresolved tension, dormant memory,
+    conflict, curiosity, deferred question, or repeated salience
+  - review status: raw, review_pending, rejected, deferred,
+    provisionally_useful, or corroborated_by_observation
+  - explicit `not_factual` marker
+- Projection interpretation is provisional only. Projection may derive dream
+  candidates and dream-derived edges from journaled dream events, but those
+  candidates remain `epistemic_status=hypothesis` and cannot become accepted
+  factual candidates through dreaming alone.
+- Waking review workflow. Waking review must be a separate journaled workflow,
+  not an inline mutation of the dream:
+  - Review can mark a fragment rejected, deferred, left raw, or useful as a
+    provisional graph proposal.
+  - Factual promotion is forbidden unless later observed evidence or outcome
+    corroborates the content.
+  - Any factual proposal must cite the later observed evidence plus the dream
+    fragment and review decision, so same-content laundering is auditable.
+  - The original dream event remains hypothesis-marked forever.
+- Retrieval semantics for dream material. Dream candidates and dream-derived
+  edges remain suppressed by default retrieval. When explicitly included, every
+  surfaced dream path must carry dream/hypothesis/not-factual semantics so
+  downstream reflection cannot treat it as ordinary support.
+- Dream source refs count as one internal generation event for activation and
+  confidence purposes until independently corroborated by observed evidence.
+- Privacy and resource scopes propagate from all selected residues into the
+  dream event. Dreams cannot combine restricted material into broader output or
+  proposals.
 
 **Acceptance Criteria:**
 - Dream outputs never become factual memory directly.
-- Dream candidates are distinguishable from observed links.
-- Waking review can promote, reject, or leave dream fragments raw.
+- Dream events are journaled before projection and include structured residue
+  traces to prior history.
+- Dream fragments are typed, hypothesis-marked, not-factual, and reviewable.
+- Dream candidates and dream-derived edges are distinguishable from observed
+  links in projection, retrieval, reflection, and consolidation.
+- Default retrieval suppresses dream material; explicit hypothesis retrieval
+  surfaces dream semantics without laundering them into ordinary recall.
+- Waking review can reject, defer, leave raw, or propose provisional use of a
+  dream fragment, but cannot create factual memory without later observed
+  corroboration.
+- Same-content factual observations after a dream must remain auditable as
+  later evidence, not silent promotion of the dream.
+- Privacy/resource restrictions on source residues survive into dream events
+  and any review/proposal outputs.
 
 **Adversarial Questions:**
 - Did hallucination leak into memory?
 - What makes this dream useful rather than noise?
 - Which residues shaped it?
+- Which selected residues are evidence, interpretation, hypothesis, simulation,
+  conflict, dormant material, or future-attention material?
+- What did the dream refuse to conclude?
+- What would later observed evidence need to show before any factual promotion?
+- Does the same immediate context dream differently under different accumulated
+  histories?
+- Could this dream have been generated from generic labels without history?
+- Did any restricted residue leak into a broader scope?
 
 **Do Not Proceed If:**
 - Dreaming can directly canonize graph facts.
+- Dreaming can mutate projection or lifecycle state directly.
+- Dream fragments lack source residue refs.
+- `generated_candidates` are arbitrary strings rather than typed fragments.
+- Waking review can promote without later observed evidence or outcome.
+- A same-content observation can hide that the content first appeared as dream
+  residue.
+- Dream material can be retrieved as ordinary factual support.
+- Privacy/resource scopes are not propagated.
+- The implementation requires SurrealDB, Ollama, embeddings, network access,
+  autonomous scheduling, or model-generated text.
 
 **Zombie Gate:**
-- A test must show that dreams produce provisional candidates shaped by residue
-  from prior history, while the factual graph remains unchanged until waking
-  review.
+- Deterministic fixture matrix:
+  - same immediate context with two different accumulated histories produces
+    different dream fragments, residue refs, and useful-if rationales
+  - same labels with no eligible residue produces no substantive dream
+  - irrelevant high-salience noise does not shape the dream unless it carries
+    an unresolved associative role
+  - private or resource-disallowed residue is excluded or redacted according to
+    requested scope
+  - dormant/archived material can shape a bridge fragment without becoming
+    factual
+  - dream, rehearsal, conflict, reflection, and observed residues remain
+    semantically distinct in the generated fragments
+  - default retrieval suppresses projected dream material, while explicit
+    hypothesis retrieval surfaces it as dream/not-factual
+  - waking review can reject, defer, leave raw, or create a provisional
+    proposal, but factual promotion fails without later observed evidence
+  - later observed evidence with the same content must cite both the observation
+    and the prior dream/review path if it is used to corroborate the fragment
+- Tests must fail if a generic keyword/noise generator can pass by attaching
+  residue citations after the fact.
+- Tests must fail if a dream fragment can be accepted, factual, observed,
+  ordinary recall, or confidence-boosted by multiple refs from the same dream
+  event.
 
 ## Phase 7: Rehearsal
 
