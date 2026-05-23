@@ -569,6 +569,8 @@ class ProjectionStore:
                 self._project_decision(run_id, event, created)
             elif event["event_type"] == "correction":
                 self._project_correction(run_id, event, created, rejected)
+            elif event["event_type"] == "reflection":
+                self._project_reflection(run_id, event, created)
             if fail_after_first_write and created:
                 raise ProjectionError("injected failure after candidate write")
 
@@ -976,6 +978,71 @@ class ProjectionStore:
                 direction="directed",
                 evidence_refs=[ref],
                 reason="correction keeps prior candidate queryable",
+                )
+
+    def _project_reflection(self, run_id: str, event: dict[str, Any], created: set[str]) -> None:
+        payload = event["payload"]
+        first_claim = next(
+            (
+                str(claim.get("claim"))
+                for claim in payload.get("interpretive_claims", [])
+                if claim.get("claim")
+            ),
+            f"reflection:{event['id']}",
+        )
+        label = str(payload.get("changed_stance") or first_claim)
+        claim_ref = self._evidence_ref(
+            event,
+            payload_path="payload.interpretive_claims",
+            source_selector="payload.interpretive_claims",
+            rationale="reflection candidate is authored interpretation over cited retrieval paths",
+        )
+        retrieval_ref = self._evidence_ref(
+            event,
+            payload_path="payload.cited_retrieval_paths",
+            source_selector="payload.cited_retrieval_paths",
+            rationale="reflection retains retrieval path citations",
+        )
+        uncertainty_ref = self._evidence_ref(
+            event,
+            payload_path="payload.uncertainty_notes",
+            source_selector="payload.uncertainty_notes",
+            rationale="reflection preserves uncertainty rather than factual certainty",
+        )
+        stance_ref = self._evidence_ref(
+            event,
+            payload_path="payload.changed_stance",
+            source_selector="payload.changed_stance",
+            rationale="reflection records what changed because of this cognition",
+        )
+        reflection_id = self._upsert_candidate(
+            run_id=run_id,
+            kind="reflection",
+            label=label,
+            epistemic_status=event["epistemic_status"],
+            acceptance_status="provisional",
+            relation_status="active",
+            confidence=self._confidence(event["epistemic_status"], "authored reflection"),
+            evidence_refs=[claim_ref, retrieval_ref, uncertainty_ref, stance_ref],
+            rule_id="authored_reflection",
+            reason="reflection is authored meaning, not factual memory",
+            created=created,
+        )
+        for path in payload.get("cited_retrieval_paths", []):
+            candidate_id = path.get("candidate_id")
+            if not candidate_id or self._get_candidate_by_id(candidate_id) is None:
+                continue
+            self._upsert_edge(
+                run_id,
+                reflection_id,
+                candidate_id,
+                edge_type="reflective_interpretation",
+                direction="directed",
+                epistemic_status=event["epistemic_status"],
+                confidence=self._confidence(event["epistemic_status"], "reflection cites retrieval path"),
+                evidence_refs=[claim_ref, retrieval_ref],
+                privacy_scope=event["privacy_scope"],
+                resource_scope=event["resource_scope"],
             )
 
     def _upsert_candidate(

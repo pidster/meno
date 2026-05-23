@@ -54,7 +54,20 @@ PAYLOAD_REQUIRED_KEYS: dict[str, set[str]] = {
     "conversation": {"speaker", "message", "channel", "turn_id"},
     "tool_call": {"tool_name", "arguments_summary", "result_boundary", "success"},
     "observation": {"subject", "evidence", "capture_method"},
-    "reflection": {"cited_source_event_ids", "interpretive_claims", "open_questions"},
+    "reflection": {
+        "cited_source_event_ids",
+        "retrieval_result_hash",
+        "cited_retrieval_paths",
+        "interpretive_claims",
+        "open_questions",
+        "uncertainty_notes",
+        "possible_self_deception",
+        "rejected_interpretations",
+        "changed_stance",
+        "future_attention",
+        "proposed_graph_updates",
+        "deferred_graph_updates",
+    },
     "graph_update_proposal": {
         "proposed_operation",
         "proposed_target_kind",
@@ -630,7 +643,7 @@ class JournalStore:
         }.items():
             if not isinstance(value, str) or not value:
                 raise JournalValidationError(f"{label} is required")
-        self._validate_payload(event_type, payload, links)
+        self._validate_payload(event_type, payload, links, capture_method)
         self._validate_context(context)
         self._validate_residue(residue)
         self._validate_scopes(privacy_scope, resource_scope)
@@ -639,7 +652,11 @@ class JournalStore:
         self._validate_link_compatibility(event_type, epistemic_status, payload, links)
 
     def _validate_payload(
-        self, event_type: str, payload: dict[str, Any], links: list[dict[str, Any]]
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        links: list[dict[str, Any]],
+        capture_method: str,
     ) -> None:
         if not isinstance(payload, dict):
             raise JournalValidationError("payload must be an object")
@@ -649,6 +666,17 @@ class JournalStore:
             raise JournalValidationError(f"payload missing required keys: {missing}")
         if event_type == "reflection" and not payload.get("cited_source_event_ids"):
             raise JournalValidationError("reflection requires cited source events")
+        if event_type == "reflection" and not payload.get("cited_retrieval_paths"):
+            raise JournalValidationError("reflection requires cited retrieval paths")
+        if event_type == "reflection":
+            if capture_method != "reflection_workflow":
+                raise JournalValidationError("reflection events must use reflection workflow")
+            self._validate_reflection_payload(payload)
+            if payload.get("proposed_graph_updates"):
+                raise JournalValidationError("reflection cannot embed graph update proposals")
+            for claim in payload.get("interpretive_claims", []):
+                if claim.get("epistemic_status") in {"observed", "accepted"}:
+                    raise JournalValidationError("reflection claims cannot be observed or accepted")
         if event_type == "graph_update_proposal" and not payload.get("source_event_ids"):
             raise JournalValidationError("graph update proposal requires source events")
         for source_event_id in payload.get("cited_source_event_ids", []):
@@ -675,6 +703,72 @@ class JournalStore:
                     rationale=payload["rationale"],
                 )
             )
+
+    def _validate_reflection_payload(self, payload: dict[str, Any]) -> None:
+        snapshot = payload.get("retrieval_result_snapshot")
+        if not isinstance(snapshot, dict):
+            raise JournalValidationError("reflection requires retrieval result snapshot")
+        stable = {
+            key: value
+            for key, value in snapshot.items()
+            if key not in {"query_id", "timestamp"}
+        }
+        if payload.get("retrieval_result_hash") != hashlib.sha256(
+            canonical_json(stable).encode("utf-8")
+        ).hexdigest():
+            raise JournalValidationError("reflection retrieval result hash mismatch")
+        path_ids = {path.get("path_id") for path in payload.get("cited_retrieval_paths", [])}
+        if not path_ids or None in path_ids:
+            raise JournalValidationError("reflection cited paths require path ids")
+        snapshot_path_ids = self._reflection_snapshot_path_ids(snapshot)
+        if not path_ids.issubset(snapshot_path_ids):
+            raise JournalValidationError("reflection cited path is not in retrieval snapshot")
+        for claim in payload.get("interpretive_claims", []):
+            for cite in claim.get("cites", []):
+                if cite not in path_ids:
+                    raise JournalValidationError("reflection claim cites unknown retrieval path")
+        for path in payload.get("cited_retrieval_paths", []):
+            if not path.get("source_refs"):
+                raise JournalValidationError("reflection cited path requires source refs")
+            if not path.get("scope_decision"):
+                raise JournalValidationError("reflection cited path requires scope decision")
+            if not path.get("activation_paths") and not path.get("steps"):
+                raise JournalValidationError("reflection cited path requires path steps")
+            if path.get("redacted") and path.get("label"):
+                raise JournalValidationError("redacted reflection path leaks label")
+
+    def _reflection_snapshot_path_ids(self, snapshot: dict[str, Any]) -> set[str]:
+        path_ids: set[str] = set()
+        for candidate in snapshot.get("activated_candidates", []):
+            candidate_id = candidate.get("candidate_id")
+            for path in candidate.get("activation_paths", []):
+                path_ids.add(
+                    "path_"
+                    + hashlib.sha256(
+                        canonical_json(
+                            {
+                                "candidate_id": candidate_id,
+                                "entry_candidate_id": path.get("entry_candidate_id"),
+                                "target_candidate_id": path.get("target_candidate_id"),
+                                "steps": [
+                                    {
+                                        "record_type": step.get("record_type"),
+                                        "record_id": step.get("record_id"),
+                                        "hop_index": step.get("hop_index"),
+                                    }
+                                    for step in path.get("steps", [])
+                                ],
+                            }
+                        ).encode("utf-8")
+                    ).hexdigest()[:24]
+                )
+        for ghost in snapshot.get("ghost_signals", []):
+            if ghost.get("ghost_id"):
+                path_ids.add(ghost["ghost_id"])
+        for omitted in snapshot.get("omitted_candidates", []):
+            if omitted.get("candidate_id"):
+                path_ids.add("omitted_" + str(omitted["candidate_id"]))
+        return path_ids
 
     def _validate_context(self, context: dict[str, Any]) -> None:
         if not isinstance(context, dict):

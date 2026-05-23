@@ -8,6 +8,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+import hashlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -17,6 +18,7 @@ from journal import (  # noqa: E402
     GraphProposal,
     JournalStore,
     JournalValidationError,
+    canonical_json,
     content_hash,
     unknown_residue,
 )
@@ -105,6 +107,89 @@ def append_conversation(store, message, **kwargs):
         residue=kwargs.pop("residue_value", residue()),
         **kwargs,
     )
+
+
+def reflection_payload(source_ids):
+    retrieval_path = {
+        "entry_candidate_id": "entry-1",
+        "target_candidate_id": "candidate-1",
+        "steps": [
+            {
+                "record_type": "edge",
+                "record_id": "edge-1",
+                "hop_index": 1,
+            }
+        ],
+        "evidence_refs": [
+            {
+                "event_id": source_ids[0] if source_ids else "missing",
+                "payload_path": "payload.message",
+                "source_value_hash": "hash",
+            }
+        ],
+    }
+    path_id = "path_" + hashlib.sha256(
+        canonical_json(
+            {
+                "candidate_id": "candidate-1",
+                "entry_candidate_id": retrieval_path["entry_candidate_id"],
+                "target_candidate_id": retrieval_path["target_candidate_id"],
+                "steps": retrieval_path["steps"],
+            }
+        ).encode("utf-8")
+    ).hexdigest()[:24]
+    snapshot = {
+        "activated_candidates": [
+            {
+                "candidate_id": "candidate-1",
+                "activation_paths": [retrieval_path],
+            }
+        ],
+        "ghost_signals": [],
+        "omitted_candidates": [],
+    }
+    stable_snapshot = {
+        key: value
+        for key, value in snapshot.items()
+        if key not in {"query_id", "timestamp"}
+    }
+    return {
+        "cited_source_event_ids": source_ids,
+        "retrieval_result_hash": hashlib.sha256(canonical_json(stable_snapshot).encode("utf-8")).hexdigest(),
+        "retrieval_result_snapshot": snapshot,
+        "cited_retrieval_paths": [
+            {
+                "candidate_id": "candidate-1",
+                "path_id": path_id,
+                "activation_paths": [retrieval_path],
+                "source_refs": [
+                    {
+                        "event_id": source_ids[0] if source_ids else "missing",
+                        "payload_path": "payload.message",
+                        "source_value_hash": "hash",
+                    }
+                ],
+                "scope_decision": {"allowed": True},
+                "redacted": False,
+            }
+        ],
+        "interpretive_claims": [
+            {
+                "type": "interpretive_claim",
+                "claim": "specific sourced interpretation",
+                "cites": [path_id],
+                "epistemic_status": "authored",
+            }
+        ],
+        "open_questions": ["what should change next"],
+        "uncertainty_notes": ["fixture uncertainty"],
+        "possible_self_deception": ["fixture may overfit"],
+        "rejected_interpretations": ["generic continuity summary"],
+        "changed_stance": "specific stance changed",
+        "future_attention": [{"target": "specific follow-up", "resource_scope": DEFAULT_RESOURCE_SCOPE}],
+        "proposed_graph_updates": [],
+        "deferred_graph_updates": [{"reason": "insufficient evidence"}],
+    }
 
 
 def test_append_event_uses_full_envelope_and_canonical_hash():
@@ -395,12 +480,8 @@ def test_reflection_requires_source_events():
                 epistemic_status="authored",
                 actor="meno",
                 source="test",
-                capture_method="manual",
-                payload={
-                    "cited_source_event_ids": [],
-                    "interpretive_claims": ["generic insight"],
-                    "open_questions": [],
-                },
+                capture_method="reflection_workflow",
+                payload=reflection_payload([]),
                 context=context(),
                 residue=residue(),
             )
@@ -414,18 +495,73 @@ def test_reflection_requires_source_events():
                 epistemic_status="authored",
                 actor="meno",
                 source="test",
-                capture_method="manual",
-                payload={
-                    "cited_source_event_ids": ["missing-event"],
-                    "interpretive_claims": ["unsupported insight"],
-                    "open_questions": [],
-                },
+                capture_method="reflection_workflow",
+                payload=reflection_payload(["missing-event"]),
                 context=context(),
                 residue=residue(),
             )
             assert False, "reflection with missing evidence should fail"
         except JournalValidationError as exc:
             assert "unknown cited source event" in str(exc)
+
+        observed = append_conversation(store, "Observed reflection source", epistemic_status="observed")
+        proposal_payload = reflection_payload([observed["id"]])
+        proposal_payload["proposed_graph_updates"] = [
+            {
+                "proposed_operation": "create",
+                "proposed_target_kind": "concept",
+                "source_event_ids": [observed["id"]],
+                "intended_status": "provisional",
+                "rationale": "reflection proposal must be separate",
+            }
+        ]
+        try:
+            store.append_event(
+                event_type="reflection",
+                epistemic_status="authored",
+                actor="meno",
+                source="test",
+                capture_method="reflection_workflow",
+                payload=proposal_payload,
+                context=context(),
+                residue=residue(),
+            )
+            assert False, "reflection must not embed graph update proposal"
+        except JournalValidationError as exc:
+            assert "reflection cannot embed graph update proposals" in str(exc)
+
+        fake_path_payload = reflection_payload([observed["id"]])
+        fake_path_payload["cited_retrieval_paths"][0]["path_id"] = "fake-path"
+        fake_path_payload["interpretive_claims"][0]["cites"] = ["fake-path"]
+        try:
+            store.append_event(
+                event_type="reflection",
+                epistemic_status="authored",
+                actor="meno",
+                source="test",
+                capture_method="reflection_workflow",
+                payload=fake_path_payload,
+                context=context(),
+                residue=residue(),
+            )
+            assert False, "direct journal reflection should reject fake retrieval path"
+        except JournalValidationError as exc:
+            assert "reflection cited path is not in retrieval snapshot" in str(exc)
+
+        try:
+            store.append_event(
+                event_type="reflection",
+                epistemic_status="authored",
+                actor="meno",
+                source="test",
+                capture_method="manual",
+                payload=reflection_payload([observed["id"]]),
+                context=context(),
+                residue=residue(),
+            )
+            assert False, "direct reflection write should require workflow"
+        except JournalValidationError as exc:
+            assert "reflection events must use reflection workflow" in str(exc)
     finally:
         store.close()
         tmp.cleanup()
