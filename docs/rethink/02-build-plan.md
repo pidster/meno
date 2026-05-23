@@ -945,29 +945,115 @@ Flag and fail reflection artifacts that have any of:
 **Goal:** Maintain graph health without losing evidence.
 
 **Scope:**
-- Use-sensitive decay.
-- Edge weakening and archival.
-- Dormant nodes.
-- Reflective pruning proposals.
-- Rediscovery through new evidence.
+- A stdlib-only consolidation workflow over the journal, memory projection,
+  typed retrieval, and reflection workflow. Do not reuse legacy
+  `src/forgetting.py`, SurrealDB mutation code, placeholder vitality scoring,
+  embeddings, or an autonomous background loop in this phase.
+- Journal-first memory maintenance. Phase 5 must add explicit event contracts
+  before it can weaken, archive, mark dormant, propose pruning, or rediscover
+  anything. Required maintenance events:
+  - retrieval use trace
+  - consolidation run
+  - edge decay assessment
+  - edge archival
+  - candidate dormancy mark
+  - rediscovery
+  - pruning proposal
+  - pruning decision
+- Projection lifecycle metadata that is separate from evidence confidence.
+  Decay changes accessibility and traversal strength; it must not rewrite
+  source confidence, source references, or the historical journal record.
+- Edge lifecycle states: active, weakened, archived, rediscovered_bridge,
+  pruning_proposed, and released/tombstoned. Candidate lifecycle states:
+  active, dormant, rediscovered, pruning_proposed, and tombstoned.
+- Edge-before-node forgetting. The first maintenance action should weaken or
+  archive paths; candidate dormancy follows only when access paths have
+  weakened enough to justify it.
+- Use-sensitive decay inputs:
+  - retrieval use traces and reflection citations
+  - source recency and source reliability
+  - unresolved tension, future-attention markers, conflict, and uncertainty
+  - dream and rehearsal provenance, which must remain provisional
+  - user interaction, explicit corrections, and scope/privacy constraints
+  - rediscovery history and prior archival decisions
+  - idiosyncratic associations that are weak but identity-bearing
+- Different forgetting policies for different cognitive material. Observed
+  evidence, reflection, dream residue, rehearsal simulations, conflicts,
+  preferences, commitments, curiosities, and impulses must not decay under one
+  uniform rule.
+- Reflective pruning as a two-step workflow. A pruning proposal must cite the
+  target, source evidence, affected paths, rejected alternatives, reversibility
+  check, rediscovery recipe, and rationale for release. A separate decision
+  event is required before a target can be tombstoned. Physical deletion is
+  out of scope for this phase.
+- Rediscovery through new evidence. A dormant or archived island can become
+  reachable only through a new observed evidence bridge, semantic/source
+  fingerprint match, rediscovery event, provisional bridge edge, and reflection
+  event explaining what changed. Rediscovery must not silently promote stale
+  interpretations.
+- Quiet consolidation is allowed. A consolidation run may record that no
+  maintenance action was taken when the audit evidence does not justify one.
 
 **Acceptance Criteria:**
-- Recently used paths resist decay.
-- Dormant memories remain recoverable through evidence.
-- True deletion requires explicit reflective/audit event.
-- Rediscovery creates a traceable edge and reflection.
+- Every memory-affecting consolidation outcome has a journal event before any
+  projection lifecycle update is accepted.
+- Evidence, source references, and journal events are never deleted or rewritten
+  by consolidation.
+- A recently used path retains higher accessibility than a stale path of the
+  same age, evidence type, and confidence.
+- A dormant memory remains recoverable as low-accessibility evidence, with a
+  clear reason it is dormant and a route for rediscovery.
+- Edge weakening lowers accessibility or traversal strength without changing
+  evidence confidence.
+- Pruning cannot physically delete memory. It can only create a proposal and,
+  after explicit decision, tombstone accessibility while preserving audit
+  evidence.
+- Rediscovery creates a traceable bridge edge, rediscovery event, and reflection
+  event that identify the new evidence and the old dormant material.
+- The implementation imports no legacy SurrealDB-backed forgetting module and
+  remains runnable under the existing stdlib test harness.
 
 **Adversarial Questions:**
 - What is weakened, what is archived, what is gone?
 - Could the system rediscover an island through a new path?
 - Is pruning grief or garbage collection?
+- Which facts are evidence, which changes are interpretation, and which
+  maintenance actions are only proposals?
+- Did decay alter accessibility, or did it corrupt confidence?
+- What audit trail proves the system did not erase inconvenient evidence?
+- Which weak associations are idiosyncratic and identity-bearing rather than
+  clutter?
+- Which material is observed, reflected, dreamed, rehearsed, conflicted,
+  preferred, committed, curious, or impulsive, and does its forgetting policy
+  respect that type?
 
 **Do Not Proceed If:**
 - Deletion can happen silently.
+- Any projection lifecycle mutation can occur without a journal event.
+- Decay is implemented by editing confidence.
+- A projection row or source reference is removed as part of normal
+  consolidation.
+- The implementation imports or wraps legacy `src/forgetting.py`.
+- One uniform decay formula applies to all edges and candidates.
+- Placeholder vitality scoring decides what lives or dies.
+- Rediscovery can promote old material without new observed evidence and
+  reflective explanation.
 
 **Zombie Gate:**
-- A test must show that prior use, dormancy, and rediscovery history affect what
-  is weakened or preserved; uniform decay over all edges is a failure.
+- Deterministic fixture matrix:
+  - recently used path vs stale path with equal age, evidence type, and
+    confidence
+  - dormant evidence-backed island vs unsupported duplicate candidate
+  - dense common hub vs weak idiosyncratic association
+  - observed, reflected, dreamed, rehearsed, conflicted, preferred, committed,
+    curious, and impulsive material
+  - pruning proposal vs tombstoned accessibility
+  - rediscovery through new observed evidence
+- Tests must pin exact lifecycle transitions, journal events, audit references,
+  retrieval visibility, source preservation, and reflection requirements.
+- Uniform decay must fail the fixture. A system that weakens everything by age,
+  deletes dormant evidence, edits confidence, or lets rediscovery happen without
+  a new bridge is a zombie success.
 
 ## Phase 6: Dreaming
 
