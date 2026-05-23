@@ -26,6 +26,7 @@ EVENT_STATUS_MATRIX: dict[str, set[str]] = {
     "reflection": {"authored", "inferred"},
     "graph_update_proposal": {"inferred"},
     "dream": {"hypothesis"},
+    "dream_review": {"authored", "inferred"},
     "rehearsal": {"simulation"},
     "decision": {"authored"},
     "correction": {"correction", "retraction", "contradiction"},
@@ -89,6 +90,14 @@ PAYLOAD_REQUIRED_KEYS: dict[str, set[str]] = {
         "rationale",
     },
     "dream": {"residues_used", "generated_candidates", "uncertainty_notes"},
+    "dream_review": {
+        "dream_event_id",
+        "fragment_id",
+        "review_decision",
+        "rationale",
+        "observed_evidence_event_ids",
+        "not_factual",
+    },
     "rehearsal": {"target", "strategy_variant", "simulated_trace", "predicted_failure_modes"},
     "decision": {"options_considered", "selected_option", "reason", "constraints"},
     "correction": {"target", "corrected_claim", "reason"},
@@ -201,6 +210,52 @@ FACTUAL_EVENT_TYPES = {
     "outcome",
 }
 PROVISIONAL_EVENT_TYPES = {"reflection", "dream", "rehearsal"}
+
+DREAM_FRAGMENT_KINDS = {
+    "association",
+    "metaphor",
+    "question",
+    "tension",
+    "image",
+    "counterfactual",
+    "bridge",
+}
+DREAM_REVIEW_STATUSES = {
+    "raw",
+    "review_pending",
+    "rejected",
+    "deferred",
+    "provisionally_useful",
+    "corroborated_by_observation",
+}
+DREAM_RESIDUE_CATEGORIES = {
+    "salience",
+    "attention_target",
+    "uncertainty",
+    "open_tension",
+    "drive",
+    "importance_reason",
+    "affect",
+    "expected_outcome",
+    "retrieval_use",
+    "omitted_candidate",
+    "ghost_signal",
+    "dormant_memory",
+    "archived_edge",
+    "reflection_question",
+    "rejected_interpretation",
+    "future_attention",
+    "deferred_graph_update",
+    "conflict",
+    "correction",
+}
+DREAM_REVIEW_DECISIONS = {
+    "reject",
+    "defer",
+    "leave_raw",
+    "propose_provisional",
+    "corroborate_observation",
+}
 
 
 class JournalError(Exception):
@@ -762,6 +817,12 @@ class JournalStore:
             for claim in payload.get("interpretive_claims", []):
                 if claim.get("epistemic_status") in {"observed", "accepted"}:
                     raise JournalValidationError("reflection claims cannot be observed or accepted")
+        if event_type == "dream":
+            if capture_method != "dream_workflow":
+                raise JournalValidationError("dream events must use dream workflow")
+            self._validate_dream_payload(payload)
+        if event_type == "dream_review":
+            self._validate_dream_review_payload(payload)
         if event_type == "graph_update_proposal" and not payload.get("source_event_ids"):
             raise JournalValidationError("graph update proposal requires source events")
         for source_event_id in payload.get("cited_source_event_ids", []):
@@ -796,6 +857,101 @@ class JournalStore:
                     rationale=payload["rationale"],
                 )
             )
+
+    def _validate_dream_payload(self, payload: dict[str, Any]) -> None:
+        residues = payload.get("residues_used")
+        fragments = payload.get("generated_candidates")
+        if not isinstance(residues, list) or not residues:
+            raise JournalValidationError("dream requires structured residues_used")
+        if not isinstance(fragments, list) or not fragments:
+            raise JournalValidationError("dream requires structured generated_candidates")
+        residue_ids: set[str] = set()
+        for residue in residues:
+            if not isinstance(residue, dict):
+                raise JournalValidationError("dream residue refs must be objects")
+            required = {
+                "residue_ref_id",
+                "source_event_id",
+                "source_event_hash",
+                "source_event_type",
+                "source_epistemic_status",
+                "scope_decision",
+                "selection_reason",
+                "selection_weight",
+                "material_category",
+            }
+            missing = sorted(required - residue.keys())
+            if missing:
+                raise JournalValidationError(f"dream residue missing keys: {missing}")
+            if residue["material_category"] not in DREAM_RESIDUE_CATEGORIES:
+                raise JournalValidationError("dream residue has invalid material category")
+            if residue.get("scope_decision", {}).get("decision") != "included":
+                raise JournalValidationError("dream residue must record included scope decision")
+            source = self.get_event(str(residue["source_event_id"]))
+            if source is None:
+                raise JournalValidationError("dream residue cites unknown source event")
+            if source["content_hash"] != residue["source_event_hash"]:
+                raise JournalValidationError("dream residue source hash mismatch")
+            if source["event_type"] != residue["source_event_type"]:
+                raise JournalValidationError("dream residue source type mismatch")
+            if source["epistemic_status"] != residue["source_epistemic_status"]:
+                raise JournalValidationError("dream residue source status mismatch")
+            residue_ids.add(str(residue["residue_ref_id"]))
+        for fragment in fragments:
+            if not isinstance(fragment, dict):
+                raise JournalValidationError("dream fragments must be objects")
+            required = {
+                "fragment_id",
+                "label",
+                "fragment_kind",
+                "source_residue_refs",
+                "association_rationale",
+                "uncertainty_note",
+                "useful_if",
+                "review_status",
+                "not_factual",
+            }
+            missing = sorted(required - fragment.keys())
+            if missing:
+                raise JournalValidationError(f"dream fragment missing keys: {missing}")
+            if fragment["fragment_kind"] not in DREAM_FRAGMENT_KINDS:
+                raise JournalValidationError("dream fragment has invalid kind")
+            if fragment["review_status"] not in DREAM_REVIEW_STATUSES:
+                raise JournalValidationError("dream fragment has invalid review status")
+            if fragment["not_factual"] is not True:
+                raise JournalValidationError("dream fragments must be explicitly not_factual")
+            refs = fragment.get("source_residue_refs")
+            if not isinstance(refs, list) or not refs:
+                raise JournalValidationError("dream fragment requires source residue refs")
+            if not set(str(ref) for ref in refs).issubset(residue_ids):
+                raise JournalValidationError("dream fragment cites unknown residue ref")
+
+    def _validate_dream_review_payload(self, payload: dict[str, Any]) -> None:
+        if payload.get("review_decision") not in DREAM_REVIEW_DECISIONS:
+            raise JournalValidationError("dream review has invalid decision")
+        if payload.get("not_factual") is not True:
+            raise JournalValidationError("dream review must remain not_factual")
+        dream = self.get_event(str(payload.get("dream_event_id")))
+        if dream is None or dream["event_type"] != "dream":
+            raise JournalValidationError("dream review requires a dream event")
+        fragment_ids = {
+            fragment.get("fragment_id")
+            for fragment in dream["payload"].get("generated_candidates", [])
+            if isinstance(fragment, dict)
+        }
+        if payload.get("fragment_id") not in fragment_ids:
+            raise JournalValidationError("dream review fragment is not in dream event")
+        observed_ids = payload.get("observed_evidence_event_ids", [])
+        if not isinstance(observed_ids, list):
+            raise JournalValidationError("observed dream review evidence must be a list")
+        if payload["review_decision"] == "corroborate_observation" and not observed_ids:
+            raise JournalValidationError("dream corroboration requires later observed evidence")
+        for event_id in observed_ids:
+            event = self.get_event(str(event_id))
+            if event is None:
+                raise JournalValidationError("dream review cites unknown observed evidence")
+            if event["event_type"] not in FACTUAL_EVENT_TYPES or event["epistemic_status"] != "observed":
+                raise JournalValidationError("dream review observed evidence must be observed factual evidence")
 
     def _validate_reflection_payload(self, payload: dict[str, Any]) -> None:
         snapshot = payload.get("retrieval_result_snapshot")

@@ -22,6 +22,7 @@ from journal import (  # noqa: E402
     content_hash,
     unknown_residue,
 )
+from dreaming import run_dream_cycle  # noqa: E402
 
 
 def make_store():
@@ -107,6 +108,15 @@ def append_conversation(store, message, **kwargs):
         residue=kwargs.pop("residue_value", residue()),
         **kwargs,
     )
+
+
+def append_dream(store):
+    return run_dream_cycle(
+        store,
+        immediate_context={"label": "journal test"},
+        actor="meno",
+        source="test",
+    )["dream_event"]
 
 
 def reflection_payload(source_ids):
@@ -430,20 +440,8 @@ def test_typed_links_and_corrections_are_new_events():
 def test_dream_and_rehearsal_replay_as_provisional_not_factual():
     tmp, store = make_store()
     try:
-        dream = store.append_event(
-            event_type="dream",
-            epistemic_status="hypothesis",
-            actor="meno",
-            source="test",
-            capture_method="manual",
-            payload={
-                "residues_used": ["review"],
-                "generated_candidates": ["connect journal to replay"],
-                "uncertainty_notes": "dream output",
-            },
-            context=context(),
-            residue=residue(tension="loose association"),
-        )
+        append_conversation(store, "source for dream", residue_value=residue(tension="loose association"))
+        dream = append_dream(store)
         rehearsal = store.append_event(
             event_type="rehearsal",
             epistemic_status="simulation",
@@ -609,20 +607,7 @@ def test_graph_proposal_validator_rejects_weak_or_provisional_provenance():
             "Observed enough for factual proposal",
             epistemic_status="observed",
         )
-        dream = store.append_event(
-            event_type="dream",
-            epistemic_status="hypothesis",
-            actor="meno",
-            source="test",
-            capture_method="manual",
-            payload={
-                "residues_used": ["x"],
-                "generated_candidates": ["y"],
-                "uncertainty_notes": "z",
-            },
-            context=context(),
-            residue=residue(),
-        )
+        dream = append_dream(store)
 
         authored = append_conversation(store, "Pid said a claim, but truth is separate")
 
@@ -686,20 +671,7 @@ def test_graph_update_proposal_event_uses_same_provenance_rules():
             "Observed evidence for proposal",
             epistemic_status="observed",
         )
-        dream = store.append_event(
-            event_type="dream",
-            epistemic_status="hypothesis",
-            actor="meno",
-            source="test",
-            capture_method="manual",
-            payload={
-                "residues_used": ["x"],
-                "generated_candidates": ["y"],
-                "uncertainty_notes": "z",
-            },
-            context=context(),
-            residue=residue(),
-        )
+        dream = append_dream(store)
 
         proposal = store.append_event(
             event_type="graph_update_proposal",

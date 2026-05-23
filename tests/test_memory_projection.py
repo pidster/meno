@@ -14,6 +14,7 @@ import sys
 sys.path.insert(0, sys_path)
 
 from journal import DEFAULT_PRIVACY_SCOPE, DEFAULT_RESOURCE_SCOPE, JournalStore, unknown_residue  # noqa: E402
+from dreaming import run_dream_cycle  # noqa: E402
 from memory_projection import ProjectionError, ProjectionStore, ProjectionValidationError  # noqa: E402
 
 
@@ -76,6 +77,33 @@ def append_conversation(journal, message, *, epistemic_status="authored", turn_i
         context=context(),
         residue=residue(),
     )
+
+
+def append_dream_source(journal, tension):
+    return journal.append_event(
+        event_type="conversation",
+        epistemic_status="authored",
+        actor="pid",
+        source="test",
+        capture_method="manual",
+        payload={
+            "speaker": "pid",
+            "message": "dream source",
+            "channel": "test",
+            "turn_id": "dream-source",
+        },
+        context=context(),
+        residue=residue(tension=tension),
+    )
+
+
+def append_dream(journal):
+    return run_dream_cycle(
+        journal,
+        immediate_context={"label": "projection test"},
+        actor="meno",
+        source="test",
+    )["dream_event"]
 
 
 def append_observation(journal, subject, evidence):
@@ -264,25 +292,13 @@ def test_authored_claim_is_rejected_while_observed_claim_is_accepted():
 def test_dream_association_and_observed_cooccurrence_stay_semantically_distinct():
     tmp, journal, projection = make_stores()
     try:
-        journal.append_event(
-            event_type="dream",
-            epistemic_status="hypothesis",
-            actor="meno",
-            source="test",
-            capture_method="manual",
-            payload={
-                "residues_used": ["A", "B"],
-                "generated_candidates": ["A relates to B"],
-                "uncertainty_notes": "dream association only",
-            },
-            context=context(),
-            residue=residue(tension="A/B loose association"),
-        )
+        append_dream_source(journal, "A/B loose association")
+        append_dream(journal)
         append_observation(journal, "A", "B")
 
         candidates, edges, _relations, _rejections = project(journal, projection)
 
-        dream = projection.candidate("dream", "A relates to B")
+        dream = next(candidate for candidate in candidates if candidate["kind"] == "dream")
         observed = projection.candidate("entity", "A")
         assert dream["acceptance_status"] == "provisional"
         assert dream["epistemic_status"] == "hypothesis"
@@ -308,7 +324,7 @@ def test_dream_association_and_observed_cooccurrence_stay_semantically_distinct(
             and candidate["epistemic_status"] == "hypothesis"
             for candidate in candidates
         )
-        assert len(dream["source_refs"]) >= 4
+        assert len(dream["source_refs"]) >= 3
     finally:
         journal.close()
         projection.close()
@@ -318,20 +334,8 @@ def test_dream_association_and_observed_cooccurrence_stay_semantically_distinct(
 def test_dream_only_input_cannot_create_factual_entities_or_cooccurrence():
     tmp, journal, projection = make_stores()
     try:
-        journal.append_event(
-            event_type="dream",
-            epistemic_status="hypothesis",
-            actor="meno",
-            source="test",
-            capture_method="manual",
-            payload={
-                "residues_used": ["A", "B"],
-                "generated_candidates": ["A relates to B"],
-                "uncertainty_notes": "dream association only",
-            },
-            context=context(),
-            residue=residue(tension="A/B loose association"),
-        )
+        append_dream_source(journal, "A/B loose association")
+        append_dream(journal)
 
         candidates, edges, _relations, _rejections = project(journal, projection)
 

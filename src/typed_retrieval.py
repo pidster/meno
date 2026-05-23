@@ -590,7 +590,10 @@ class TypedRetriever:
             if record_confidence is not None
             else 1.0
         )
-        evidence_factor = min(1.5, 1.0 + (max(0, len(candidate["source_refs"]) - 1) * 0.10))
+        if candidate["epistemic_status"] in {"hypothesis", "simulation"}:
+            evidence_factor = 1.0
+        else:
+            evidence_factor = min(1.5, 1.0 + (max(0, len(candidate["source_refs"]) - 1) * 0.10))
         path_factor = 1.0 if hop == 0 else 1.0 / (hop + 0.5)
         centrality_factor = 1.0 / (1.0 + max(0, degree - 2) * 0.25)
         final = (
@@ -694,6 +697,8 @@ class TypedRetriever:
             "ordinary_recall": not conflict_steps and not hypothesis_steps and not simulation_steps,
             "conflict_material": bool(conflict_steps),
             "hypothesis_material": bool(hypothesis_steps),
+            "dream_material": bool(hypothesis_steps),
+            "not_factual": bool(hypothesis_steps or simulation_steps),
             "simulation_material": bool(simulation_steps),
             "terminal": any(step["scope_decision"].get("terminal", False) for step in conflict_steps),
         }

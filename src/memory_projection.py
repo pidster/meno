@@ -940,74 +940,90 @@ class ProjectionStore:
         )
 
     def _project_dream(self, run_id: str, event: dict[str, Any], created: set[str]) -> None:
-        candidates = event["payload"].get("generated_candidates", [])
-        label = " | ".join(str(item) for item in candidates) or f"dream:{event['id']}"
-        ref = self._evidence_ref(
-            event,
-            payload_path="payload.generated_candidates",
-            residue_field="open_tensions",
-            source_selector="payload.generated_candidates",
-            rationale="dream candidate is a hypothesis from associative residue",
-        )
-        tension_ref = self._evidence_ref(
-            event,
-            payload_path="not_applicable",
-            residue_field="open_tensions",
-            source_selector="residue.open_tensions.value",
-            rationale="dream projection retains the tension that shaped the association",
-        )
+        fragments = event["payload"].get("generated_candidates", [])
+        residues = {
+            residue.get("residue_ref_id"): (index, residue)
+            for index, residue in enumerate(event["payload"].get("residues_used", []))
+            if isinstance(residue, dict)
+        }
         uncertainty_ref = self._evidence_ref(
             event,
             payload_path="payload.uncertainty_notes",
             source_selector="payload.uncertainty_notes",
-            rationale="dream projection retains uncertainty notes",
+            rationale="dream projection retains not-factual uncertainty notes",
         )
-        salience_ref = self._evidence_ref(
-            event,
-            payload_path="not_applicable",
-            residue_field="salience",
-            source_selector="residue.salience.value",
-            rationale="dream projection retains salience residue",
-        )
-        dream_id = self._upsert_candidate(
-            run_id=run_id,
-            kind="dream",
-            label=label,
-            epistemic_status="hypothesis",
-            acceptance_status="provisional",
-            relation_status="active",
-            confidence=self._confidence("hypothesis", "dream association"),
-            evidence_refs=[ref, tension_ref, uncertainty_ref, salience_ref],
-            rule_id="dream_hypothesis",
-            reason="dream remains hypothesis with residue rationale",
-            created=created,
-        )
-        residue_label = str(event["residue"].get("open_tensions", {}).get("value", "not_applicable"))
-        residue_id = self._upsert_candidate(
-            run_id=run_id,
-            kind="concept",
-            label=f"dream residue:{residue_label}",
-            epistemic_status="hypothesis",
-            acceptance_status="provisional",
-            relation_status="active",
-            confidence=self._confidence("hypothesis", "source residue"),
-            evidence_refs=[tension_ref, ref],
-            rule_id="dream_source_residue",
-            reason="dream retains source tension residue",
-            created=created,
-        )
-        self._upsert_edge(
-            run_id,
-            dream_id,
-            residue_id,
-            edge_type="dream_association",
-            direction="directed",
-            epistemic_status="hypothesis",
-            confidence=self._confidence("hypothesis", "associative dream link"),
-            evidence_refs=[ref, tension_ref, uncertainty_ref, salience_ref],
-            privacy_scope=event["privacy_scope"],
-            resource_scope=event["resource_scope"],
-        )
+        for index, fragment in enumerate(fragments):
+            if not isinstance(fragment, dict):
+                continue
+            fragment_ref = self._evidence_ref(
+                event,
+                payload_path=f"payload.generated_candidates.{index}.label",
+                residue_field="open_tensions",
+                source_selector=f"payload.generated_candidates.{index}.label",
+                rationale="dream fragment is a structured hypothesis from associative residue",
+            )
+            status_ref = self._evidence_ref(
+                event,
+                payload_path=f"payload.generated_candidates.{index}.not_factual",
+                source_selector=f"payload.generated_candidates.{index}.not_factual",
+                rationale="dream fragment is explicitly not factual",
+            )
+            dream_id = self._upsert_candidate(
+                run_id=run_id,
+                kind="dream",
+                label=str(fragment["label"]),
+                epistemic_status="hypothesis",
+                acceptance_status="provisional",
+                relation_status="active",
+                confidence=self._confidence("hypothesis", "dream association"),
+                evidence_refs=[fragment_ref, status_ref, uncertainty_ref],
+                rule_id="dream_hypothesis",
+                reason="dream remains a review-pending hypothesis",
+                created=created,
+            )
+            for residue_ref_id in fragment.get("source_residue_refs", []):
+                residue_item = residues.get(residue_ref_id)
+                if residue_item is None:
+                    continue
+                residue_index, residue = residue_item
+                residue_value_selector = (
+                    f"payload.residues_used.{residue_index}.value"
+                    if "value" in residue
+                    else f"payload.residues_used.{residue_index}.material_category"
+                )
+                residue_ref = self._evidence_ref(
+                    event,
+                    payload_path=residue_value_selector,
+                    residue_field=str(residue.get("material_category", "dream_residue")),
+                    source_selector=residue_value_selector,
+                    rationale="dream projection retains the exact residue that shaped the fragment",
+                )
+                residue_label = str(residue.get("value") or residue.get("material_category") or residue_ref_id)
+                residue_id = self._upsert_candidate(
+                    run_id=run_id,
+                    kind="concept",
+                    label=f"dream residue:{residue_label}",
+                    epistemic_status="hypothesis",
+                    acceptance_status="provisional",
+                    relation_status="active",
+                    confidence=self._confidence("hypothesis", "source residue"),
+                    evidence_refs=[residue_ref, fragment_ref],
+                    rule_id="dream_source_residue",
+                    reason="dream retains source residue without factual promotion",
+                    created=created,
+                )
+                self._upsert_edge(
+                    run_id,
+                    dream_id,
+                    residue_id,
+                    edge_type="dream_association",
+                    direction="directed",
+                    epistemic_status="hypothesis",
+                    confidence=self._confidence("hypothesis", "associative dream link"),
+                    evidence_refs=[fragment_ref, status_ref, residue_ref],
+                    privacy_scope=event["privacy_scope"],
+                    resource_scope=event["resource_scope"],
+                )
 
     def _project_rehearsal(self, run_id: str, event: dict[str, Any], created: set[str]) -> None:
         target = str(event["payload"]["target"])

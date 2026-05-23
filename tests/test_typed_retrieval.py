@@ -557,6 +557,8 @@ def test_conflict_relations_are_marked_and_terminal_when_included():
             "ordinary_recall": False,
             "conflict_material": True,
             "hypothesis_material": False,
+            "dream_material": False,
+            "not_factual": False,
             "simulation_material": False,
             "terminal": True,
         }
