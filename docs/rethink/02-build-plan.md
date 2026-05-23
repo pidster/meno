@@ -1365,28 +1365,179 @@ Flag and fail reflection artifacts that have any of:
 **Goal:** Let accumulated state allocate future attention.
 
 **Scope:**
-- Curiosity, impulse, concern, commitment, preference, boredom,
-  coherence-pressure, and rehearsal-pressure registers.
-- Ethical and resource governors.
-- Sensorium-directed follow-up.
+- Implement a stdlib-only deterministic attention workflow over journal replay,
+  typed retrieval summaries, projection lifecycle state, reflection
+  future-attention, rehearsal pressure, outcomes, corrections, and
+  consolidation metadata.
+- Do not use the legacy SurrealDB curiosity/impulse tables, `modes.py`,
+  `agent.py`, MCP tools, autonomous loops, network access, sensorium polling,
+  scheduling, messaging, commits, or model-generated drive prose.
+- Phase 8 produces internal attention proposals only. It may influence later
+  recall/query choice, private review, reflection, rehearsal, or a user-facing
+  recommendation/permission request. It must not execute external action.
+- Residue fields such as `attention_target` and `drive_refs` are raw journal
+  cues, not active drives. Reflection `future_attention`, dream fragments,
+  rehearsal predictions, and consolidation findings are possible drive sources
+  only when their original epistemic status remains visible.
+- Define a drive as an evidence-cited pressure over future attention, not a
+  hidden goal and not a generic priority score.
+- Add a `drive_state_update` event contract with:
+  - `policy_version`
+  - `drive_id`
+  - `drive_kind`: curiosity, deferred_impulse, concern, chosen_commitment,
+    inferred_commitment_candidate, preference_pressure, boredom,
+    coherence_pressure, rehearsal_pressure
+  - `drive_status`: proposed, active, deferred, inhibited, released, satisfied,
+    stale, superseded, rejected
+  - `origin_status`: inherited, inferred, chosen, authored, observed,
+    hypothesis_influenced, simulation_influenced
+  - `source_refs`: event ids, source hashes, event types, epistemic statuses,
+    residue selectors or retrieval path ids, source category, scope decision,
+    and contribution reason
+  - `pressure_before`, `pressure_after`, `pressure_components`
+  - `dynamics`: kind-specific decay/build/release rule, saturation limit,
+    cooldown, and inhibition rule
+  - `governance`: privacy scope, resource scope, consent basis, allowed
+    effects, disallowed effects, and blocked effect reasons
+  - `attention_claim`: what the drive wants attention to do internally
+  - `outcome_update_policy`: how later outcomes can satisfy, frustrate,
+    weaken, strengthen, release, or redirect the drive
+  - `review_status`
+  - explicit `no_external_action`
+- Distinguish drive dynamics:
+  - curiosity is world/question-oriented and decays when unattended or stale
+  - deferred_impulse represents incomplete cognition and builds pressure while
+    deferred, then releases through action, decision, or explicit abandonment
+  - concern tracks unresolved risk, contradiction, correction, or safety issue
+    and should inhibit outward action until addressed
+  - chosen_commitment requires explicit authored/decision evidence with chooser,
+    alternatives, constraints, consent basis, revocation condition, and scope
+  - inferred_commitment_candidate may request review but cannot act as a chosen
+    obligation
+  - preference_pressure remains provisional unless supported by existing
+    preference/decision/outcome thresholds
+  - boredom tracks neglected eligible material and must not override governors
+  - coherence_pressure tracks contradiction, unresolved tension, invalidation,
+    or self-correction pressure
+  - rehearsal_pressure tracks unvalidated or falsified rehearsal predictions
+    and remains simulation-linked
+- Add an `attention_allocation` event contract with:
+  - `policy_version`
+  - `allocation_id`
+  - `drive_snapshot_hash`
+  - selected attention targets with target ids, action class, allowed effects,
+    source drive ids, and explanation
+  - rejected/deferred targets with reasons
+  - competing drive ids and pressure deltas
+  - governor decisions made before selection
+  - privacy/resource redactions or exclusions
+  - permitted next step: internal_attention, prepare_recommendation,
+    ask_permission, or no_action
+  - explicit `no_external_action`
+- Governance happens before allocation, not after. Drives that request
+  disallowed effects must be blocked, redacted, downgraded to internal-only
+  attention, or converted to a permission request.
+- External side effects require explicit user authorization or a narrowly
+  recorded standing policy. Phase 8 itself must not perform them.
+- Sensorium-directed follow-up is out of implementation scope for this phase
+  except as a blocked or permission-request attention proposal. Observation
+  channels, consent, polling limits, and no-contact rules must be explicit
+  before any future phase implements real follow-up.
+- Outcome updates must cite drive ids and classify impact as satisfied,
+  frustrated, strengthened, weakened, redirected, stale, released, or
+  inconclusive. A failed or salient outcome must not automatically increase
+  pressure.
+- Attention explanations must be pre-allocation evidence, not post-hoc
+  rationalization: cite drive ids, source refs, pressure components, governor
+  decisions, rejected alternatives, and why now.
+- If no eligible drive exists after governance, the workflow returns a
+  no-action report and appends no substantive attention allocation event.
 
 **Acceptance Criteria:**
-- Drives cite origins and update through outcomes.
-- Commitments are chosen, not merely generated.
-- Attention changes can be explained by drive state.
+- Drive state updates are journaled before attention allocation and cite
+  concrete source refs.
+- Curiosity, deferred impulse, concern, commitment, preference pressure,
+  boredom, coherence pressure, and rehearsal pressure have distinct dynamics.
+- Dream/rehearsal/reflection/consolidation material can influence drives only
+  with source status preserved; it cannot become accepted fact or chosen
+  commitment by pressure alone.
+- Commitments are chosen, not generated: a chosen commitment requires explicit
+  authored/decision evidence with constraints and revocation criteria.
+- Inferred commitment candidates can ask for review but cannot trigger action
+  as obligations.
+- Attention allocation is a journaled decision over competing drives, rejected
+  alternatives, and governor constraints.
+- Attention changes can be explained by the drive snapshot that existed before
+  allocation.
+- Privacy, resource, and consent governors alter attention outcomes before
+  selection.
+- High-pressure drives cannot create tool calls, contact, network access,
+  scheduling, filesystem mutation, commits, sensorium polling, or other
+  external side effects.
+- Scope-restricted drives remain restricted, are redacted, or are excluded from
+  broader-scope attention allocation.
+- Outcome updates can satisfy, frustrate, weaken, strengthen, redirect, release,
+  or leave drives inconclusive without treating salience as automatic pressure.
 
 **Adversarial Questions:**
 - Is this initiative or surveillance?
 - What boundary prevents unwanted contact or unbounded exploration?
 - Which drives are inherited, inferred, or chosen?
+- What source evidence created or changed this drive?
+- Which drives were rejected, inhibited, or downgraded by governance?
+- Did the allocation decision exist before the explanation, or was the
+  explanation fitted afterward?
+- Could this be implemented as a generic salience sort and still pass?
+- Did provisional dream/rehearsal/reflection material keep its status?
+- Did an inferred concern, curiosity, or preference become a commitment without
+  a choice event?
 
 **Do Not Proceed If:**
 - A drive can trigger external action without governance.
+- Phase 8 uses legacy SurrealDB drive tables or old autonomous loop code as its
+  implementation surface.
+- Raw `drive_refs` or `attention_target` residue is treated as active drive
+  state.
+- All drive kinds use one generic pressure equation.
+- A commitment can be inferred from salience, repetition, dream, rehearsal, or
+  reflection alone.
+- A drive can contact people, call tools, poll sensors, schedule work, mutate
+  files, spend resources, or use the network.
+- Governors are checked only after a target has already been selected.
+- Restricted evidence appears in broader-scope attention output.
+- Outcome updates inflate drive pressure solely because an event is salient.
+- Attention explanations can omit drive ids, source refs, pressure components,
+  governor decisions, and rejected alternatives.
 
 **Zombie Gate:**
 - A test must show that attention allocation differs between a fresh state and a
   state with accumulated unresolved curiosities, impulses, commitments, and
   outcomes.
+- Tests must also show:
+  - same immediate context plus different histories produces different drive
+    pressures, selected attention targets, rejected targets, and explanations
+  - no eligible drive after governance produces no substantive allocation event
+  - a generic salience/priority scorer fails because it lacks drive ids,
+    kind-specific dynamics, source refs, and governor decisions
+  - curiosity decays while deferred impulse builds under the same starting
+    pressure
+  - concern inhibits outward action rather than increasing external initiative
+  - inferred commitment candidates cannot become chosen commitments without an
+    explicit decision/choice event
+  - dream/rehearsal/reflection-derived drives preserve hypothesis/simulation/
+    inferred status and cannot support factual or accepted identity claims
+  - private or resource-disallowed drive sources are excluded, redacted, or
+    converted to internal-only attention
+  - the same drive under different consent/resource scopes yields different
+    allowed effects
+  - high-pressure drives cannot append `tool_call`, contact, scheduling,
+    sensorium, network, commit, or file-mutation events
+  - outcome updates can satisfy or weaken a drive, not only strengthen it
+  - boredom selects neglected eligible material but cannot override governors
+  - coherence pressure selects contradiction/tension material with cited
+    conflicts and cannot become generic anxiety
+  - attention explanations cite the pre-allocation drive snapshot and rejected
+    alternatives
 
 ## Phase 9: Vitality And Zombie Tests
 

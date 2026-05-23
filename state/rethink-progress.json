@@ -88,7 +88,9 @@
     },
     "8": {
       "name": "Drives And Attention",
-      "status": "planned"
+      "status": "design_ready",
+      "plan_section": "docs/rethink/02-build-plan.md#phase-8-drives-and-attention",
+      "next_action": "Implement the Phase 8 attention workflow and tests against the tightened contract."
     },
     "9": {
       "name": "Vitality And Zombie Tests",
