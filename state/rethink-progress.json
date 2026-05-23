@@ -1,0 +1,103 @@
+{
+  "project": "meno-rethink",
+  "created": "2026-05-23",
+  "last_updated": "2026-05-23",
+  "source_of_truth": {
+    "plan": "docs/rethink/02-build-plan.md",
+    "charter": "docs/rethink/00-design-charter.md",
+    "review_protocol": "docs/rethink/03-review-protocol.md",
+    "legacy_progress_archive": "state/archive/legacy-build-progress.json"
+  },
+  "operating_rules": [
+    "Build from evidence outward.",
+    "Each implementation phase must produce a working slice, failing-then-passing tests, and adversarial review before the next phase starts.",
+    "Current rethink phases are stdlib-only unless a phase explicitly adopts an external service.",
+    "Legacy SurrealDB-era progress is archival and must not drive current phase selection."
+  ],
+  "phases": {
+    "0": {
+      "name": "Charter And Controls",
+      "status": "complete",
+      "evidence": [
+        "docs/rethink/00-design-charter.md",
+        "docs/rethink/01-legacy-assessment.md",
+        "docs/rethink/02-build-plan.md",
+        "docs/rethink/03-review-protocol.md",
+        ".agents/skills/adversarial-design-review/SKILL.md"
+      ]
+    },
+    "1": {
+      "name": "Journal",
+      "status": "complete",
+      "primary_module": "src/journal.py",
+      "tests": [
+        "tests/test_journal.py"
+      ]
+    },
+    "2": {
+      "name": "Memory Projection",
+      "status": "complete",
+      "primary_module": "src/memory_projection.py",
+      "tests": [
+        "tests/test_memory_projection.py"
+      ]
+    },
+    "3": {
+      "name": "Typed Retrieval",
+      "status": "complete",
+      "primary_module": "src/typed_retrieval.py",
+      "tests": [
+        "tests/test_typed_retrieval.py"
+      ],
+      "review_resolution": "docs/rethink/phase-3-review-resolution.md"
+    },
+    "4": {
+      "name": "Reflection",
+      "status": "complete",
+      "primary_module": "src/reflection.py",
+      "tests": [
+        "tests/test_reflection.py"
+      ]
+    },
+    "5": {
+      "name": "Forgetting And Consolidation",
+      "status": "complete",
+      "primary_module": "src/consolidation.py",
+      "tests": [
+        "tests/test_consolidation.py"
+      ]
+    },
+    "6": {
+      "name": "Dreaming",
+      "status": "complete",
+      "primary_module": "src/dreaming.py",
+      "tests": [
+        "tests/test_dreaming.py"
+      ],
+      "completed_commit": "2f1ab02"
+    },
+    "7": {
+      "name": "Rehearsal",
+      "status": "next",
+      "plan_section": "docs/rethink/02-build-plan.md#phase-7-rehearsal",
+      "next_action": "Tighten the Phase 7 design contract with adversarial review before implementation."
+    },
+    "8": {
+      "name": "Drives And Attention",
+      "status": "planned"
+    },
+    "9": {
+      "name": "Vitality And Zombie Tests",
+      "status": "planned"
+    }
+  },
+  "validation": {
+    "command": ".venv/bin/python -m pytest",
+    "last_result": "62 passed",
+    "last_validated": "2026-05-23"
+  },
+  "notes": [
+    "Use this file for rethink phase status.",
+    "The archived legacy progress file describes the original SurrealDB-era implementation and is retained only for historical reference."
+  ]
+}
