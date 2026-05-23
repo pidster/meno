@@ -238,27 +238,305 @@ original event's epistemic status.
 **Goal:** Derive graph nodes and edges from journal evidence.
 
 **Scope:**
+- A standalone stdlib projection module, importing only `journal.py` and Python
+  stdlib.
+- SQLite projection storage in separate `memory_*` tables, not SurrealDB.
+- A projection engine plus candidate store, not a general graph database. This
+  is the typed interpretation layer that a later graph can use; it is not yet
+  memory identity, traversal, or associative clustering.
+- `ProjectionRun`, `MemoryCandidate`, `ProjectionDecision`,
+  `CandidateTransition`, `EvidenceRef`, `ConfidenceRecord`,
+  `RejectedInterpretation`, and `ProjectionRelation` records.
 - Experience, entity, concept, reflection, preference, commitment, skill,
-  dream, and rehearsal node candidates.
-- Edge records with type, directionality, confidence, status, and evidence links.
+  dream, and rehearsal candidates, but only as interpretations over verified
+  journal evidence.
+- Edge candidates with type, directionality, confidence, status, evidence refs,
+  and derivation rationale.
+- Explicit rejection, conflict, supersession, and provisional records.
+- A fixture-first implementation: implement only the candidate kinds and edge
+  types needed by the required zombie matrix, then expand deliberately in later
+  phases.
+
+**Non-Goals:**
+- No SurrealDB.
+- No imports from legacy `src/schema.py`, `src/db.py`, `src/retrieval.py`,
+  `src/modes.py`, or SurrealDB-backed tests.
+- No retrieval, spreading activation, edge weighting for traversal, decay,
+  dreaming generation, rehearsal simulation, or autonomous graph mutation.
+- No inferred durable preference, commitment, or skill from a single weak event
+  without provisional status.
+- No dream/rehearsal projection that creates new dream or rehearsal content.
+
+**Projection Contract:**
+- Projection reads verified journal events and may use `JournalReplayContext` as
+  reconstruction aid, but raw journal events remain the durable input.
+- Projection must not mutate journal evidence.
+- Projection decisions that create, reject, supersede, or conflict with graph
+  candidates must themselves be auditable through projection records.
+- Projection may produce candidates only when it can cite source evidence below
+  event level: event id, payload path, residue field, link type, replay trace
+  item, source selector, source value hash, and rationale. Fields that do not
+  apply to a valid source event must use explicit `not_applicable` values with a
+  rationale, not invented placeholders.
+- Projection must carry privacy/resource scopes from source events onto node and
+  edge candidates. Candidates must not be exposed or used beyond the most
+  restrictive source scope.
+- Projection defaults ambiguous interpretations to `candidate` or
+  `provisional`, not `accepted`.
+- Projection captures a journal snapshot before writing: source sequence range,
+  event ids, and event hashes. Integrity warnings abort the run unless the
+  projection explicitly quarantines affected source events and records why.
+
+**Storage Contract:**
+- Use SQLite through Python's stdlib `sqlite3`.
+- Store projection data in these required tables:
+  `projection_runs`, `memory_candidates`, `memory_edges`,
+  `projection_decisions`, `candidate_transitions`,
+  `projection_relations`, `projection_rejections`, and
+  `projection_evidence_refs`.
+- Each projection run records projection version, source journal sequence range,
+  source event hashes, created candidate ids, rejected candidate ids, warnings,
+  status, and failure reason if any.
+- Projection run lifecycle is explicit: create a `projection_runs` row in
+  `running` state, perform candidate writes inside a savepoint or separate
+  candidate transaction, then mark the run `succeeded` or `failed`. Failure
+  records must persist, but candidate partials from failed runs must not become
+  accepted output.
+- Projection runs are retryable without duplicate candidates, duplicate edges,
+  or accepted partial output.
+- Separate stable identity from projection versions:
+  - `candidate_id` is a deterministic semantic identity over candidate kind,
+    normalized label/claim, projected target kind, and durable source subject.
+  - `projection_record_id` is a deterministic versioned record over projection
+    version, candidate id, evidence refs, decision, rule, and source snapshot.
+  - `semantic_fingerprint` excludes mutable lifecycle status and projection
+    version.
+  - `projection_fingerprint` includes projection version and evidence refs.
+- Re-running projection over unchanged journal evidence must preserve candidate
+  ids, evidence refs, rejection records, and statuses.
+- Changed interpretations create superseding candidates; they do not silently
+  overwrite prior candidates.
+- Schema creation tests must fail if any required table, enum, unique key, or
+  append-only/audit invariant is missing.
+
+**EvidenceRef:**
+- `event_id`
+- `event_sequence`
+- `event_hash`
+- `event_type`
+- `event_epistemic_status`
+- `payload_path`
+- `residue_field`
+- `link_type`
+- `replay_trace_item`
+- `source_selector`
+- `source_value_hash`
+- `rationale`
+
+Event-level citation alone is insufficient. Evidence refs must be resolvable
+back into the journal payload, links, residue, or replay context. Missing,
+null, invented, placeholder, or event-level-only refs must be rejected by
+validation tests.
+
+**MemoryCandidate:**
+- `candidate_id`
+- `kind`: experience, entity, concept, reflection, preference, commitment,
+  skill, dream, or rehearsal.
+- `label`
+- `epistemic_status`: observed, authored, inferred, hypothesis, simulation,
+  correction, retraction, contradiction, or mixed.
+- `acceptance_status`: candidate, provisional, accepted, or rejected.
+- `relation_status`: active, conflicted, superseded, or invalidated.
+- `confidence`
+- `source_refs`
+- `privacy_scope`
+- `resource_scope`
+- `semantic_fingerprint`
+- `created_from_sequence_range`
+
+**EdgeCandidate:**
+- `id`
+- `source_candidate_id`
+- `target_candidate_id`
+- `edge_type`: observed_cooccurrence, explicit_claim, reflective_interpretation,
+  contradiction, correction, dream_association, rehearsal_candidate,
+  outcome_confirmation, temporal_sequence, or participation.
+- `direction`
+- `epistemic_status`
+- `confidence`
+- `source_refs`
+- `privacy_scope`
+- `resource_scope`
+- `semantic_fingerprint`
+
+**ProjectionDecision:**
+- `projection_record_id`
+- `candidate_id`
+- `decision`: created, retained, promoted, demoted, rejected, conflicted,
+  superseded, invalidated, or quarantined.
+- `acceptance_status_before`
+- `acceptance_status_after`
+- `relation_status_before`
+- `relation_status_after`
+- `projection_run_id`
+- `projection_rule_id`
+- `projection_version`
+- `projection_fingerprint`
+- `source_refs`
+- `confidence_record`
+- `reason`
+- `timestamp`
+
+**CandidateTransition:**
+- `id`
+- `candidate_id`
+- `from_acceptance_status`
+- `to_acceptance_status`
+- `from_relation_status`
+- `to_relation_status`
+- `source_refs`
+- `projection_decision_id`
+- `reason`
+- `timestamp`
+
+**ProjectionRelation:**
+- `id`
+- `relation_type`: conflicts_with, supersedes, invalidates, corrects,
+  corroborates, or outcome_confirms.
+- `source_candidate_id`
+- `target_candidate_id`
+- `direction`: directed, reverse, or symmetric.
+- `source_refs`
+- `projection_decision_id`
+- `reason`
+- `timestamp`
+
+**ConfidenceRecord:**
+- `level`: none, weak, moderate, strong, or decisive.
+- `evidence_class`: authored, observed, inferred, hypothesis, simulation,
+  correction, retraction, contradiction, or mixed.
+- `inference_distance`: direct, one_step, multi_step, or speculative.
+- `corroboration_count`
+- `contradiction_count`
+- `rationale`
+
+Confidence is evidence confidence, not retrieval weight. Retrieval weights are
+out of scope until Phase 3.
+
+**Privacy And Resource Scope Merge:**
+- Merge source scopes with an explicit most-restrictive meet operation.
+- `export_allowed` is true only if every source permits export.
+- `external_contact`, `network_access`, `autonomous_spend`, and
+  `compute_escalation` are true only if every source permits them.
+- `exposure` collapses to the narrowest named exposure; incomparable values
+  produce an internal-only candidate plus a projection warning.
+- A candidate may exist internally while being barred from later retrieval,
+  export, or action surfaces.
+
+**Evidence Thresholds:**
+- Authored conversation can support an experience/utterance candidate, but not a
+  factual world/entity claim without observed corroboration.
+- Observed tool/output evidence can support factual candidates if scope permits.
+- Reflection can support provisional interpretation candidates only, unless
+  later observed evidence corroborates them.
+- Dream-derived candidates remain `hypothesis` and provisional.
+- Rehearsal-derived candidates remain `simulation` and provisional.
+- Isolated explicit preference self-report may create only a provisional
+  preference. Accepted preferences require repeated behavior, decision evidence,
+  or corroborated outcome evidence.
+- Commitments require explicit decision/commitment language or repeated outcome
+  evidence; otherwise they remain provisional.
+- Skills require repeated behavior or validated outcome evidence; otherwise they
+  remain provisional.
+- Corrections and contradictions must preserve competing records unless a later
+  accepted projection explicitly supersedes one side.
+- Dream projections retain source residues, unresolved tensions, odd
+  juxtapositions, affect/salience, and hypothesis rationale.
+- Rehearsal projections retain scenario, assumptions, simulated strategy,
+  predicted action, expected outcome, predicted failure modes, and later outcome
+  confirmation links.
+
+**RejectedInterpretation:**
+- `id`
+- `source_refs`
+- `candidate_kind`
+- `normalized_claim`
+- `epistemic_status`
+- `privacy_scope`
+- `resource_scope`
+- `rejection_reason`
+- `rejecting_rule_id`
+- `projection_run_id`
+- `timestamp`
 
 **Acceptance Criteria:**
-- Every node and edge can cite source journal events.
-- Candidate interpretations can remain provisional.
-- Rejected interpretations remain auditable.
-- Re-running projection is idempotent.
+- Projection storage uses stdlib SQLite and does not require SurrealDB.
+- Required tables and invariants are created and tested.
+- Every memory and edge candidate includes resolvable source refs below event
+  level, projection decision/version records, acceptance status, relation
+  status, epistemic status, structured confidence, privacy/resource scope,
+  semantic fingerprint, and projection fingerprint.
+- Candidate interpretations can remain provisional without being promoted.
+- Dream/rehearsal-derived nodes and edges remain provisional and cannot become
+  factual through projection alone.
+- Authored claims do not become factual world/entity candidates without observed
+  corroboration.
+- Preference, commitment, and skill candidates obey evidence thresholds.
+- Rejected interpretations are first-class records with source evidence,
+  rejection reason, rejecting rule, projection run, and timestamp.
+- Conflicting interpretations coexist without overwriting each other. Both
+  contested candidates remain queryable after contradiction.
+- Corrected candidates remain queryable as superseded, rejected, or invalidated
+  records rather than being deleted or mutated in place.
+- Re-running projection over unchanged journal evidence preserves candidate ids,
+  rejected records, evidence refs, and statuses.
+- Failed projection runs can be retried without duplicate or accepted partial
+  output.
+- Projection propagates privacy/resource scopes and refuses scope-disallowed
+  projection surfaces.
+- Phase 2 passes the adversarial review protocol with every P0/P1 resolved into
+  a design change, test, non-goal, or explicit accepted risk before completion.
 
 **Adversarial Questions:**
 - Which fields are observed, inferred, authored, dreamed, or rehearsed?
 - Can two interpretations conflict without overwriting each other?
 - Does graph messiness preserve provenance rather than becoming arbitrary noise?
+- What exact evidence path justified this candidate?
+- What did projection refuse to infer?
+- Is confidence evidence confidence or accidental retrieval weight?
 
 **Do Not Proceed If:**
-- Edge weights can change without recording why.
+- Projection output schema is not pinned down.
+- Projection can pass by emitting noun/co-occurrence graph records with event ids.
+- Edge weights, node status, confidence, scope, or projection version can change
+  without recording why.
+- Rejected candidates can disappear silently.
+- Dream/rehearsal candidates can enter factual graph paths.
+- Preference, commitment, or skill candidates can be accepted from isolated weak
+  evidence.
 
 **Zombie Gate:**
-- A test must show that two histories with similar keywords but different
-  evidence produce different graph interpretations and provenance paths.
+- Tests must show that two histories with similar surface keywords but different
+  evidence types, residue, epistemic statuses, corrections, outcomes, dreams, or
+  rehearsals produce field-level differences in node kind, edge type, status,
+  confidence, evidence paths, rejected candidates, and conflicts.
+- Required fixture matrix:
+  - authored "X is true" versus observed tool/output evidence for "X is true"
+  - dream candidate "A relates to B" versus observation of A/B co-occurrence
+  - rehearsal prediction "might work" versus observed outcome "worked"
+  - correction invalidating a prior claim versus contradiction preserving both
+    claims as contested
+  - repeated behavior supporting a provisional preference versus one isolated
+    utterance that must remain provisional or rejected
+- Add an accumulation fixture: repeated weak traces must project differently
+  from one isolated strong utterance.
+- Each fixture must pin exact expected candidate kind, edge type, acceptance
+  status, relation status, epistemic status, confidence record, evidence refs,
+  rejection rows, and conflict/supersession relation rows.
+- Include a negative provenance fixture that strips below-event evidence fields
+  and proves validation rejects the projection.
+- Tests must fail if projection only checks graph counts, labels, co-occurrence,
+  or event-id citation.
 
 ## Phase 3: Typed Retrieval
 
