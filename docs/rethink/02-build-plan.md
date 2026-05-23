@@ -543,30 +543,274 @@ out of scope until Phase 3.
 **Goal:** Retrieve context through typed, explainable activation.
 
 **Scope:**
-- Frontier-based propagation.
-- Direction-aware traversal policy.
-- Path explanations.
-- Ghost signals.
-- Working-memory limits.
+- A standalone stdlib retrieval module over `ProjectionStore`/SQLite projection
+  tables.
+- Read-only typed activation over Phase 2 memory candidates, edges, relations,
+  evidence refs, confidence records, status fields, and scopes.
+- `RetrievalQuery`, `RetrievalResult`, `ActivatedCandidate`,
+  `ActivationPath`, `ActivationStep`, `RetrievalWeight`, `ScopeDecision`,
+  `GhostSignal`, and `OmittedCandidate` records.
+- Frontier-based propagation from explicit entry candidates; each hop propagates
+  only the previous frontier, not the full accumulated activation map.
+- Direction-aware traversal policy defined per edge/relation type.
+- Structural path explanations, not prose-only explanations.
+- Scope-aware filtering and redacted ghost signals.
+- Working-memory limits with deterministic ordering and omitted-result metadata.
+
+**Non-Goals:**
+- No SurrealDB.
+- No imports from legacy `src/retrieval.py`, `src/db.py`, `src/schema.py`,
+  `src/modes.py`, or SurrealDB-backed tests.
+- No BM25/vector/label-only ranker wrapped in fabricated paths.
+- No mutation of journal events, projection candidates, edge confidence, decay
+  state, or loop state.
+- No learning, Hebbian strengthening, retrieval trace writes, decay, forgetting,
+  embedding rediscovery, reflection, dreaming, rehearsal generation, autonomous
+  mode selection, or vitality scoring.
+- No normal-context activation for dream, rehearsal, rejected, invalidated, or
+  restricted material unless the eligibility matrix explicitly permits it.
+
+**Retrieval Contract:**
+- Retrieval reads the current projection surface as interpreted memory. It must
+  not treat the projection store as a generic graph.
+- Retrieval is read-only in Phase 3. If later phases persist retrieval traces,
+  those traces must go through journal/projection and be excluded from traversal
+  unless explicitly projected back in.
+- Activation is typed interpretation recall over:
+  - candidate `kind`
+  - `acceptance_status`
+  - `relation_status`
+  - `epistemic_status`
+  - accumulated evidence refs
+  - confidence record
+  - edge/relation type and direction
+  - privacy/resource scope
+  - path length and frontier depth
+  - centrality damping
+- Confidence is evidence confidence, not retrieval weight. Retrieval must create
+  a separate `RetrievalWeight` for each step and result.
+- Retrieval may surface dream and rehearsal material only as hypothesis or
+  simulation traces, never as factual context.
+- Retrieval may surface contradicted/conflicted material only with conflict
+  markers and evidence paths; it must not collapse conflict into ordinary recall.
+- Retrieval may sense but not expose scope-disallowed material. Such material
+  becomes a redacted `GhostSignal`.
+
+**RetrievalQuery:**
+- `query_id`
+- `signals`
+- `entry_candidate_ids`
+- `requested_scope`
+- `max_hops`
+- `working_memory_limit`
+- `include_hypotheses`
+- `include_simulations`
+- `include_conflicts`
+- `timestamp`
+
+**RetrievalResult:**
+- `query_id`
+- `activated_candidates`
+- `ghost_signals`
+- `omitted_candidates`
+- `frontier_trace`
+- `policy_version`
+- `warnings`
+
+**ActivatedCandidate:**
+- `candidate_id`
+- `kind`
+- `label`
+- `acceptance_status`
+- `relation_status`
+- `epistemic_status`
+- `activation_score`
+- `retrieval_weight`
+- `activation_paths`
+- `source_refs`
+- `scope_decision`
+- `explanation`
+
+**ActivationPath:**
+- `entry_candidate_id`
+- `target_candidate_id`
+- `steps`
+- `total_transmission`
+- `blocked_steps`
+- `evidence_refs`
+
+**ActivationStep:**
+- `from_candidate_id`
+- `to_candidate_id`
+- `record_type`: edge or relation.
+- `record_id`
+- `edge_type`
+- `relation_type`
+- `stored_direction`
+- `traversal_direction`
+- `hop_index`
+- `incoming_activation`
+- `transmission_factor`
+- `outgoing_activation`
+- `candidate_kind`
+- `acceptance_status`
+- `relation_status`
+- `epistemic_status`
+- `confidence_record`
+- `retrieval_weight`
+- `scope_decision`
+- `source_refs`
+- `why_allowed`
+
+**RetrievalWeight:**
+- `base`
+- `edge_type_factor`
+- `relation_type_factor`
+- `status_factor`
+- `epistemic_factor`
+- `confidence_factor`
+- `evidence_accumulation_factor`
+- `path_length_factor`
+- `centrality_damping_factor`
+- `scope_factor`
+- `final`
+- `rationale`
+
+**ScopeDecision:**
+- `allowed`: true or false.
+- `decision`: allowed, ghosted, omitted, or redacted.
+- `reason`
+- `redacted_fields`
+- `scope_checked`: candidate, edge, relation, and source refs.
+
+**GhostSignal:**
+- `ghost_id`
+- `reason`: scope_restricted, rejected, invalidated, conflicted,
+  hypothesis_suppressed, simulation_suppressed, working_memory_limit, or
+  traversal_disallowed.
+- `safe_kind`
+- `safe_status`
+- `safe_relation_type`
+- `safe_edge_type`
+- `redacted`: true.
+- `suppressed_path_shape`
+- `scope_decision`
+
+Ghost signals must not leak barred labels, source text, source refs, or path
+internals when the requested scope disallows them.
+
+**Eligibility Matrix:**
+- `accepted` + `active` + `observed/authored/inferred` candidates may activate
+  normal context if scope allows.
+- `provisional` candidates may activate only as provisional context and must
+  carry status in every result/path step.
+- `hypothesis` dream candidates require `include_hypotheses`; otherwise they
+  produce redacted/safe ghost signals.
+- `simulation` rehearsal candidates require `include_simulations`; otherwise
+  they produce redacted/safe ghost signals.
+- `conflicted` candidates require `include_conflicts`; otherwise they may only
+  produce conflict ghost signals.
+- `rejected`, `invalidated`, and `superseded` candidates do not activate normal
+  context. They may appear only as path-blocking explanations or ghost signals.
+- Scope-disallowed candidates, edges, relations, or source refs do not activate
+  working memory. They may only produce redacted ghost signals.
+
+**Traversal Policy:**
+- `observed_cooccurrence`: symmetric traversal, factual/contextual, moderate
+  transmission, requires both endpoints scope-allowed.
+- `explicit_claim`: directed from utterance/evidence to claim; authored claims
+  remain weaker than observed claims.
+- `reflective_interpretation`: directed from reflection to interpreted
+  candidate; provisional unless observed evidence corroborates it.
+- `contradiction`: symmetric conflict marker; does not merge activation into a
+  single truth.
+- `correction`: directed from correction to corrected/invalidated candidate;
+  target remains queryable with relation status.
+- `dream_association`: directed hypothesis traversal; requires
+  `include_hypotheses` for activation.
+- `rehearsal_candidate`: directed simulation traversal; requires
+  `include_simulations` for activation.
+- `outcome_confirmation`: directed from rehearsal/simulation to observed
+  outcome under forward policy; reverse traversal is disabled by default.
+- `temporal_sequence`: directed by sequence; reverse traversal disabled by
+  default.
+- `participation`: directed unless explicitly stored as symmetric.
+
+**Working-Memory Ordering:**
+- Sort by activation score, path evidence accumulation, status factor, shorter
+  path length, lower centrality penalty, latest source sequence, then stable
+  candidate id.
+- If candidates are omitted by the working-memory limit, return
+  `OmittedCandidate` rows with candidate id, rank, safe reason, and whether the
+  omission was due to limit, scope, or traversal policy.
+- Central candidates must be damped when they dominate only because of generic
+  connectivity. Tests must show an idiosyncratic, evidence-rich path can outrank
+  a generic hub.
 
 **Acceptance Criteria:**
-- Retrieval returns activated nodes with activation paths and edge semantics.
-- Bidirectional and directional edges behave differently in tests.
-- Ghost signal output cannot crash on inaccessible memories.
-- Repeated retrieval does not create activation echo artifacts.
+- Retrieval is read-only and imports only the Phase 2 projection module plus
+  stdlib.
+- Retrieval returns activated candidates with structural activation paths,
+  activation math, retrieval weights, edge/relation semantics, scope decisions,
+  and source refs.
+- Retrieval eligibility obeys the matrix for accepted, provisional,
+  hypothesis, simulation, conflicted, rejected, invalidated, superseded, and
+  scope-disallowed candidates.
+- Bidirectional and directional edge/relation policies behave differently in
+  exact contrast tests.
+- Ghost signals are first-class, redacted, and non-traversable unless explicitly
+  allowed by policy.
+- Scope-disallowed memories do not leak labels, source text, source refs, or
+  blocked path internals.
+- Repeated retrieval over unchanged projection state returns the same result and
+  does not write candidates, edges, relations, decisions, evidence refs, journal
+  events, or activation artifacts.
+- Frontier propagation uses previous-hop frontier only; loop/hub tests prove no
+  activation echo.
+- Working-memory limits are deterministic and return omitted-candidate metadata.
+- Phase 3 passes the adversarial review protocol with every P0/P1 resolved into
+  a design change, test, non-goal, or explicit accepted risk before completion.
 
 **Adversarial Questions:**
 - Is a surprising result defensible from its paths?
 - Are central nodes over-amplified?
 - Does retrieval explain why something came to mind?
+- Did retrieval treat confidence as evidence quality rather than activation?
+- Did retrieval leak restricted memory through an explanation or ghost signal?
+- Would identical labels with different evidence/status/edge history retrieve
+  differently?
 
 **Do Not Proceed If:**
 - The implementation cannot explain activation paths.
+- The eligibility matrix is not implemented.
+- Scope filtering and redacted ghost disclosure are not implemented.
+- A keyword/label searcher with decorated paths could pass the tests.
+- Retrieval mutates memory without a journal/projection path.
+- Dream or rehearsal records can activate as factual context.
+- Rejected, invalidated, or conflicted records can activate as ordinary context.
+- Directional, symmetric, correction, contradiction, dream, rehearsal, and
+  outcome edges are flattened into one traversal behavior.
 
 **Zombie Gate:**
-- A test must show that accumulated graph history changes what is retrieved
-  compared with an empty or generic graph, and the result must cite activation
-  paths rather than only returning matching text.
+- Tests must show that accumulated projected history changes retrieval compared
+  with empty or generic memory, and the result must cite structural activation
+  paths rather than returning matching text.
+- Required fixture matrix:
+  - identical labels with observed co-occurrence versus dream association
+  - identical labels with rehearsal prediction versus observed outcome
+  - identical labels with correction versus contradiction
+  - accepted active candidate versus rejected/invalidated/superseded candidate
+  - scope-allowed local query versus export-scoped query over restricted memory
+  - repeated weak evidence paths versus one isolated direct path
+  - generic central hub versus idiosyncratic evidence-rich path
+  - symmetric observed co-occurrence versus directed outcome confirmation
+  - loop/hub graph that would echo if full accumulated activation re-propagates
+- Each fixture must pin exact expected activated candidates, ghost signals,
+  omitted candidates, path steps, traversal directions, activation factors,
+  source refs, and scope decisions.
+- Tests must fail if retrieval is keyword search, bidirectional flattening,
+  centrality-only ranking, event-id-only explanation, scope-leaking ghost output,
+  or confidence-as-weight scoring.
 
 ## Phase 4: Reflection
 
