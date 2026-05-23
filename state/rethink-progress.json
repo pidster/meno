@@ -88,9 +88,13 @@
     },
     "8": {
       "name": "Drives And Attention",
-      "status": "design_ready",
+      "status": "complete",
       "plan_section": "docs/rethink/02-build-plan.md#phase-8-drives-and-attention",
-      "next_action": "Implement the Phase 8 attention workflow and tests against the tightened contract."
+      "primary_module": "src/attention.py",
+      "tests": [
+        "tests/test_attention.py"
+      ],
+      "next_action": "Start Phase 9 design review for vitality and zombie tests."
     },
     "9": {
       "name": "Vitality And Zombie Tests",
@@ -99,7 +103,7 @@
   },
   "validation": {
     "command": ".venv/bin/python -m pytest",
-    "last_result": "67 passed",
+    "last_result": "75 passed",
     "last_validated": "2026-05-23"
   },
   "notes": [

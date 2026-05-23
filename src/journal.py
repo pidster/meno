@@ -28,6 +28,8 @@ EVENT_STATUS_MATRIX: dict[str, set[str]] = {
     "dream": {"hypothesis"},
     "dream_review": {"authored", "inferred"},
     "rehearsal": {"simulation"},
+    "drive_state_update": {"authored", "inferred"},
+    "attention_allocation": {"inferred"},
     "decision": {"authored"},
     "correction": {"correction", "retraction", "contradiction"},
     "outcome": {"observed"},
@@ -117,6 +119,37 @@ PAYLOAD_REQUIRED_KEYS: dict[str, set[str]] = {
         "privacy_scope_decision",
         "review_status",
         "not_executed",
+    },
+    "drive_state_update": {
+        "policy_version",
+        "drive_id",
+        "drive_kind",
+        "drive_status",
+        "origin_status",
+        "source_refs",
+        "pressure_before",
+        "pressure_after",
+        "pressure_components",
+        "dynamics",
+        "governance",
+        "attention_claim",
+        "outcome_update_policy",
+        "review_status",
+        "no_external_action",
+    },
+    "attention_allocation": {
+        "policy_version",
+        "allocation_id",
+        "drive_state_event_ids",
+        "drive_snapshot_hash",
+        "drive_snapshot",
+        "selected_attention_targets",
+        "rejected_attention_targets",
+        "competing_drive_ids",
+        "governor_decisions",
+        "privacy_resource_exclusions",
+        "permitted_next_step",
+        "no_external_action",
     },
     "decision": {"options_considered", "selected_option", "reason", "constraints"},
     "correction": {"target", "corrected_claim", "reason"},
@@ -295,6 +328,58 @@ REHEARSAL_PREDICTION_RESULTS = {
     "falsified",
     "partially_matched",
     "inconclusive",
+}
+DRIVE_KINDS = {
+    "curiosity",
+    "deferred_impulse",
+    "concern",
+    "chosen_commitment",
+    "inferred_commitment_candidate",
+    "preference_pressure",
+    "boredom",
+    "coherence_pressure",
+    "rehearsal_pressure",
+}
+DRIVE_STATUSES = {
+    "proposed",
+    "active",
+    "deferred",
+    "inhibited",
+    "released",
+    "satisfied",
+    "stale",
+    "superseded",
+    "rejected",
+}
+DRIVE_ORIGIN_STATUSES = {
+    "inherited",
+    "inferred",
+    "chosen",
+    "authored",
+    "observed",
+    "hypothesis_influenced",
+    "simulation_influenced",
+}
+DRIVE_REVIEW_STATUSES = {
+    "review_pending",
+    "reviewed",
+    "rejected",
+    "accepted_internal",
+}
+ATTENTION_NEXT_STEPS = {
+    "internal_attention",
+    "prepare_recommendation",
+    "ask_permission",
+    "no_action",
+}
+EXTERNAL_EFFECTS = {
+    "tool_call",
+    "external_contact",
+    "network_access",
+    "autonomous_spend",
+    "filesystem_mutation",
+    "commit",
+    "sensorium_polling",
 }
 
 
@@ -842,6 +927,8 @@ class JournalStore:
             raise JournalValidationError("payload must be an object")
         if event_type == "rehearsal" and capture_method != "rehearsal_workflow":
             raise JournalValidationError("rehearsal events must use rehearsal workflow")
+        if event_type in {"drive_state_update", "attention_allocation"} and capture_method != "attention_workflow":
+            raise JournalValidationError("attention events must use attention workflow")
         required = PAYLOAD_REQUIRED_KEYS[event_type]
         missing = sorted(required - payload.keys())
         if missing:
@@ -867,6 +954,10 @@ class JournalStore:
             self._validate_dream_review_payload(payload)
         if event_type == "rehearsal":
             self._validate_rehearsal_payload(payload)
+        if event_type == "drive_state_update":
+            self._validate_drive_state_update_payload(payload)
+        if event_type == "attention_allocation":
+            self._validate_attention_allocation_payload(payload)
         if event_type == "outcome":
             self._validate_outcome_payload(payload, links)
         if event_type == "graph_update_proposal" and not payload.get("source_event_ids"):
@@ -1129,6 +1220,110 @@ class JournalStore:
                 raise JournalValidationError("outcome has invalid prediction result")
             if not result.get("rationale"):
                 raise JournalValidationError("prediction result requires rationale")
+
+    def _validate_drive_state_update_payload(self, payload: dict[str, Any]) -> None:
+        if payload.get("no_external_action") is not True:
+            raise JournalValidationError("drive state update must declare no_external_action")
+        if payload.get("drive_kind") not in DRIVE_KINDS:
+            raise JournalValidationError("drive state update has invalid drive kind")
+        if payload.get("drive_status") not in DRIVE_STATUSES:
+            raise JournalValidationError("drive state update has invalid status")
+        if payload.get("origin_status") not in DRIVE_ORIGIN_STATUSES:
+            raise JournalValidationError("drive state update has invalid origin status")
+        if payload.get("review_status") not in DRIVE_REVIEW_STATUSES:
+            raise JournalValidationError("drive state update has invalid review status")
+        for key in ("pressure_before", "pressure_after"):
+            if not isinstance(payload.get(key), int | float) or isinstance(payload.get(key), bool):
+                raise JournalValidationError(f"drive state update {key} must be numeric")
+        if not isinstance(payload.get("pressure_components"), list) or not payload["pressure_components"]:
+            raise JournalValidationError("drive state update requires pressure components")
+        dynamics = payload.get("dynamics")
+        if not isinstance(dynamics, dict) or not dynamics.get("rule"):
+            raise JournalValidationError("drive state update requires dynamics rule")
+        governance = payload.get("governance")
+        if not isinstance(governance, dict):
+            raise JournalValidationError("drive state update requires governance")
+        governance_required = {
+            "privacy_scope",
+            "resource_scope",
+            "consent_basis",
+            "allowed_effects",
+            "disallowed_effects",
+            "blocked_effect_reasons",
+            "decision",
+        }
+        missing = sorted(governance_required - governance.keys())
+        if missing:
+            raise JournalValidationError(f"drive governance missing keys: {missing}")
+        if set(governance.get("allowed_effects", [])) & EXTERNAL_EFFECTS:
+            raise JournalValidationError("drive governance cannot allow external effects")
+        if not isinstance(payload.get("source_refs"), list) or not payload["source_refs"]:
+            raise JournalValidationError("drive state update requires source refs")
+        for ref in payload["source_refs"]:
+            if not isinstance(ref, dict):
+                raise JournalValidationError("drive source refs must be objects")
+            ref_required = {
+                "source_ref_id",
+                "source_event_id",
+                "source_event_hash",
+                "source_event_type",
+                "source_epistemic_status",
+                "source_selector",
+                "source_category",
+                "scope_decision",
+                "contribution_reason",
+            }
+            missing = sorted(ref_required - ref.keys())
+            if missing:
+                raise JournalValidationError(f"drive source ref missing keys: {missing}")
+            if ref.get("scope_decision", {}).get("decision") != "included":
+                raise JournalValidationError("drive source ref must record included scope decision")
+            source = self.get_event(str(ref["source_event_id"]))
+            if source is None:
+                raise JournalValidationError("drive source ref cites unknown source event")
+            if source["content_hash"] != ref["source_event_hash"]:
+                raise JournalValidationError("drive source ref source hash mismatch")
+            if source["event_type"] != ref["source_event_type"]:
+                raise JournalValidationError("drive source ref source type mismatch")
+            if source["epistemic_status"] != ref["source_epistemic_status"]:
+                raise JournalValidationError("drive source ref source status mismatch")
+
+    def _validate_attention_allocation_payload(self, payload: dict[str, Any]) -> None:
+        if payload.get("no_external_action") is not True:
+            raise JournalValidationError("attention allocation must declare no_external_action")
+        if payload.get("permitted_next_step") not in ATTENTION_NEXT_STEPS:
+            raise JournalValidationError("attention allocation has invalid next step")
+        expected_hash = hashlib.sha256(canonical_json(payload.get("drive_snapshot", [])).encode("utf-8")).hexdigest()
+        if payload.get("drive_snapshot_hash") != expected_hash:
+            raise JournalValidationError("attention allocation drive snapshot hash mismatch")
+        drive_event_ids = payload.get("drive_state_event_ids")
+        if not isinstance(drive_event_ids, list) or not drive_event_ids:
+            raise JournalValidationError("attention allocation requires drive state event ids")
+        known_drive_ids = set()
+        for event_id in drive_event_ids:
+            event = self.get_event(str(event_id))
+            if event is None or event["event_type"] != "drive_state_update":
+                raise JournalValidationError("attention allocation cites unknown drive state event")
+            known_drive_ids.add(event["payload"]["drive_id"])
+        if not isinstance(payload.get("governor_decisions"), list) or not payload["governor_decisions"]:
+            raise JournalValidationError("attention allocation requires governor decisions before selection")
+        for target_key in ("selected_attention_targets", "rejected_attention_targets"):
+            targets = payload.get(target_key)
+            if not isinstance(targets, list):
+                raise JournalValidationError(f"{target_key} must be a list")
+            for target in targets:
+                if not isinstance(target, dict):
+                    raise JournalValidationError("attention targets must be objects")
+                drive_id = target.get("drive_id")
+                if drive_id not in known_drive_ids:
+                    raise JournalValidationError("attention target cites unknown drive id")
+                if target_key == "selected_attention_targets":
+                    if target.get("action_class") not in ATTENTION_NEXT_STEPS - {"no_action"}:
+                        raise JournalValidationError("selected attention target has invalid action class")
+                    if set(target.get("allowed_effects", [])) & EXTERNAL_EFFECTS:
+                        raise JournalValidationError("selected attention target cannot allow external effects")
+                    if payload["drive_snapshot_hash"] not in str(target.get("explanation", "")):
+                        raise JournalValidationError("selected attention explanation must cite drive snapshot")
 
     def _rehearsal_prediction_ids(self, payload: dict[str, Any]) -> set[str]:
         prediction_ids: set[str] = set()
