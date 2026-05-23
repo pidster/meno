@@ -122,6 +122,28 @@ The default mode loop has eight modes, drawn from as a repertoire:
 6. **Identity is the graph's idiosyncratic structure.** A tidy graph is
    a dead graph.
 
+## Development
+
+Install runtime and development dependencies into a virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt -r requirements-dev.txt
+```
+
+Run the stdlib rethink test suite:
+
+```bash
+python3 -m pytest
+```
+
+The default pytest configuration intentionally targets the rethink modules that
+do not require SurrealDB, Anthropic, Ollama, MCP, or network access. Legacy
+SurrealDB-backed tests are still direct-run tests and require a running
+SurrealDB instance.
+
 ## Theoretical foundations
 
 Meno draws on work across cognitive science, philosophy, and software

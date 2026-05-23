@@ -313,7 +313,15 @@ def test_reflection_proposals_are_separate_journal_events():
 
 def test_history_influence_requires_history_specific_paths_and_dispositions():
     history_payload = {
-        "cited_retrieval_paths": [{"candidate_id": "history-candidate"}],
+        "cited_retrieval_paths": [
+            {
+                "path_id": "path",
+                "candidate_id": "history-candidate",
+                "source_refs": [{"event_id": "event-1"}],
+                "scope_decision": {"allowed": True},
+                "steps": [{"record_type": "edge", "record_id": "edge-1"}],
+            }
+        ],
         "future_attention": [{"target": "history-specific follow-up"}],
         "proposed_graph_updates": [],
         "deferred_graph_updates": [{"reason": "need later outcome"}],
@@ -334,7 +342,15 @@ def test_history_influence_requires_history_specific_paths_and_dispositions():
         "changed_stance": "changed",
     }
     baseline_payload = dict(history_payload)
-    baseline_payload["cited_retrieval_paths"] = [{"candidate_id": "baseline-candidate"}]
+    baseline_payload["cited_retrieval_paths"] = [
+        {
+            "path_id": "path",
+            "candidate_id": "baseline-candidate",
+            "source_refs": [{"event_id": "event-1"}],
+            "scope_decision": {"allowed": True},
+            "steps": [{"record_type": "edge", "record_id": "edge-1"}],
+        }
+    ]
     baseline_payload["future_attention"] = [{"target": "generic follow-up"}]
     baseline_payload["deferred_graph_updates"] = [{"reason": "generic uncertainty"}]
     baseline_payload["rejected_interpretations"] = ["none"]
