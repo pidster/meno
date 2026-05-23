@@ -139,6 +139,35 @@ def build_subject_packet(subject, evidence, tension, *, context):
     return tmp, journal, projection, packet
 
 
+def build_two_drive_packet():
+    tmp, journal, projection = make_stores()
+    append_observation(
+        journal,
+        "first concern",
+        "first evidence",
+        tension="first retrieval-linked tension",
+    )
+    append_observation(
+        journal,
+        "second concern",
+        "second evidence",
+        tension="second retrieval-linked tension",
+    )
+    projection.project_journal(journal)
+    entries = [
+        projection.candidate("entity", "first concern"),
+        projection.candidate("entity", "second concern"),
+    ]
+    assert all(entries)
+    packet = build_cognition_packet(
+        journal,
+        projection,
+        entry_candidate_ids=[entry["candidate_id"] for entry in entries],
+        immediate_context={"prompt": "same immediate context"},
+    )
+    return tmp, journal, projection, packet
+
+
 def test_preview_packet_is_read_only_and_causally_chained():
     tmp, journal, projection = make_stores()
     try:
@@ -171,6 +200,52 @@ def test_preview_packet_is_read_only_and_causally_chained():
         assert packet["influence_chain"]["retrieval_path_ids"]
         assert packet["selected_next_step"]["retrieval_path_refs"]
         assert packet["vitality_summary"]["validated_packet_id"] == packet["packet_id"]
+    finally:
+        projection.close()
+        journal.close()
+        tmp.cleanup()
+
+
+def test_selected_attention_refs_must_match_selected_drive_influence():
+    tmp, journal, projection, packet = build_two_drive_packet()
+    try:
+        selected_drive_id = packet["attention_allocation"]["selected_attention_targets"][0]["drive_id"]
+        other = next(
+            item
+            for item in packet["influence_chain"]["drive_influences"]
+            if item["drive_id"] != selected_drive_id
+        )
+        mutant = copy.deepcopy(packet)
+        mutant["packet_status"] = "accepted"
+        mutant["attention_allocation"]["selected_attention_targets"][0]["retrieval_path_refs"] = [
+            other["retrieval_path_id"]
+        ]
+        mutant["attention_allocation"]["selected_attention_targets"][0]["projection_candidate_refs"] = [
+            other["projection_candidate_id"]
+        ]
+        mutant["selected_next_step"]["retrieval_path_refs"] = [other["retrieval_path_id"]]
+        mutant["selected_next_step"]["projection_candidate_refs"] = [other["projection_candidate_id"]]
+
+        violations = validate_cognition_packet(mutant)
+
+        assert "selected attention target cites retrieval paths outside its drive influence" in violations
+        assert "selected next step cites retrieval paths outside selected drive influence" in violations
+    finally:
+        projection.close()
+        journal.close()
+        tmp.cleanup()
+
+
+def test_claim_evidence_refs_must_keep_evidence_ref_shape():
+    tmp, journal, projection, packet = build_fixture_packet()
+    try:
+        mutant = copy.deepcopy(packet)
+        mutant["packet_status"] = "accepted"
+        mutant["claim_evidence_refs"] = [{"event_id": "forged"}]
+
+        violations = validate_cognition_packet(mutant)
+
+        assert any("claim evidence ref missing keys" in item for item in violations)
     finally:
         projection.close()
         journal.close()
@@ -283,7 +358,10 @@ def test_private_scope_is_blocked_without_leaking_restricted_label():
 
         assert packet["packet_status"] == "blocked_by_scope"
         assert packet["retrieval_summary"]["scope_exclusions"]
-        assert "private anomaly" not in str(packet["retrieval_summary"]["ghost_signals"])
+        rendered = str(packet)
+        assert "private anomaly" not in rendered
+        assert "restricted design note" not in rendered
+        assert "restricted tension" not in rendered
         assert any(decision["decision"] == "blocked_by_policy" for decision in packet["governance_decisions"])
     finally:
         projection.close()
@@ -478,16 +556,17 @@ def test_named_phase_10_mutants_fail_acceptance_gate():
 
 
 def test_rest_is_valid_repertoire_decision_when_cited_by_history():
-    tmp, journal, projection, packet = build_fixture_packet(
-        context={
-            "prompt": "let unresolved material settle",
-            "repertoire_preference": "rest",
-        }
+    tmp, journal, projection, packet = build_subject_packet(
+        "quiet cognition",
+        "internal consolidation is more honest than output",
+        "let unresolved material settle before acting",
+        context={"prompt": "same immediate context"},
     )
     try:
         assert packet["packet_status"] == "accepted"
         assert packet["selected_next_step"]["class"] == "rest"
         assert packet["selected_next_step"]["retrieval_path_refs"]
+        assert packet["selected_next_step"]["reason"] == "governed repertoire decision from retrieved projected evidence"
         assert packet["governance_decisions"][-1]["decision"] == "private_reflection_allowed"
     finally:
         projection.close()
@@ -496,33 +575,27 @@ def test_rest_is_valid_repertoire_decision_when_cited_by_history():
 
 
 def test_importing_cognition_does_not_load_legacy_runtime_modules():
-    for module in {
-        "agent",
-        "modes",
-        "mcp_server",
-        "retrieval",
-        "forgetting",
-        "embeddings",
-        "db",
-        "schema",
-        "seed",
-    }:
-        sys.modules.pop(module, None)
+    code = """
+import os
+import sys
+sys.path.insert(0, os.path.join(os.getcwd(), "src"))
+import cognition
+legacy = {"agent", "modes", "mcp_server", "retrieval", "forgetting", "embeddings", "db", "schema", "seed"}
+loaded = sorted(legacy & set(sys.modules))
+print(",".join(loaded))
+raise SystemExit(1 if loaded else 0)
+"""
 
-    __import__("cognition")
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        text=True,
+        capture_output=True,
+        cwd=os.path.join(os.path.dirname(__file__), ".."),
+    )
 
-    assert "cognition" in sys.modules
-    assert not {
-        "agent",
-        "modes",
-        "mcp_server",
-        "retrieval",
-        "forgetting",
-        "embeddings",
-        "db",
-        "schema",
-        "seed",
-    } & set(sys.modules)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == ""
 
 
 def test_service_free_smoke_script_runs_without_meno_launcher():

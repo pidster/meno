@@ -143,15 +143,16 @@
         "Private-scope fixture proving blocked retrieval is reported without leaking restricted labels.",
         "Provisional dream/rehearsal fixture proving hypothesis and simulation material remains not-factual and neutral for vitality.",
         "Irrelevant-history fixture proving retrieved but off-context history cannot claim positive influence or particularity.",
-        "Structured reflection disposition with cited influence refs, confidence limits, and rejected interpretations without identity prose."
+        "Structured reflection disposition with cited influence refs, confidence limits, and rejected interpretations without identity prose.",
+        "Post-review hardening: attention allocation now only sees retrieval-linked drives, selected refs must match selected drive influence, forged claim refs fail structural validation, and rest is evidence-derived rather than context-commanded."
       ],
       "remaining_gates": [],
-      "next_action": "Run final Phase 10 review or commit the implemented integrated cognition packet slice."
+      "next_action": "Commit post-review Phase 10 hardening, then rerun final review or mark Phase 10 complete."
     }
   },
   "validation": {
     "command": ".venv/bin/python -m pytest",
-    "last_result": "97 passed",
+    "last_result": "99 passed",
     "last_validated": "2026-05-23"
   },
   "notes": [

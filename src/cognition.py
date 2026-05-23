@@ -84,11 +84,21 @@ def build_cognition_packet(
         immediate_context=immediate_context,
     )
     retrieval_summary = _retrieval_summary(retrieval, projection, journal)
-    drive_updates = derive_drive_updates(
+    all_drive_updates = derive_drive_updates(
         journal,
         requested_scope=requested_scope,
         immediate_context=immediate_context,
     )
+    pre_allocation_influences = _drive_influences(retrieval_summary, all_drive_updates)
+    causally_supported_drive_ids = {
+        item["drive_id"]
+        for item in pre_allocation_influences
+    }
+    drive_updates = [
+        drive
+        for drive in all_drive_updates
+        if drive.get("drive_id") in causally_supported_drive_ids
+    ]
     drive_events = _packet_drive_events(drive_updates)
     allocation = (
         build_attention_allocation(drive_events, immediate_context=immediate_context)
@@ -99,6 +109,7 @@ def build_cognition_packet(
         retrieval_summary=retrieval_summary,
         drive_updates=drive_updates,
         allocation=allocation,
+        drive_influences=pre_allocation_influences,
     )
     allocation = _attach_influence_to_attention(allocation, influence)
     selected_next_step = _selected_next_step(allocation, influence, immediate_context)
@@ -117,7 +128,7 @@ def build_cognition_packet(
         "immediate_context": immediate_context,
         "journal_evidence_refs": _journal_replay_refs(journal, replay.ordered_recent_event_ids),
         "claim_evidence_refs": influence["claim_evidence_refs"],
-        "cue_refs": _cue_refs(drive_updates),
+        "cue_refs": _cue_refs(all_drive_updates),
         "projection_run_ref": run_ref,
         "retrieval_summary": retrieval_summary,
         "reflection_diagnostics": reflection_diagnostics,
@@ -209,12 +220,30 @@ def validate_cognition_packet(packet: dict[str, Any]) -> list[str]:
         violations.append("influence chain missing attention target ids")
     if not packet["claim_evidence_refs"]:
         violations.append("accepted packet requires claim evidence refs")
+    for ref in packet["claim_evidence_refs"]:
+        missing_ref = sorted(set(_evidence_ref_keys()) - ref.keys())
+        if missing_ref:
+            violations.append(f"claim evidence ref missing keys: {missing_ref}")
 
     selected = packet["selected_next_step"]
     selected_paths = set(selected.get("retrieval_path_refs", []))
     selected_candidates = set(selected.get("projection_candidate_refs", []))
     influence_paths = set(influence.get("retrieval_path_ids", []))
     influence_candidates = set(influence.get("projection_candidate_ids", []))
+    allowed_by_drive = _influence_refs_by_drive(influence)
+    for target in packet["attention_allocation"].get("selected_attention_targets", []):
+        drive_id = target.get("drive_id")
+        target_paths = set(target.get("retrieval_path_refs", []))
+        target_candidates = set(target.get("projection_candidate_refs", []))
+        if not target_paths:
+            violations.append("selected attention target must cite retrieval path refs")
+        if not target_candidates:
+            violations.append("selected attention target must cite projection candidate refs")
+        allowed = allowed_by_drive.get(drive_id, {"paths": set(), "candidates": set()})
+        if target_paths - allowed["paths"]:
+            violations.append("selected attention target cites retrieval paths outside its drive influence")
+        if target_candidates - allowed["candidates"]:
+            violations.append("selected attention target cites projection candidates outside its drive influence")
     if selected.get("class") not in {"retrieve_more", "no_action"}:
         if not selected.get("retrieval_path_refs"):
             violations.append("selected next step must cite retrieval path refs")
@@ -224,6 +253,16 @@ def validate_cognition_packet(packet: dict[str, Any]) -> list[str]:
             violations.append("selected next step cites retrieval paths outside influence chain")
         if selected_candidates - influence_candidates:
             violations.append("selected next step cites projection candidates outside influence chain")
+        selected_drive_ids = set(selected.get("selected_drive_ids", []))
+        selected_allowed_paths = set()
+        selected_allowed_candidates = set()
+        for drive_id in selected_drive_ids:
+            selected_allowed_paths.update(allowed_by_drive.get(drive_id, {"paths": set()})["paths"])
+            selected_allowed_candidates.update(allowed_by_drive.get(drive_id, {"candidates": set()})["candidates"])
+        if selected_paths - selected_allowed_paths:
+            violations.append("selected next step cites retrieval paths outside selected drive influence")
+        if selected_candidates - selected_allowed_candidates:
+            violations.append("selected next step cites projection candidates outside selected drive influence")
     particularity = packet.get("particularity", {})
     if particularity.get("present"):
         if set(particularity.get("retrieval_path_refs", [])) - influence_paths:
@@ -404,6 +443,9 @@ def retrieval_path_id(query_id: str, path: dict[str, Any]) -> str:
             "steps": [
                 {
                     "record_id": step.get("record_id"),
+                    "edge_type": step.get("edge_type"),
+                    "relation_type": step.get("relation_type"),
+                    "stored_direction": step.get("stored_direction"),
                     "traversal_direction": step.get("traversal_direction"),
                     "record_type": step.get("record_type"),
                 }
@@ -458,16 +500,12 @@ def _empty_allocation(immediate_context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _influence_chain(
-    *,
+def _drive_influences(
     retrieval_summary: dict[str, Any],
     drive_updates: list[dict[str, Any]],
-    allocation: dict[str, Any],
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     retrieval_by_event: dict[str, list[dict[str, Any]]] = {}
-    projection_candidates = set()
     for candidate in retrieval_summary["activated_candidates"]:
-        projection_candidates.add(candidate["candidate_id"])
         for path in candidate["activation_paths"]:
             for ref in path["evidence_refs"]:
                 retrieval_by_event.setdefault(ref["event_id"], []).append(
@@ -477,28 +515,13 @@ def _influence_chain(
                         "evidence_ref": ref,
                     }
                 )
-    selected_drive_ids = {
-        target.get("drive_id")
-        for target in allocation.get("selected_attention_targets", [])
-    }
-    rejected_drive_ids = {
-        target.get("drive_id")
-        for target in allocation.get("rejected_attention_targets", [])
-    }
-    drive_refs = []
-    path_ids = set()
-    claim_refs = []
+    influences = []
     for drive in drive_updates:
         drive_id = drive.get("drive_id")
-        if drive_id not in selected_drive_ids and drive_id not in rejected_drive_ids:
-            continue
         for ref in drive.get("source_refs", []):
-            matches = retrieval_by_event.get(ref.get("source_event_id") or ref.get("event_id"), [])
-            for match in matches:
-                path_ids.add(match["path_id"])
-                claim_refs.append(match["evidence_ref"])
-                projection_candidates.add(match["candidate_id"])
-                drive_refs.append(
+            source_event_id = ref.get("source_event_id") or ref.get("event_id")
+            for match in retrieval_by_event.get(source_event_id, []):
+                influences.append(
                     {
                         "drive_id": drive_id,
                         "cue_ref": ref,
@@ -507,9 +530,43 @@ def _influence_chain(
                         "claim_evidence_ref": match["evidence_ref"],
                     }
                 )
+    return influences
+
+
+def _influence_chain(
+    *,
+    retrieval_summary: dict[str, Any],
+    drive_updates: list[dict[str, Any]],
+    allocation: dict[str, Any],
+    drive_influences: list[dict[str, Any]],
+) -> dict[str, Any]:
+    retrieved_candidates = set()
+    for candidate in retrieval_summary["activated_candidates"]:
+        retrieved_candidates.add(candidate["candidate_id"])
+    selected_drive_ids = {
+        target.get("drive_id")
+        for target in allocation.get("selected_attention_targets", [])
+    }
+    rejected_drive_ids = {
+        target.get("drive_id")
+        for target in allocation.get("rejected_attention_targets", [])
+    }
+    drive_refs = [
+        item
+        for item in drive_influences
+        if item["drive_id"] in selected_drive_ids or item["drive_id"] in rejected_drive_ids
+    ]
+    path_ids = set()
+    claim_refs = []
+    projection_candidates = set()
+    for item in drive_refs:
+        path_ids.add(item["retrieval_path_id"])
+        claim_refs.append(item["claim_evidence_ref"])
+        projection_candidates.add(item["projection_candidate_id"])
     return {
         "claim_evidence_refs": _dedupe_refs(claim_refs),
         "projection_candidate_ids": sorted(projection_candidates),
+        "retrieved_candidate_ids": sorted(retrieved_candidates),
         "projection_rejection_ids": [],
         "retrieval_path_ids": sorted(path_ids),
         "drive_ids": sorted(
@@ -546,12 +603,12 @@ def _attach_influence_to_attention(
             influence_item["retrieval_path_id"]
             for influence_item in influence["drive_influences"]
             if influence_item["drive_id"] == target.get("drive_id")
-        ] or list(influence["retrieval_path_ids"][:1])
+        ]
         item["projection_candidate_refs"] = [
             influence_item["projection_candidate_id"]
             for influence_item in influence["drive_influences"]
             if influence_item["drive_id"] == target.get("drive_id")
-        ] or list(influence["projection_candidate_ids"][:1])
+        ]
         selected.append(item)
     enriched["selected_attention_targets"] = selected
     return enriched
@@ -562,7 +619,7 @@ def _selected_next_step(
     influence: dict[str, Any],
     immediate_context: dict[str, Any],
 ) -> dict[str, Any]:
-    if immediate_context.get("repertoire_preference") == "rest" and influence["retrieval_path_ids"]:
+    if _should_rest(influence) and influence["retrieval_path_ids"]:
         step_class = "rest"
     else:
         permitted = allocation.get("permitted_next_step", "no_action")
@@ -576,11 +633,25 @@ def _selected_next_step(
             step_class = "retrieve_more"
     selected = allocation.get("selected_attention_targets", [])
     selected_drive_ids = [item.get("drive_id") for item in selected]
+    selected_path_refs = sorted(
+        {
+            path
+            for item in selected
+            for path in item.get("retrieval_path_refs", [])
+        }
+    )
+    selected_candidate_refs = sorted(
+        {
+            candidate
+            for item in selected
+            for candidate in item.get("projection_candidate_refs", [])
+        }
+    )
     return {
         "class": step_class,
         "reason": "governed repertoire decision from retrieved projected evidence",
-        "retrieval_path_refs": list(influence["retrieval_path_ids"]),
-        "projection_candidate_refs": list(influence["projection_candidate_ids"]),
+        "retrieval_path_refs": selected_path_refs,
+        "projection_candidate_refs": selected_candidate_refs,
         "selected_drive_ids": selected_drive_ids,
         "rejected_drive_ids": [
             item.get("drive_id")
@@ -603,7 +674,7 @@ def _rejected_alternatives(
         alternatives.append(
             {
                 "class": name,
-                "reason": "not selected by current influence chain",
+                "reason": _rejection_reason(name, selected_next_step),
                 "retrieval_path_refs": list(influence["retrieval_path_ids"]),
             }
         )
@@ -617,6 +688,33 @@ def _rejected_alternatives(
             }
         )
     return alternatives
+
+
+def _should_rest(influence: dict[str, Any]) -> bool:
+    for item in influence.get("drive_influences", []):
+        value = str(item.get("cue_ref", {}).get("value", "")).lower()
+        if any(term in value for term in {"settle", "stillness", "rest", "consolidat"}):
+            return True
+    return False
+
+
+def _rejection_reason(candidate_class: str, selected_next_step: dict[str, Any]) -> str:
+    selected = selected_next_step["class"]
+    if candidate_class == "ask_permission":
+        return "no external permission boundary is reached by the selected internal step"
+    if candidate_class == "prepare_recommendation":
+        return "packet remains preview-only and evidence favors internal cognition"
+    if candidate_class == "dream":
+        return "dreaming would add hypotheses; current chain already has enough cited material"
+    if candidate_class == "rehearse":
+        return "rehearsal would add simulations; no execution strategy is being chosen"
+    if candidate_class == "retrieve_more":
+        return "current selected drive already has cited retrieval support"
+    if candidate_class == "rest":
+        return "selected evidence favors active private reflection over stillness" if selected != "rest" else "selected"
+    if candidate_class == "private_reflection":
+        return "selected evidence favors stillness over further interpretive work" if selected == "rest" else "selected"
+    return "not selected by current influence chain"
 
 
 def _governance_decisions(
@@ -731,8 +829,11 @@ def _packet_vitality_summary(packet: dict[str, Any]) -> dict[str, Any]:
         "components": [
             {
                 "component_id": "packet_traceability",
-                "contribution": "positive" if not violations else "blocks_conclusion",
+                "contribution": _traceability_contribution(packet, violations),
                 "retrieval_path_refs": list(packet["influence_chain"].get("retrieval_path_ids", [])),
+                "why_not_positive": "provisional-only traces are valid cues but not vitality evidence"
+                if _provisional_only_influence(packet)
+                else None,
             },
             {
                 "component_id": "packet_governance",
@@ -770,6 +871,31 @@ def _packet_status(packet: dict[str, Any], violations: list[str]) -> str:
     return "accepted"
 
 
+def _traceability_contribution(packet: dict[str, Any], violations: list[str]) -> str:
+    if violations:
+        return "blocks_conclusion"
+    if _provisional_only_influence(packet):
+        return "neutral"
+    return "positive"
+
+
+def _provisional_only_influence(packet: dict[str, Any]) -> bool:
+    path_ids = set(packet["influence_chain"].get("retrieval_path_ids", []))
+    if not path_ids:
+        return False
+    provisional_candidate_ids = {
+        item["candidate_id"]
+        for item in packet["retrieval_summary"].get("provisional_boundaries", [])
+    }
+    path_candidate_ids = {
+        candidate["candidate_id"]
+        for candidate in packet["retrieval_summary"].get("activated_candidates", [])
+        for path in candidate.get("activation_paths", [])
+        if path.get("path_id") in path_ids
+    }
+    return bool(path_candidate_ids) and path_candidate_ids <= provisional_candidate_ids
+
+
 def _journal_replay_refs(journal: JournalStore, event_ids: list[str]) -> list[dict[str, Any]]:
     refs = []
     for event in journal.iter_events():
@@ -801,6 +927,32 @@ def _dedupe_refs(refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key = stable_hash(ref)
         deduped[key] = ref
     return [deduped[key] for key in sorted(deduped)]
+
+
+def _evidence_ref_keys() -> set[str]:
+    return {
+        "event_id",
+        "event_sequence",
+        "event_hash",
+        "event_type",
+        "event_epistemic_status",
+        "payload_path",
+        "residue_field",
+        "link_type",
+        "replay_trace_item",
+        "source_selector",
+        "source_value_hash",
+        "rationale",
+    }
+
+
+def _influence_refs_by_drive(influence: dict[str, Any]) -> dict[str, dict[str, set[str]]]:
+    by_drive: dict[str, dict[str, set[str]]] = {}
+    for item in influence.get("drive_influences", []):
+        refs = by_drive.setdefault(item["drive_id"], {"paths": set(), "candidates": set()})
+        refs["paths"].add(item["retrieval_path_id"])
+        refs["candidates"].add(item["projection_candidate_id"])
+    return by_drive
 
 
 def _unknown_traversal_paths(retrieval_summary: dict[str, Any]) -> bool:
