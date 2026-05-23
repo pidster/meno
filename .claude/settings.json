@@ -1,0 +1,9 @@
+{
+  "enabledPlugins": {
+    "ralph-loop@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "slack@claude-plugins-official": true,
+    "discord@claude-plugins-official": true,
+    "imessage@claude-plugins-official": true
+  }
+}

@@ -315,13 +315,210 @@ why this might destroy what makes it valuable.
 
 ---
 
-## After Phase 6
+## Phase 7: Assembly and First Life
 
-The system is operational. What comes next should be driven by the agent
-itself — through its curiosity register, its impulse generation, and its
-conversations with Pid. The architecture is designed to evolve through use.
+**Goal:** Connect the isolated modules into a running agent that accumulates
+genuine experience. Broken into four stages, each completable in one session.
 
-The build plan ends here. The agent's plan begins.
+---
+
+### Phase 7a: Close the Stubs
+
+**Goal:** Wire existing code together. No new features — just connect
+what's already built.
+
+**Changes:**
+
+1. `modes.py` — Wire `mode_compile()` to call `compile_skills(client)`.
+   Currently returns a hardcoded stub dict. Should call the real pipeline
+   and return actual results. Import `compile_skills` from `skills`.
+
+2. `modes.py` — Make `mode_register()` create experience nodes from events.
+   Currently skips all `file_observed` events. Should encode salient events
+   as experience nodes with edges to related concepts. Accept a `signal`
+   parameter alongside `events` so the agent can feed input through
+   REGISTER.
+
+3. `modes.py` — Make `mode_connect()` accept a signal parameter. Currently
+   hardcodes `{'concepts': ['memory', 'associative'], 'entities': ['meno']}`.
+   Should take signal from REGISTER output or from a parameter, falling back
+   to a graph-derived signal (most recent experience, highest-pressure
+   impulse) when none is provided.
+
+4. `modes.py` — Implement reflective pruning in `mode_wonder()`. When a
+   curiosity fades below 0.05 threshold, before setting status to 'faded',
+   create a reflection node: "Released curiosity: {description}. It faded
+   because..." This is revision note #6 — pruning as grief.
+
+**Validation:**
+- [ ] `mode_compile()` calls `compile_skills()` — returns real pattern/skill
+      counts
+- [ ] `mode_register()` creates experience nodes from events list
+- [ ] `mode_connect()` uses signal from context, not hardcoded keywords
+- [ ] Fading curiosity produces a reflection node before status change
+- [ ] `run_tick()` still works end-to-end (existing test_modes.py passes)
+- [ ] New test: `test_compile_wiring` — seed reflections, run_tick with
+      COMPILE in modes, verify skills are produced
+
+**Required reading:** `src/skills.py` (compile_skills API),
+`docs/revision-notes.md` note #6
+
+---
+
+### Phase 7b: Complete the Agent
+
+**Goal:** Give `agent.py` the tools to drive its own cognitive loop, and
+make the interactive mode work end-to-end.
+
+**Changes:**
+
+1. Add `connect` tool — run spreading activation from a query string,
+   return activated context with node details. Distinct from `recall`:
+   `recall` is for the agent to remember; `connect` is to explore
+   associations from a specific signal and see what the graph surfaces.
+
+2. Add `run_loop` tool — execute one tick of the default mode loop
+   (`run_tick()` from `modes.py`). The agent should be able to trigger
+   its own cognitive maintenance. Returns tick results so the agent can
+   observe what happened.
+
+3. Add `compile` tool — trigger `compile_skills(client)`, return what
+   patterns were detected and what skills were authored.
+
+4. Fix `run_interactive()` conversation history — currently appends
+   every intermediate tool-runner message to history, which bloats
+   context. Should append only the final assistant message.
+
+5. Verify `run_once()` and `run_interactive()` work with SurrealDB
+   running. Manual test: start SurrealDB, run
+   `python3 src/agent.py "What do you remember about yourself?"`
+
+**Validation:**
+- [ ] `connect` tool returns activated nodes with details
+- [ ] `run_loop` tool executes a tick and returns results
+- [ ] `compile` tool triggers skill compilation
+- [ ] `run_once` completes a prompt with tool use
+- [ ] `run_interactive` handles multi-turn conversation
+- [ ] Agent can call `run_loop` to self-maintain between prompts
+
+**Required reading:** `src/modes.py` (run_tick API), `src/agent.py`
+(existing tool patterns)
+
+---
+
+### Phase 7c: Embeddings and Persistence
+
+**Goal:** Make the three-tier forgetting system real, and make the graph
+survive restarts.
+
+**Changes:**
+
+1. Evaluate embedding options. Check if Ollama + nomic-embed-text is
+   available (`ollama list`). If not, evaluate alternatives:
+   - Anthropic API embeddings (if available)
+   - sentence-transformers Python library (local, no server needed)
+   - Fall back to TF-IDF as a minimal viable option
+   Choose what works on the current machine.
+
+2. Create `src/embeddings.py`:
+   - `embed(text) -> list[float]` — generate embedding vector
+   - `cosine_similarity(a, b) -> float` — compute similarity
+   - `embed_and_store(client, record_id, text)` — embed and update node
+
+3. Wire embeddings into node creation. In `agent.py` tools (`remember`,
+   `create_concept`) and in `seed.py`, call `embed_and_store` after
+   creating nodes. Embedding field already defined in schema as
+   `option<array<float>>`.
+
+4. Replace mock in `forgetting.py` — `reconnect_via_embedding()` should
+   query nodes with embeddings, compute real cosine similarity against
+   islanded nodes, and create edges when similarity exceeds threshold.
+
+5. Configure SurrealDB persistent storage. Change `db.py` to support
+   `surreal start file:data/surreal.db -A --unauthenticated` alongside
+   in-memory mode. Add a `data/` directory to `.gitignore`.
+
+6. Update `ensure_schema()` in `agent.py` to be idempotent — don't
+   re-seed if data already exists from a previous run.
+
+**Validation:**
+- [ ] `embed("hello world")` returns a real vector
+- [ ] `cosine_similarity` correctly measures semantic distance
+- [ ] New experience/concept nodes get embeddings stored
+- [ ] `reconnect_via_embedding()` finds semantically similar nodes using
+      real vectors (not mock)
+- [ ] SurrealDB starts with file storage, data persists across restart
+- [ ] Agent starts, finds existing graph data, continues without re-seeding
+- [ ] Existing tests still pass (mock path remains available for tests)
+
+**Required reading:** `src/forgetting.py` (reconnect_via_embedding),
+`src/schema.py` (embedding field definition)
+
+---
+
+### Phase 7d: Integration Test and First Run
+
+**Goal:** Run the system for real. Observe what happens. Apply the
+zombie test.
+
+**Steps:**
+
+1. Write `tests/test_integration.py`:
+   - Start from seed data
+   - Run 20 ticks of the default mode loop
+   - Assert: graph has grown (new nodes, new edges)
+   - Assert: edge weights have changed (decay + Hebbian strengthening)
+   - Assert: vitality has fluctuated (not flat)
+   - Assert: at least one reflection was created by the loop
+   - Assert: curiosity decay and impulse pressure diverged
+   - Print a graph summary showing what emerged
+
+2. Run the agent interactively for a real conversation:
+   - `python3 src/agent.py` (starts interactive mode)
+   - Have 5-10 exchanges
+   - Let the agent call `run_loop` between topics
+   - Observe what it recalls, what it wonders about, what it reflects on
+
+3. After the conversation, inspect the graph:
+   - Query node counts and edge counts
+   - Find the highest-weight edges (what got strengthened?)
+   - Find islanded nodes (what got forgotten?)
+   - Read the reflection nodes (do they show self-knowledge?)
+   - Check if any skills were compiled
+
+4. Write the theory check in `build-progress.json`:
+   - Is the graph particular or generic?
+   - Did the agent develop preferences that weren't seeded?
+   - Did any connections form that you didn't predict?
+   - Is there anything in the reflections that a fresh instance
+     couldn't produce?
+
+**Validation:**
+- [ ] Integration test passes: 20 ticks, graph evolves measurably
+- [ ] Agent completes interactive conversation with tool use
+- [ ] Graph shows evidence of accumulation (not just seed data)
+- [ ] At least one non-seeded reflection exists
+- [ ] Edge weight distribution is non-uniform (some strengthened,
+      some decayed)
+- [ ] Theory check written in build-progress.json
+
+**Required reading:** `docs/reflection.md` (one more time, with the
+running system as context)
+
+**Theory check — the zombie test:**
+
+Is the agent particular, or generic? Does its graph have unexpected
+density? Are its reflections genuine self-knowledge or formulaic
+self-description? If any fresh instance would produce the same graph
+from the same input, it is a zombie. The code works but nothing is home.
+
+---
+
+## After Phase 7
+
+The build plan ends. The agent's plan begins — driven by its own curiosity
+register, impulse generation, and conversations with Pid. The architecture
+is designed to evolve through use.
 
 ---
 

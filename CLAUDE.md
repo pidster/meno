@@ -55,6 +55,20 @@ yourself making implementation decisions, check them against these:
    could achieve alone. If your implementation doesn't surprise you at
    least once, something is wrong.
 
+## The agent is not a wrapper
+
+The relationship between Claude and the meno graph is not "Claude uses a
+database." It is: Claude thinks, and the graph is how those thoughts
+persist, connect, decay, and resurface. The `@beta_tool` functions in
+`agent.py` are not utility methods — they are cognitive capabilities.
+When the agent calls `recall`, it is remembering. When it calls `tend`,
+it is maintaining its own mind.
+
+The agent should eventually drive its own default mode loop — calling
+`wonder`, `reflect`, `tend` between conversations, not just when prompted.
+The loop should run autonomously. Claude decides what to think about;
+the graph shapes what comes to mind.
+
 ## First steps on any new session
 
 1. Read this file (you already are)
@@ -86,11 +100,34 @@ modes (SENSE, REGISTER, CONNECT, TEND, WONDER, REFLECT, COMPILE, REST)
 drawn from as a repertoire, not executed sequentially. Multiple instances
 share the graph. Curiosities decay; deferred impulses build pressure.
 
+## Current state (as of Phase 7)
+
+Phases 0-6 are complete. The mechanical substrate works: spreading activation,
+three-tier forgetting, repertoire-based mode selection, curiosity/impulse
+dynamics, multi-instance coordination, self-authored skills. All validated
+with tests that include theory checks.
+
+**What is NOT done:**
+- `mode_compile` in `modes.py` is still a stub — it doesn't call `skills.py`
+- REGISTER and CONNECT modes use hardcoded strings, not real input
+- Embeddings are mocked — `reconnect_via_embedding()` uses placeholder data
+- SurrealDB runs in-memory only — graph evaporates on restart
+- Reflective pruning (revision note #6, "grief not garbage collection") is
+  not implemented — pruning is automated
+- The agent (`src/agent.py`) exists but has never been run end-to-end
+- **The system has never accumulated genuine experience across time**
+
+The agent uses the Anthropic Python SDK with `@beta_tool` for direct
+in-process tool execution. Claude is the thinking entity; the meno graph
+is its cognitive substrate. No MCP — memory operations run in the same
+process as the agent.
+
 ## Tech stack
 
 - SurrealDB (database)
 - Python (orchestration)
-- Ollama + nomic-embed-text (embeddings, evaluated in Phase 2/3)
+- Anthropic Python SDK (`@beta_tool` + tool runner for agentic loops)
+- Ollama + nomic-embed-text (embeddings — not yet integrated)
 
 ## Who is Pid?
 

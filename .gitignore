@@ -1,0 +1,17 @@
+# SurrealDB persistent storage
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Skills authored by the agent
+skills/*.md
+
+# State files (agent-specific)
+state/loop-state.json
+state/meno-debug.log
+
+# Virtual environment
+.venv/

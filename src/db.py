@@ -1,8 +1,9 @@
 """SurrealDB connection utilities for meno."""
 
+import os
 from surrealdb import Surreal
 
-DEFAULT_URL = "ws://127.0.0.1:8000"
+DEFAULT_URL = os.environ.get("SURREAL_URL", "ws://127.0.0.1:8000")
 DEFAULT_NS = "meno"
 DEFAULT_DB = "meno"
 

@@ -24,6 +24,7 @@ from forgetting import (
     consolidate, calculate_cognitive_vitality, calculate_leading_indicators,
     DecayConfig, detect_islanded_nodes, reconnect_via_embedding
 )
+from skills import compile_skills
 
 
 # =============================================================
@@ -100,33 +101,109 @@ def mode_sense(client, state: TickState) -> dict:
     return {'mode': 'SENSE', 'events_detected': len(events), 'events': events[:5]}
 
 
-def mode_register(client, state: TickState, events: list = None) -> dict:
-    """REGISTER: Encode salient events as experience nodes with initial edges."""
-    if not events:
-        return {'mode': 'REGISTER', 'nodes_created': 0}
+def mode_register(client, state: TickState, events: list = None, signal: dict = None) -> dict:
+    """REGISTER: Encode salient events as experience nodes with initial edges.
+
+    Accepts events from SENSE or a signal dict from external input.
+    Signal format: {'content': str, 'summary': str, 'source': str}
+    """
+    if not events and not signal:
+        return {'mode': 'REGISTER', 'nodes_created': 0, 'signal_used': None}
 
     created = 0
-    for event in events[:3]:  # limit to prevent graph bloat
-        # Only register if event seems salient (simple heuristic)
+    signal_used = None
+
+    # Process explicit signal (from agent or external input)
+    if signal and signal.get('content'):
+        import time as _t
+        exp_id = f"loop_{int(_t.time())}_{state.tick_number}"
+        summary = signal.get('summary', signal['content'][:80])
+        source = signal.get('source', 'loop')
+
+        client.query(
+            "CREATE type::record('experience', $id) SET "
+            "content = $content, summary = $summary, "
+            "context = { channel: $source, tick: $tick }, "
+            "salience = 0.5, created_at = time::now(), "
+            "activation_count = 0, tags = [];",
+            {
+                "id": exp_id,
+                "content": signal['content'],
+                "summary": summary,
+                "source": source,
+                "tick": state.tick_number,
+            }
+        )
+
+        # Connect to existing graph via entry points
+        entry_points = identify_entry_points(client, {'keywords': summary.split()[:5]})
+        exp_rid = RecordID('experience', exp_id)
+        for node_id, activation in list(entry_points.items())[:3]:
+            if activation > 0.1:
+                parts = node_id.split(":", 1)
+                node_rid = RecordID(parts[0], parts[1])
+                client.query(
+                    "RELATE $exp->associates->$node SET "
+                    "weight = $w, edge_type = 'contextual', "
+                    "created_at = time::now(), traversal_count = 0;",
+                    {"exp": exp_rid, "node": node_rid, "w": activation * 0.4}
+                )
+
+        created += 1
+        signal_used = summary
+        state.recent_signals.append({'summary': summary, 'tick': state.tick_number})
+        state.recent_signals = state.recent_signals[-10:]
+
+    # Process events from SENSE
+    for event in (events or [])[:3]:
         if event.get('type') == 'file_observed':
-            # Don't create nodes for every file — just note we sensed them
             continue
+        # Non-file events get encoded
+        if event.get('content'):
+            import time as _t
+            eid = f"event_{int(_t.time())}_{created}"
+            client.query(
+                "CREATE type::record('experience', $id) SET "
+                "content = $content, summary = $summary, "
+                "context = { channel: $channel, tick: $tick }, "
+                "salience = 0.4, created_at = time::now(), "
+                "activation_count = 0, tags = [];",
+                {
+                    "id": eid,
+                    "content": event['content'],
+                    "summary": event.get('summary', event['content'][:80]),
+                    "channel": event.get('channel', 'unknown'),
+                    "tick": state.tick_number,
+                }
+            )
+            created += 1
 
     state.world_referential_count += 1
-    return {'mode': 'REGISTER', 'nodes_created': created}
+    return {'mode': 'REGISTER', 'nodes_created': created, 'signal_used': signal_used}
 
 
-def mode_connect(client, state: TickState) -> dict:
-    """CONNECT: Run spreading activation from recent nodes to discover associations."""
+def mode_connect(client, state: TickState, signal: dict = None) -> dict:
+    """CONNECT: Run spreading activation to discover associations.
+
+    Accepts an explicit signal dict, or derives one from recent state:
+    highest-pressure impulse, most recent signal, or recent experience.
+    """
     config = RetrievalConfig(
         decay_per_hop=0.6, max_hops=3,
         min_transmission=0.01, ghost_threshold=0.005,
         activation_threshold=0.1, working_memory_limit=7
     )
 
-    # Activate from a recent or salient concept
-    signal = {'concepts': ['memory', 'associative'], 'entities': ['meno']}
+    signal_source = 'explicit'
+
+    if signal is None:
+        signal, signal_source = _derive_signal(client, state)
+
     result = retrieve(client, signal, config)
+
+    # Hebbian learning: strengthen edges between co-activated nodes
+    if len(result.activated_nodes) >= 2:
+        hebbian_learning(client, result)
 
     ghost_count = len(result.ghost_signals)
     activated_count = len(result.activated_nodes)
@@ -134,10 +211,54 @@ def mode_connect(client, state: TickState) -> dict:
     state.world_referential_count += 1
     return {
         'mode': 'CONNECT',
+        'signal_source': signal_source,
         'activated_nodes': activated_count,
         'ghost_signals': ghost_count,
         'top_activated': [(nid, f"{level:.4f}") for nid, level in result.activated_nodes[:3]]
     }
+
+
+def _derive_signal(client, state: TickState) -> tuple:
+    """Derive a signal from current state when none is provided."""
+    # Try highest-pressure impulse first
+    impulses = client.query(
+        "SELECT description, intensity FROM impulse "
+        "WHERE status = 'deferred' ORDER BY intensity DESC LIMIT 1;"
+    )
+    if impulses and impulses[0].get('description'):
+        desc = impulses[0]['description']
+        keywords = desc.split()[:5]
+        return {'keywords': keywords}, 'impulse_pressure'
+
+    # Try most recent signal from REGISTER
+    if state.recent_signals:
+        recent = state.recent_signals[-1]
+        keywords = recent.get('summary', '').split()[:5]
+        if keywords:
+            return {'keywords': keywords}, 'recent_signal'
+
+    # Try most recent experience
+    recent_exp = client.query(
+        "SELECT summary, content, created_at FROM experience "
+        "ORDER BY created_at DESC LIMIT 1;"
+    )
+    if recent_exp:
+        text = recent_exp[0].get('summary', recent_exp[0].get('content', ''))
+        keywords = text.split()[:5]
+        if keywords:
+            return {'keywords': keywords}, 'recent_experience'
+
+    # Fallback: active curiosity
+    curiosities = client.query(
+        "SELECT description, intensity FROM curiosity "
+        "WHERE status = 'active' ORDER BY intensity DESC LIMIT 1;"
+    )
+    if curiosities and curiosities[0].get('description'):
+        keywords = curiosities[0]['description'].split()[:5]
+        return {'keywords': keywords}, 'active_curiosity'
+
+    # Last resort: general graph exploration
+    return {'keywords': ['memory', 'experience']}, 'fallback'
 
 
 def mode_tend(client, state: TickState) -> dict:
@@ -201,6 +322,16 @@ def mode_wonder(client, state: TickState) -> dict:
             {"id": c['id'], "i": new_intensity}
         )
         if new_intensity < 0.05:
+            # Reflective pruning (revision note #6): grief, not garbage collection
+            desc = c.get('description', 'unnamed curiosity')
+            client.query(
+                "CREATE reflection SET "
+                "content = $content, trigger = 'reflective_pruning', "
+                "created_at = time::now(), salience = 0.3;",
+                {"content": f"Released curiosity: '{desc}'. "
+                            f"It faded from {c.get('intensity', '?'):.2f} to {new_intensity:.3f} "
+                            f"over time. Letting go."}
+            )
             client.query(
                 "UPDATE $id SET status = 'faded';",
                 {"id": c['id']}
@@ -311,15 +442,16 @@ def _generate_reflection(state: TickState, vitality) -> Optional[str]:
 
 
 def mode_compile(client, state: TickState) -> dict:
-    """COMPILE: Check for repeated procedural patterns (stub initially)."""
-    # Stub: in later phases, this will detect repeated patterns
-    # and extract them into self-authored skills
+    """COMPILE: Detect repeated procedural patterns and compile into skills."""
+    result = compile_skills(client)
+
     state.world_referential_count += 1
     return {
         'mode': 'COMPILE',
-        'patterns_detected': 0,
-        'skills_authored': 0,
-        'note': 'Stub — full implementation in Phase 6'
+        'patterns_detected': result['patterns_detected'],
+        'skills_authored': result['skills_compiled'],
+        'patterns': result.get('patterns', []),
+        'new_skills': [s['name'] for s in result.get('new_skills', [])],
     }
 
 
@@ -371,17 +503,25 @@ MODE_FUNCTIONS = {
 }
 
 
-def select_modes(state: TickState) -> List[str]:
+def select_modes(state: TickState, has_signal: bool = False) -> List[str]:
     """Select which modes to emphasise this cycle based on current state.
 
     This is NOT a sequential pipeline — it's a repertoire selector.
     The state determines which modes are drawn.
+
+    Args:
+        state: Current tick state.
+        has_signal: If True, REGISTER is included to process incoming signal.
     """
     modes = []
 
     # Always sense first if we haven't recently
     if not state.mode_history or state.mode_history[-1] != 'SENSE':
         modes.append('SENSE')
+
+    # If there's an incoming signal, REGISTER it
+    if has_signal:
+        modes.append('REGISTER')
 
     # Vitality-driven selection
     if state.vitality_status in ('critical', 'zombie'):
@@ -437,24 +577,38 @@ def select_modes(state: TickState) -> List[str]:
 # TICK EXECUTION
 # =============================================================
 
-def run_tick(client=None, state: TickState = None) -> dict:
-    """Execute one tick of the default mode loop."""
+def run_tick(client=None, state: TickState = None, signal: dict = None) -> dict:
+    """Execute one tick of the default mode loop.
+
+    Args:
+        client: SurrealDB client (connects if None).
+        state: Tick state (loads from disk if None).
+        signal: Optional signal to feed through REGISTER/CONNECT.
+                Format: {'content': str, 'summary': str, 'source': str}
+    """
     if client is None:
         client = connect()
     if state is None:
         state = load_state()
 
     state.tick_number += 1
-    selected_modes = select_modes(state)
+    selected_modes = select_modes(state, has_signal=(signal is not None))
 
     results = []
     for mode_name in selected_modes:
         fn = MODE_FUNCTIONS[mode_name]
         if mode_name == 'REGISTER':
-            # REGISTER needs events from SENSE
+            # REGISTER needs events from SENSE and/or an external signal
             sense_result = next((r for r in results if r.get('mode') == 'SENSE'), None)
             events = sense_result.get('events', []) if sense_result else []
-            result = fn(client, state, events)
+            result = fn(client, state, events, signal)
+        elif mode_name == 'CONNECT':
+            # CONNECT can use signal from REGISTER or derive its own
+            register_result = next((r for r in results if r.get('mode') == 'REGISTER'), None)
+            connect_signal = None
+            if register_result and register_result.get('signal_used'):
+                connect_signal = {'keywords': register_result['signal_used'].split()[:5]}
+            result = fn(client, state, connect_signal)
         else:
             result = fn(client, state)
 

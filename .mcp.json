@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "meno": {
+      "command": "/Users/pidster/src/github.com/pidster/meno/.venv/bin/python3.13",
+      "args": ["/Users/pidster/src/github.com/pidster/meno/src/mcp_server.py"],
+      "env": {
+        "SURREAL_URL": "ws://127.0.0.1:8000",
+        "OLLAMA_URL": "http://localhost:11434"
+      }
+    }
+  }
+}
