@@ -817,27 +817,128 @@ internals when the requested scope disallows them.
 **Goal:** Turn retrieved evidence into authored meaning.
 
 **Scope:**
-- Reflection prompts/workflows.
-- Reflection nodes linked to evidence and retrieval traces.
-- Proposed graph updates from reflection, not automatic mutation.
+- A standalone stdlib reflection workflow over Phase 1 journal, Phase 2
+  projection, and Phase 3 typed retrieval outputs.
+- Caller-supplied or fixture-supplied reflection content in this phase. Phase 4
+  validates, records, scores, and proposes; it does not call an LLM or reuse
+  legacy `src/agent.py` / `src/modes.py`.
+- Reflection is journal-first: a reflection journal event must be appended
+  before any reflection candidate can be projected.
+- Reflection event payloads must include:
+  - `cited_source_event_ids`
+  - `retrieval_result_hash`
+  - `cited_retrieval_paths` with candidate ids, path steps, source refs, scope
+    decisions, ghost/omitted markers, and redaction state
+  - typed `interpretive_claims`
+  - `open_questions`
+  - `uncertainty_notes`
+  - `possible_self_deception`
+  - `rejected_interpretations`
+  - `changed_stance`
+  - `future_attention`
+  - `proposed_graph_updates`
+  - `deferred_graph_updates`
+- Reflection candidate projection from reflection journal events only. Reflected
+  graph structures remain authored/provisional unless later evidence supports a
+  stronger status.
+- Proposed graph updates from reflection are emitted as journaled
+  `graph_update_proposal` events only. Reflection must not write projection rows,
+  promote candidates, demote candidates, create edges, or mutate memory directly.
+- Disposition of a proposal is a journaled `decision` event. "Accept" means
+  authoring an auditable decision/proposal, not applying a graph mutation.
+- Deterministic formulaic-reflection and history-influence evaluators.
+- Privacy/resource scope checks for reflected content and proposed graph
+  updates. Redacted retrieval inputs must not leak through reflection prose,
+  claims, future-attention fields, or proposals.
+
+**Reflection Claim Types:**
+
+- `summary_observation`: a bounded restatement of evidence; cannot support a
+  graph update by itself.
+- `interpretive_claim`: authored meaning over cited evidence and retrieval
+  paths; provisional by default.
+- `tension`: an unresolved conflict, asymmetry, or pressure discovered by
+  reflection.
+- `self_correction`: an authored change in stance about prior interpretation.
+- `preference_hypothesis`: a possible emerging preference; provisional until
+  supported by repeated behavior or outcomes.
+- `drive_update_proposal`: proposed future attention, curiosity, impulse, or
+  commitment change, with resource/privacy boundaries.
+- `deferred_question`: explicit non-resolution because evidence is insufficient.
+- `rejected_interpretation`: a plausible reading the reflection refuses to
+  adopt, with reason.
+
+**Formulaic Reflection Detector:**
+
+Flag and fail reflection artifacts that have any of:
+
+- No cited retrieval path for a substantive claim.
+- Event-id-only citation where source-ref/path-level citation is available.
+- No `changed_stance`, `tension`, `self_correction`, `future_attention`, or
+  proposal/defer/reject disposition.
+- Generic phrases without bound evidence or consequence, such as "this shows
+  the importance of continuity", "I notice a tension", "this suggests a need for
+  balance", or equivalent template language.
+- Overconfident synthesis from dream, rehearsal, conflicted, invalidated,
+  superseded, ghosted, or omitted material.
+- Invented intimacy, preference, commitment, or concern not supported by cited
+  evidence.
+- Missing uncertainty where evidence is weak, provisional, contradicted, or
+  scope-restricted.
 
 **Acceptance Criteria:**
-- Reflections cite evidence.
-- Formulaic reflections are detectable.
-- Reflections can propose, accept, reject, or defer graph changes.
+- Every reflection journal event cites source event ids and path/source-ref
+  details for every substantive claim.
+- Reflection projection creates provisional `reflection` candidates linked to
+  reflection journal events and cited evidence; it does not create factual graph
+  claims.
+- Formulaic reflections are rejected by deterministic tests.
+- Reflections can propose, reject, or defer graph changes through journal events
+  only; proposal acceptance is represented by a separate auditable decision
+  event.
+- Dream-derived material remains hypothesis-marked; rehearsal-derived material
+  remains simulation-marked; conflict material remains conflict-marked and
+  cannot be flattened into ordinary synthesis.
+- Each valid reflection records what changed, what remains uncertain, what must
+  not be concluded, and what future cognition should attend to differently.
+- Scope-restricted retrieval material can influence internal reflection only
+  through redacted safe shapes and cannot leak in output or proposals.
 
 **Adversarial Questions:**
 - Could a fresh generic instance have written the same reflection?
 - What changed because of this reflection?
 - Is the reflection meaning-making or summary?
+- Which claims are evidence, which are interpretation, and which remain
+  provisional?
+- What did the reflection refuse to conclude?
+- What future attention changed, and what resource/privacy boundaries apply?
 
 **Do Not Proceed If:**
 - Reflection writes untraceable facts into memory.
+- Reflection can mutate projection state directly.
+- Reflection can support factual graph proposals without later observed
+  non-provisional evidence.
+- Reflection can cite a dream, rehearsal, conflict, ghost, or omitted candidate
+  as ordinary factual support.
+- A generic citation-bearing summary can pass the zombie gate.
 
 **Zombie Gate:**
-- A test or eval must compare a reflection written with project history against
-  one written without it, and fail if the history-aware reflection is generic or
-  merely summarises retrieved facts.
+- Deterministic fixture pair:
+  - one reflection artifact produced with typed retrieval over accumulated
+    project history
+  - one reflection artifact produced with empty/minimal history
+- The history-aware artifact must cite concrete retrieval paths and source refs,
+  identify at least one non-obvious synthesis or tension tied to accumulated
+  state, and produce a future-attention change, rejected interpretation,
+  deferred question, or provisional graph proposal absent from the no-history
+  artifact.
+- The no-history artifact must not pass by writing plausible generic prose.
+- Tests must fail if reflection is citation-only summary, generic therapeutic
+  self-talk, overconfident synthesis, ungrounded preference invention,
+  dream-to-fact laundering, rehearsal-to-observed laundering, conflict
+  flattening, or direct projection mutation.
+- Model-judged evals may be supplemental only. CI acceptance must rest on
+  deterministic fixtures and validators.
 
 ## Phase 5: Consolidation And Forgetting
 
