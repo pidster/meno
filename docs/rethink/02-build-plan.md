@@ -1758,21 +1758,53 @@ remain private.
 - `policy_version`
 - `packet_id`
 - `mode`
+- `packet_status`: accepted, insufficient_evidence, blocked_by_scope,
+  or invalid_packet.
 - `requested_scope`
 - `immediate_context`
-- `journal_evidence_refs`
-- `projection_run_ref`
+- `journal_evidence_refs`: packet-level replay anchors only.
+- `claim_evidence_refs`: claim-level refs using the Phase 2 `EvidenceRef`
+  shape. Weaker journal or drive refs may appear only as `cue_refs`, never as
+  auditable claim evidence.
+- `projection_run_ref` with run id, projection key, version, source sequence
+  range, source event hash map, status, created candidate ids, rejected
+  candidate ids, and warnings.
 - `retrieval_summary` with activated candidates, path ids, source refs, omitted
-  candidates, ghost signals, and scope exclusions
+  candidates, ghost signals, scope exclusions, epistemic status, provisional
+  flags, and a clear label that retrieval weights are activation mechanics, not
+  evidence confidence or vitality.
 - `reflection_diagnostics` using existing formulaic and history-influence
   checks without generating personality prose
+- `reflection_disposition` with structured metacognitive stance: changed view,
+  unresolved tension, confidence limits, rejected interpretations, and whether
+  private reflection is allowed, deferred, or blocked.
 - `drive_updates`
-- `attention_allocation`
-- `vitality_summary`
-- `selected_next_step`
-- `rejected_alternatives`
-- `governance_decisions`
+- `attention_allocation` with selected targets carrying structured
+  `retrieval_path_refs` and `projection_candidate_refs`. Free-form explanation
+  strings are non-authoritative.
+- `vitality_summary` validating this Phase 10 packet object. It must not call
+  Phase 9's journal-only packet derivation as a substitute.
+- `selected_next_step` with permitted class, selected retrieval paths, selected
+  and rejected drive ids, governance decision, and the counterfactual class that
+  would have been chosen without relevant history.
+- `rejected_alternatives` with structured reasons.
+- `governance_decisions` distinguishing blocked by policy, deferred for
+  insufficient evidence, permission should be asked, and private reflection is
+  allowed.
+- `influence_chain`: source evidence refs -> projection candidate/rejection ids
+  -> retrieval path ids -> reflection/drive refs -> selected/rejected attention
+  targets -> vitality component refs.
+- `particularity`: the history-specific concern, preference, unresolved impulse,
+  or rejected interpretation that makes this packet non-substitutable.
 - `no_external_action`
+
+**Retrieval Path Identity:**
+- Stable path ids are deterministic hashes over query id, entry candidate id,
+  target candidate id, ordered step record ids, traversal directions, and
+  canonical evidence refs.
+- Unknown edge or relation types block accepted packet status unless a traversal
+  policy explicitly registers their direction and provisional/factual
+  semantics.
 
 **Acceptance Criteria:**
 - The packet cannot be produced from journal residue alone; projection and typed
@@ -1780,24 +1812,49 @@ remain private.
   evidence.
 - Attention selection must cite retrieved interpretation, not just raw residue
   or event type.
+- Accepted packet status requires non-empty projection run evidence, at least one
+  activated retrieval path, and a selected or consciously rejected attention
+  target that cites that retrieval path.
+- Projection and retrieval must be causally used, not merely present. A packet
+  whose attention or next-step decision can be recomputed from raw residue alone
+  is invalid.
 - The same immediate context plus different projected histories changes both
   retrieval and attention with cited reasons.
 - The same immediate context plus irrelevant or shuffled histories does not
   produce a positive history-influence conclusion.
 - Missing projection, missing retrieval paths, or formulaic reflection
   diagnostics block a strong packet status.
-- Preview mode is read-only and leaves journal/projection event counts unchanged.
+- Preview mode accepts an already-built projection store, does not call
+  projection mutation APIs, does not append attention/reflection events, and
+  leaves journal event count, projection run count, candidate count, relation
+  count, and decision count unchanged.
 - The packet explains blocked private/resource-disallowed material without
   leaking restricted labels.
+- `rest` and `no_action` are valid repertoire decisions. At least one accepted
+  fixture must choose `rest` because internal consolidation is more honest than
+  recommendation, dreaming, rehearsal, or external action.
+- The service-free smoke path constructs a temporary journal/projection fixture
+  and emits or validates a packet without `meno.sh`, SurrealDB, Anthropic,
+  Ollama, MCP, or network access.
+- Import-boundary tests prove importing `cognition` does not load legacy runtime
+  modules.
 - Tests distinguish rethink validation from legacy service-bound tests.
 
 **Zombie Gate:**
 - Fail if a memory-blind, salience-only, projection-free, retrieval-free,
   posthoc-explanation, or legacy-runtime implementation can produce an accepted
   packet.
+- Executable mutant fixtures must cover: `residue_only`, `projection_free`,
+  `retrieval_free`, `attention_ignores_retrieval`, `posthoc_explainer`,
+  `salience_only`, `irrelevant_history_personalizer`, `shuffled_provenance`,
+  `scope_leaker`, `formulaic_reflector`, and `legacy_runtime_importer`.
+- The gate must also fail when projection/retrieval sections are populated but
+  causally unused, when provisional dream/rehearsal material loses its status,
+  or when retrieval activation/confidence is counted as vitality.
 
 **Do Not Proceed If:**
 - The packet calls legacy runtime surfaces.
 - A packet can claim cognition without projection and typed retrieval evidence.
 - Free-form explanation strings substitute for structured replayable refs.
 - It performs external action or autonomous scheduling.
+- `commit_journal_events` is implemented without a separate adversarial review.

@@ -119,14 +119,39 @@
     },
     "10": {
       "name": "Integrated Cognition Packet",
-      "status": "planned",
+      "status": "in_progress",
       "plan_section": "docs/rethink/02-build-plan.md#phase-10-integrated-cognition-packet",
-      "next_action": "Run adversarial design review before implementation."
+      "primary_module": "src/cognition.py",
+      "smoke_module": "src/cognition_smoke.py",
+      "tests": [
+        "tests/test_cognition.py"
+      ],
+      "review_agents": [
+        "019e5679-8374-77a1-9e42-6b9e14731175",
+        "019e5679-963f-76d0-adc2-a991e32f4281",
+        "019e5679-ad63-7f91-bc30-59686152000a",
+        "019e5679-bfaa-7541-8347-71233d052c91",
+        "019e5679-d25d-7fc3-97e5-0a1854709cd5"
+      ],
+      "implemented_slice": [
+        "Preview-only integrated packet over prebuilt projection state.",
+        "Structured influence chain from claim evidence refs through projection, retrieval paths, drive refs, attention refs, and packet vitality summary.",
+        "Stable retrieval path ids and packet validation for projection/retrieval causal use.",
+        "Service-free smoke path separate from meno.sh.",
+        "Executable Phase 10 mutant gate covering residue-only, projection-free, retrieval-free, posthoc, salience-only, provenance, formulaic, and legacy-runtime failures.",
+        "Paired-history fixture proving same context with different projected histories changes retrieval, attention, and particularity basis.",
+        "Private-scope fixture proving blocked retrieval is reported without leaking restricted labels.",
+        "Provisional dream/rehearsal fixture proving hypothesis and simulation material remains not-factual and neutral for vitality.",
+        "Irrelevant-history fixture proving retrieved but off-context history cannot claim positive influence or particularity.",
+        "Structured reflection disposition with cited influence refs, confidence limits, and rejected interpretations without identity prose."
+      ],
+      "remaining_gates": [],
+      "next_action": "Run final Phase 10 review or commit the implemented integrated cognition packet slice."
     }
   },
   "validation": {
     "command": ".venv/bin/python -m pytest",
-    "last_result": "86 passed",
+    "last_result": "97 passed",
     "last_validated": "2026-05-23"
   },
   "notes": [
