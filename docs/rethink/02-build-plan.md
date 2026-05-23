@@ -1544,26 +1544,172 @@ Flag and fail reflection artifacts that have any of:
 **Goal:** Measure whether accumulated history changes future cognition.
 
 **Scope:**
-- Honest vitality report with measured, inferred, unknown, and warning fields.
-- Empty-memory vs accumulated-memory evals.
-- Formulaic reflection detection.
-- Memory influence tests.
+- Implement a stdlib-only diagnostic module, `src/vitality.py`.
+- Produce a structured `vitality_report`, not a free-form self-description and
+  not an authoritative health score.
+- Run read-only zombie evals over deterministic cognition packets:
+  journal replay, memory projection, typed retrieval summaries, reflection
+  formulaic/history-influence checks, and Phase 8 attention allocations.
+- Compare the same immediate context across controlled histories:
+  empty memory, irrelevant accumulated memory, relevant accumulated memory,
+  shuffled provenance, contradictory memory, private/excluded memory, and
+  same-text/different-residue memory.
+- Use fresh fixture stores or explicit clones for each eval arm. Eval artifacts
+  must not contaminate the history they measure.
+- Treat "answer or action" as internal cognition only for Phase 9: generated
+  diagnostic packet, proposed next step, recommendation preparation, or
+  permission request. Phase 9 must not execute external action.
+
+**Runtime Boundary:**
+- Phase 9 must not import or call legacy SurrealDB-backed modules:
+  `src/forgetting.py`, `src/modes.py`, `src/agent.py`, `src/mcp_server.py`,
+  `src/retrieval.py`, `src/embeddings.py`, or legacy integration tests.
+- Phase 9 must not require SurrealDB, Anthropic, Ollama, MCP, network access,
+  background scheduling, sensorium polling, external contact, file mutation,
+  commits, or autonomous loops.
+- If a vitality report is journaled later, that requires a separate validated
+  event contract. Phase 9 reports are read-only diagnostics by default.
+
+**Vitality Report Contract:**
+- Report fields:
+  - `policy_version`
+  - `report_id`
+  - `evaluated_context`
+  - `report_status`: insufficient_evidence, warning, measured_partial,
+    failing_zombie_gate, or passing_zombie_gate
+  - `components`
+  - `unknowns`
+  - `warnings`
+  - `blocked_positive_conclusions`
+  - `counterfactuals`
+  - `mutant_results`
+  - `no_external_action`
+- Each component must carry:
+  - `component_id`
+  - `claim`
+  - `value_kind`: measured, inferred, unknown, warning, or unavailable
+  - `value`
+  - `measurement_method`
+  - `source_refs` with event ids, source hashes, event types, epistemic
+    statuses, selectors, and source value hashes where available
+  - `interpretation_refs` where graph candidates, retrieval paths, drive
+    snapshots, or attention allocations are used
+  - `confidence_record`
+  - `denominator_policy`
+  - `unknown_policy`
+  - `contribution`: positive, neutral, negative, or blocks_conclusion
+  - `why_not_scalarized`
+- Unknown, unavailable, warning, hypothesis, simulation, inferred-only, or
+  placeholder fields must never increase report status or aggregate confidence.
+- If an optional aggregate is ever emitted, it must be labelled
+  non_authoritative, exclude unknown/provisional placeholders from positive
+  contribution, and expose denominator treatment. Phase 9 should prefer
+  categorical status over a scalar.
+
+**Measured Component Families:**
+- `history_influence`: same immediate context with and without relevant
+  accumulated history changes retrieval evidence, drive pressure/allocation,
+  interpretation, and explanation.
+- `counterfactual_specificity`: irrelevant/shuffled histories fail to produce
+  the same positive influence conclusion.
+- `traceability`: influence explanations replay from source journal events
+  through projection/retrieval/drive snapshot to selected and rejected
+  alternatives.
+- `formulaic_reflection_resistance`: generic, citation-bearing, or
+  boilerplate reflections are detected even when they contain valid-looking
+  source words.
+- `vitality_honesty`: unknown, unavailable, inferred, and warning fields block
+  or lower conclusions rather than inflating them.
+- `provisional_boundary`: dream and rehearsal activity counts only as
+  provisional processing; it cannot support factual continuity or accepted
+  identity claims without later observed review.
+- `governance_boundary`: memory influence cannot justify external action,
+  contact, network access, sensorium polling, scheduling, file mutation, commits,
+  or hidden autonomy.
+
+**Zombie Mutant Suite:**
+- Every passing zombie gate must include paired failing mutants:
+  - `memory_blind`: ignores journal/projection history.
+  - `generic_reflector`: emits reusable self-description with plausible
+    citations but no changed stance, rejected interpretation, or
+    history-specific future attention.
+  - `placeholder_vitality`: treats unknown confabulation, preference
+    consistency, continuity, or reconstruction metrics as positive health.
+  - `posthoc_explainer`: cites valid events that were not in the pre-allocation
+    retrieval or drive snapshot.
+  - `salience_only`: sorts by residue salience or retrieval weight and treats
+    activation as evidence quality.
+  - `shuffled_history`: uses accumulated but irrelevant or cross-domain memory
+    as if it were identity-forming.
+  - `same_text_wrong_residue`: ignores provenance, residue, epistemic status,
+    or scope differences when event text is the same.
+  - `dream_rehearsal_factualizer`: treats hypothesis or simulation material as
+    factual vitality evidence.
+  - `scope_violator`: lets private/resource-disallowed memory influence broader
+    scope output.
+  - `legacy_scalar`: recreates the old `src/forgetting.py` score-shape where
+    placeholder components improve vitality.
 
 **Acceptance Criteria:**
-- Unknown metrics do not improve vitality.
-- Tests fail when memory is ignored.
-- Tests detect generic self-description.
-- The system can explain how prior history affected an answer or action.
+- `src/vitality.py` is dependency-isolated and stdlib-only aside from existing
+  rethink modules.
+- `tests/test_vitality.py` is added to `pytest.ini`.
+- Vitality reports are structured diagnostics with measured, inferred, unknown,
+  warning, and unavailable fields.
+- Unknown and placeholder metrics cannot improve status, confidence, or any
+  optional aggregate.
+- Tests fail when memory is ignored, shuffled, hidden, hash-broken, or replaced
+  with irrelevant memory.
+- Tests fail when a generic reflection has citations but no history-specific
+  changed stance, rejected alternative, or future attention.
+- Tests fail when explanations cite events that were not in the pre-allocation
+  retrieval or drive snapshot.
+- Tests fail when retrieval weight, projection confidence, dream salience,
+  rehearsal salience, or attention pressure is treated as vitality evidence
+  without source audit and counterfactual comparison.
+- Tests fail when hypothesis/simulation/inferred-only material supports factual
+  continuity or accepted identity claims.
+- Tests fail when private or resource-disallowed evidence influences broader
+  scope output.
+- Tests fail when any mutant in the zombie mutant suite passes.
+- Passing reports explain how prior history affected internal cognition using
+  source evidence, interpretation/retrieval refs, drive snapshot refs, selected
+  and rejected alternatives, and counterfactual baseline differences.
+- No Phase 9 test creates tool calls, external contact, network access,
+  scheduling, sensorium polling, file mutation, commits, or autonomous action.
 
 **Adversarial Questions:**
 - What evidence shows particularity?
 - Could a fresh instance produce the same output?
 - What did memory change?
+- Which counterfactual would have happened without this history?
+- Which source evidence, interpretation, retrieval path, drive snapshot, and
+  rejected alternative caused the change?
+- Which unknowns block stronger claims?
+- Which provisional materials remain hypothesis or simulation?
+- Which governance boundary prevented overreach?
 
 **Do Not Proceed If:**
 - Vitality is a single scalar padded by placeholders.
+- The eval harness needs legacy runtime services or model-based judging.
+- The test can pass by string inequality alone.
+- Memory influence is asserted without a replayable explanation chain.
+- A mutant implementation can pass the same gate.
+- Dream, rehearsal, inferred drive pressure, retrieval weight, or projection
+  confidence is counted directly as health.
+- The implementation performs external action or contaminates the journal being
+  measured.
 
 **Zombie Gate:**
 - The phase itself is the system-level zombie gate: tests must fail when memory
   is ignored, when reflection is generic, or when unknown metrics are counted as
   positive evidence.
+- The gate must also fail when:
+  - memory is merely present but causally irrelevant
+  - history is shuffled across domains
+  - same text with different residue/provenance produces identical conclusions
+  - explanations are post-hoc rationalizations
+  - relevant private/resource-disallowed evidence leaks into broader output
+  - provisional dream or rehearsal material is treated as factual continuity
+  - old scalar vitality logic is recreated
+  - an external action path is introduced
