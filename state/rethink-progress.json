@@ -78,9 +78,9 @@
     },
     "7": {
       "name": "Rehearsal",
-      "status": "next",
+      "status": "design_ready",
       "plan_section": "docs/rethink/02-build-plan.md#phase-7-rehearsal",
-      "next_action": "Tighten the Phase 7 design contract with adversarial review before implementation."
+      "next_action": "Implement the Phase 7 rehearsal workflow and tests against the tightened contract."
     },
     "8": {
       "name": "Drives And Attention",

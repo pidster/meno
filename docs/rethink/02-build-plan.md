@@ -1202,29 +1202,163 @@ Flag and fail reflection artifacts that have any of:
 **Goal:** Dry-run improved approaches before real-world action.
 
 **Scope:**
-- Rehearsal targets from failures, repeated workflows, corrections, and
-  fragile commitments.
-- Strategy variants.
-- Simulated execution traces.
-- Predicted failure modes.
-- Candidate procedural updates.
+- Implement a stdlib-only deterministic rehearsal workflow over journal replay,
+  typed retrieval snapshots, reflection outputs, consolidation lifecycle
+  metadata, and explicit outcome/correction/failure evidence.
+- Do not require SurrealDB, Ollama, embeddings, network access, autonomous
+  scheduling, model-generated simulation prose, or external side-effect tools.
+- Rehearsal is a simulation over an evidence-cited proposed action. It is not
+  dreaming, reflection, planning prose, execution, skill authoring, or factual
+  memory creation.
+- Rehearsal events must be appended through a `rehearsal_workflow` boundary.
+  Manual string-shaped rehearsal payloads are invalid once this phase is
+  implemented.
+- Eligible rehearsal targets:
+  - observed failed outcomes or mismatches
+  - repeated workflows with prior retrieval-use or outcome traces
+  - corrections, contradictions, or rejected interpretations that imply a safer
+    future approach
+  - fragile commitments or decisions with unresolved constraints
+  - reflection future-attention or deferred graph/action updates
+  - consolidation findings that identify repeated weak edges, dormant material,
+    or pruning/release decisions that should change future method
+- Exclusions:
+  - free-floating task labels without journal provenance
+  - private/resource-disallowed material outside the requested rehearsal scope
+  - dream residue unless explicitly included as hypothesis material
+  - prior rehearsal output unless explicitly included as simulation material
+  - irrelevant high-salience noise without an unresolved action risk
+  - targets failing journal integrity or source-hash validation
+- Every selected target must cite source event id, source hash, event type,
+  epistemic status, target field selector or retrieval path id, scope decision,
+  target category, selection reason, and selection weight.
+- Each rehearsal payload must include structured fields:
+  - `policy_version`
+  - `target_refs`
+  - `problem_context`
+  - `current_or_failed_approach`
+  - `strategy_variants`
+  - `selected_variant_id`
+  - `improvement_hypothesis`
+  - `assumptions`
+  - `simulated_trace`
+  - `predicted_observations`
+  - `predicted_failure_modes`
+  - `validation_criteria`
+  - `falsification_criteria`
+  - `candidate_procedure_updates`
+  - `resource_scope_decision`
+  - `privacy_scope_decision`
+  - `review_status`
+  - explicit `not_executed`
+- `strategy_variants` must be structured objects with stable variant ids,
+  rationale, expected advantage over the cited current/failed approach,
+  preconditions, resource/contact requirements, and risks.
+- `simulated_trace` must be structured steps with stable step ids, simulated
+  action description, expected local state, possible failure point, assumption
+  refs, and `simulated: true`.
+- `predicted_observations` and `predicted_failure_modes` must have stable
+  prediction ids, expected signal, success/failure condition, matching rule, and
+  confidence/uncertainty note. These are the only units later outcomes can
+  confirm or falsify.
+- `candidate_procedure_updates` are provisional drafts only. They may record a
+  candidate procedure id, proposed delta, source variant id, predicted benefit,
+  required validation, and review status; they must not write skills, accepted
+  procedures, preferences, or factual graph memory.
+- Rehearsal may propose actions and preconditions, but it must not execute
+  external actions: no messages, tickets, network calls, code edits, commits,
+  database mutations outside journal append, tool calls with side effects, or
+  autonomous schedules.
+- Real execution is a separate observed event. Outcome matching must cite an
+  exact rehearsal event, variant id, and prediction ids, then classify each
+  prediction as `confirmed`, `falsified`, `partially_matched`, or
+  `inconclusive`.
+- Projection must distinguish:
+  - rehearsal simulation candidates (`epistemic_status=simulation`,
+    `acceptance_status=provisional`)
+  - provisional procedure candidates
+  - observed outcome evidence
+  - confirmation, falsification, partial-match, and inconclusive outcome links
+- Existing `outcome_confirmation` behavior must be corrected before Phase 7 is
+  complete: a `match: false` outcome must not create confirmation edges or
+  relations.
+- Retrieval must suppress simulation material by default. Explicit simulation
+  retrieval must mark direct rehearsal entry results and traversed rehearsal
+  paths as simulation/not-factual, never ordinary recall.
+- Reflection and consolidation may cite rehearsal material only as simulation
+  support for limited claim types or provisional procedure attention. Rehearsal
+  must not increase factual confidence.
+- If no eligible target or no meaningful variant exists, the workflow must
+  return a no-action report and append no substantive rehearsal event.
 
 **Acceptance Criteria:**
-- Rehearsals are clearly marked as simulations.
-- Candidate skills/procedures remain provisional until validated.
-- Real execution can confirm or falsify rehearsal predictions.
+- Rehearsals are journaled before projection and are clearly marked as
+  simulations with `not_executed: true`.
+- Manual arbitrary rehearsal payloads are rejected.
+- Every target, assumption, trace, prediction, and procedure draft cites
+  auditable provenance or declares an explicit unknown.
+- Rehearsal output differs from dreaming: it targets action strategy,
+  predicted observations, and validation/falsification, not loose association.
+- Candidate skills/procedures remain provisional until later observed execution
+  and outcome evidence validates them.
+- Real execution can confirm, falsify, partially match, or leave inconclusive
+  exact rehearsal predictions.
+- Falsifying outcomes do not create confirmation edges/relations and do not
+  promote procedure candidates.
+- Default retrieval suppresses rehearsal material; explicit retrieval carries
+  simulation/not-factual semantics, including zero-hop entry candidates.
+- Scope restrictions propagate from target sources through rehearsal events,
+  projected simulation candidates, and retrieval results.
+- Same immediate target with different prior failures/corrections/repeated
+  workflows produces different variants, predicted failures, and validation
+  criteria.
 
 **Adversarial Questions:**
 - Did the simulation change factual memory?
 - What failure mode did rehearsal expose?
 - What would validate this procedure in the world?
+- What evidence made this target worth rehearsing?
+- Which exact prediction did the real outcome confirm or falsify?
+- Did the rehearsal execute anything, contact anyone, mutate external state, or
+  create a skill?
+- Would a generic "try tests first" simulator pass the same test?
+- Does the output preserve whether source material was observed, interpreted,
+  hypothesis, simulation, conflict, correction, private, or resource-limited?
 
 **Do Not Proceed If:**
 - Rehearsal outcomes are treated as events that actually happened.
+- A rehearsal can be appended without structured source refs.
+- A rehearsal can author or update a skill/procedure directly.
+- A simulated trace can support factual graph proposals or factual confidence.
+- Outcome projection treats falsification as confirmation.
+- Rehearsal retrieval can appear as ordinary recall.
+- The workflow can call external side-effect tools or schedule real action.
+- Scope restrictions are dropped or redacted material leaks.
+- Implementation requires SurrealDB, Ollama, embeddings, network access, or
+  model-generated text.
 
 **Zombie Gate:**
 - A test must show that rehearsal predictions can be confirmed or falsified by a
   later real outcome, and that unvalidated rehearsal outputs remain provisional.
+- Tests must also show:
+  - same immediate target plus different prior histories produces different
+    variants, simulated traces, predicted failures, and validation criteria
+  - no eligible target produces no substantive rehearsal event
+  - generic rehearsal traces fail if they do not cite specific prior evidence
+  - manual string-shaped rehearsal payloads are rejected
+  - private/resource-disallowed target evidence is excluded or redacted
+  - dream, rehearsal, reflection, conflict, correction, and observed targets
+    remain semantically distinct
+  - rehearsal cannot execute external action or record simulated steps as real
+    tool calls/outcomes
+  - default retrieval suppresses simulation material, while explicit retrieval
+    marks direct and traversed rehearsal material as simulation/not-factual
+  - falsifying outcomes do not create `outcome_confirmation` or
+    `outcome_confirms`
+  - provisional procedure candidates cannot become accepted skills/procedures
+    without later observed validation
+  - reflection/consolidation cannot launder rehearsal into substantive factual
+    claims or confidence boosts
 
 ## Phase 8: Drives And Attention
 
