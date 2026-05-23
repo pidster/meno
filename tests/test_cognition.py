@@ -9,6 +9,7 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from cognition import (  # noqa: E402
+    audit_cognition_packet,
     build_cognition_packet,
     evaluate_cognition_mutants,
     validate_cognition_packet,
@@ -252,6 +253,28 @@ def test_claim_evidence_refs_must_keep_evidence_ref_shape():
         tmp.cleanup()
 
 
+def test_full_shape_forged_claim_ref_fails_provenance_audit():
+    tmp, journal, projection, packet = build_fixture_packet()
+    try:
+        forged = dict(packet["claim_evidence_refs"][0])
+        forged["event_id"] = "forged-event"
+        forged["event_hash"] = "0" * 64
+        mutant = copy.deepcopy(packet)
+        mutant["packet_status"] = "accepted"
+        mutant["claim_evidence_refs"] = [forged]
+
+        structural = validate_cognition_packet(mutant)
+        audited = audit_cognition_packet(mutant, journal, projection)
+
+        assert "claim evidence ref is not present on a cited retrieval path" in audited
+        assert any("claim evidence ref failed projection audit" in item for item in audited)
+        assert "claim evidence ref is not present on a cited retrieval path" not in structural
+    finally:
+        projection.close()
+        journal.close()
+        tmp.cleanup()
+
+
 def test_reflection_disposition_is_structured_and_cited():
     tmp, journal, projection, packet = build_fixture_packet()
     try:
@@ -271,6 +294,40 @@ def test_reflection_disposition_is_structured_and_cited():
         violations = validate_cognition_packet(mutant)
 
         assert "changed reflection disposition requires cited influence refs" in violations
+    finally:
+        projection.close()
+        journal.close()
+        tmp.cleanup()
+
+
+def test_forged_drive_influence_fails_provenance_audit():
+    tmp, journal, projection, packet = build_two_drive_packet()
+    try:
+        selected_drive_id = packet["attention_allocation"]["selected_attention_targets"][0]["drive_id"]
+        other = next(
+            item
+            for item in packet["influence_chain"]["drive_influences"]
+            if item["drive_id"] != selected_drive_id
+        )
+        mutant = copy.deepcopy(packet)
+        mutant["packet_status"] = "accepted"
+        forged = dict(other)
+        forged["drive_id"] = selected_drive_id
+        mutant["influence_chain"]["drive_influences"].append(forged)
+        mutant["attention_allocation"]["selected_attention_targets"][0]["retrieval_path_refs"] = [
+            forged["retrieval_path_id"]
+        ]
+        mutant["attention_allocation"]["selected_attention_targets"][0]["projection_candidate_refs"] = [
+            forged["projection_candidate_id"]
+        ]
+        mutant["selected_next_step"]["retrieval_path_refs"] = [forged["retrieval_path_id"]]
+        mutant["selected_next_step"]["projection_candidate_refs"] = [forged["projection_candidate_id"]]
+
+        structural = validate_cognition_packet(mutant)
+        audited = audit_cognition_packet(mutant, journal, projection)
+
+        assert "influence chain drive influences do not replay from retrieval and drives" in audited
+        assert "influence chain drive influences do not replay from retrieval and drives" not in structural
     finally:
         projection.close()
         journal.close()
@@ -425,6 +482,8 @@ def test_provisional_dream_and_rehearsal_boundaries_survive_packet():
         assert rehearsal_boundary["epistemic_status"] == "simulation"
         assert rehearsal_boundary["not_factual"] is True
         assert rehearsal_boundary["simulation_material"] is True
+        assert rehearsal_packet["particularity"]["present"] is False
+        assert rehearsal_packet["particularity"]["blocked_by_provisional_only"] is True
         provisional_component = next(
             item
             for item in rehearsal_packet["vitality_summary"]["components"]
@@ -568,6 +627,22 @@ def test_rest_is_valid_repertoire_decision_when_cited_by_history():
         assert packet["selected_next_step"]["retrieval_path_refs"]
         assert packet["selected_next_step"]["reason"] == "governed repertoire decision from retrieved projected evidence"
         assert packet["governance_decisions"][-1]["decision"] == "private_reflection_allowed"
+    finally:
+        projection.close()
+        journal.close()
+        tmp.cleanup()
+
+
+def test_repertoire_preference_does_not_command_rest():
+    tmp, journal, projection, packet = build_fixture_packet(
+        context={
+            "prompt": "same immediate context",
+            "repertoire_preference": "rest",
+        }
+    )
+    try:
+        assert packet["packet_status"] == "accepted"
+        assert packet["selected_next_step"]["class"] != "rest"
     finally:
         projection.close()
         journal.close()

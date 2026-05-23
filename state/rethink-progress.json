@@ -144,15 +144,16 @@
         "Provisional dream/rehearsal fixture proving hypothesis and simulation material remains not-factual and neutral for vitality.",
         "Irrelevant-history fixture proving retrieved but off-context history cannot claim positive influence or particularity.",
         "Structured reflection disposition with cited influence refs, confidence limits, and rejected interpretations without identity prose.",
-        "Post-review hardening: attention allocation now only sees retrieval-linked drives, selected refs must match selected drive influence, forged claim refs fail structural validation, and rest is evidence-derived rather than context-commanded."
+        "Post-review hardening: attention allocation now only sees retrieval-linked drives, selected refs must match selected drive influence, forged claim refs fail structural validation, and rest is evidence-derived rather than context-commanded.",
+        "Targeted-review hardening: store-aware provenance audit rejects full-shaped forged evidence refs and forged drive influence mappings; provisional-only material cannot assert positive particularity."
       ],
       "remaining_gates": [],
-      "next_action": "Commit post-review Phase 10 hardening, then rerun final review or mark Phase 10 complete."
+      "next_action": "Commit targeted-review Phase 10 provenance hardening, then mark Phase 10 complete if no new blockers are found."
     }
   },
   "validation": {
     "command": ".venv/bin/python -m pytest",
-    "last_result": "99 passed",
+    "last_result": "102 passed",
     "last_validated": "2026-05-23"
   },
   "notes": [

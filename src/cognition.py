@@ -117,7 +117,7 @@ def build_cognition_packet(
     governance = _governance_decisions(allocation, selected_next_step, replay.integrity_warnings)
     reflection_disposition = _reflection_disposition(retrieval_summary, influence, immediate_context)
     reflection_diagnostics = _reflection_diagnostics(reflection_disposition, influence)
-    particularity = _particularity(influence, reflection_disposition)
+    particularity = _particularity(influence, reflection_disposition, retrieval_summary)
 
     packet = {
         "policy_version": COGNITION_POLICY_VERSION,
@@ -144,7 +144,7 @@ def build_cognition_packet(
         "no_external_action": True,
     }
     packet["vitality_summary"] = _packet_vitality_summary(packet)
-    violations = validate_cognition_packet(packet)
+    violations = audit_cognition_packet(packet, journal, projection)
     packet["packet_status"] = _packet_status(packet, violations)
     packet["packet_id"] = "cog_" + stable_hash(
         {
@@ -288,6 +288,42 @@ def validate_cognition_packet(packet: dict[str, Any]) -> list[str]:
         violations.append("vitality summary validated a different packet")
     if _unknown_traversal_paths(packet["retrieval_summary"]):
         violations.append("retrieval path contains unregistered edge or relation type")
+    return violations
+
+
+def audit_cognition_packet(
+    packet: dict[str, Any],
+    journal: JournalStore,
+    projection: ProjectionStore,
+) -> list[str]:
+    """Validate structure and replay packet provenance against source stores."""
+
+    violations = validate_cognition_packet(packet)
+    retrieval_index = _retrieval_path_index(packet["retrieval_summary"])
+    if set(packet["influence_chain"].get("retrieval_path_ids", [])) - set(retrieval_index):
+        violations.append("influence chain cites retrieval paths outside retrieval summary")
+    for path_id, path in retrieval_index.items():
+        expected = retrieval_path_id(packet["retrieval_summary"]["query_id"], path)
+        if path_id != expected:
+            violations.append(f"retrieval path id does not match path contents: {path_id}")
+
+    retrieval_refs = _retrieval_evidence_refs(packet["retrieval_summary"])
+    for ref in packet["claim_evidence_refs"]:
+        if stable_hash(ref) not in retrieval_refs:
+            violations.append("claim evidence ref is not present on a cited retrieval path")
+        try:
+            projection.validate_evidence_ref(ref, journal)
+        except ProjectionValidationError as exc:
+            violations.append(f"claim evidence ref failed projection audit: {exc}")
+
+    actual_drive_influences = _drive_influences(
+        packet["retrieval_summary"],
+        packet["drive_updates"],
+    )
+    if _canonical_drive_influences(actual_drive_influences) != _canonical_drive_influences(
+        packet["influence_chain"].get("drive_influences", [])
+    ):
+        violations.append("influence chain drive influences do not replay from retrieval and drives")
     return violations
 
 
@@ -807,13 +843,28 @@ def _reflection_diagnostics(
     }
 
 
-def _particularity(influence: dict[str, Any], disposition: dict[str, Any]) -> dict[str, Any]:
+def _particularity(
+    influence: dict[str, Any],
+    disposition: dict[str, Any],
+    retrieval_summary: dict[str, Any],
+) -> dict[str, Any]:
+    provisional_ids = {
+        item["candidate_id"]
+        for item in retrieval_summary.get("provisional_boundaries", [])
+    }
+    influential_ids = set(influence.get("projection_candidate_ids", []))
+    provisional_only = bool(influential_ids) and influential_ids <= provisional_ids
     return {
-        "present": bool(influence["retrieval_path_ids"] and disposition.get("changed_view")),
+        "present": bool(
+            influence["retrieval_path_ids"]
+            and disposition.get("changed_view")
+            and not provisional_only
+        ),
         "kind": "history_specific_unresolved_tension",
         "basis": disposition.get("unresolved_tension"),
         "retrieval_path_refs": list(influence["retrieval_path_ids"]),
         "projection_candidate_refs": list(influence["projection_candidate_ids"]),
+        "blocked_by_provisional_only": provisional_only,
     }
 
 
@@ -894,6 +945,45 @@ def _provisional_only_influence(packet: dict[str, Any]) -> bool:
         if path.get("path_id") in path_ids
     }
     return bool(path_candidate_ids) and path_candidate_ids <= provisional_candidate_ids
+
+
+def _retrieval_path_index(retrieval_summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    paths = {}
+    for candidate in retrieval_summary.get("activated_candidates", []):
+        for path in candidate.get("activation_paths", []):
+            paths[path["path_id"]] = path
+    return paths
+
+
+def _retrieval_evidence_refs(retrieval_summary: dict[str, Any]) -> set[str]:
+    refs = set()
+    for path in _retrieval_path_index(retrieval_summary).values():
+        refs.update(stable_hash(ref) for ref in path.get("evidence_refs", []))
+    return refs
+
+
+def _canonical_drive_influences(influences: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    canonical = []
+    for item in influences:
+        canonical.append(
+            {
+                "drive_id": item.get("drive_id"),
+                "retrieval_path_id": item.get("retrieval_path_id"),
+                "projection_candidate_id": item.get("projection_candidate_id"),
+                "claim_evidence_ref_hash": stable_hash(item.get("claim_evidence_ref", {})),
+                "cue_ref_hash": stable_hash(item.get("cue_ref", {})),
+            }
+        )
+    return sorted(
+        canonical,
+        key=lambda item: (
+            item["drive_id"] or "",
+            item["retrieval_path_id"] or "",
+            item["projection_candidate_id"] or "",
+            item["claim_evidence_ref_hash"],
+            item["cue_ref_hash"],
+        ),
+    )
 
 
 def _journal_replay_refs(journal: JournalStore, event_ids: list[str]) -> list[dict[str, Any]]:
