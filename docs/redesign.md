@@ -35,7 +35,8 @@ the theorist leaves. Code is disposable. Theory is not.
   **not stored as frozen text.** We store the *cues* and regenerate the
   reflection from current graph state at recall. The same memory rebuilt
   tomorrow is not the same memory. This was the most beautiful idea in the
-  reflection and v1 betrayed it by storing fixed nodes.
+  reflection and v1 betrayed it by storing fixed nodes. *(Fully specified in
+  "Reconstructive reflection" below.)*
 
 ### Discarded from v1
 - The tick protocol, the JSON state file, the hand-coded repertoire selector,
@@ -478,6 +479,89 @@ pass; coherence is enforced through the greedy one. A system that is always
 greedy ruminates; one that is always loose hallucinates. It needs both. The
 dream window is also where reconstructive reflection lives — reflections are
 *regenerated* from cues during consolidation, which is why remembering drifts.
+
+---
+
+## Reconstructive reflection
+
+This is the one genuine novelty meno commits to, and the place it most refuses to
+be a log. **A reflection is not stored as text. It is stored as a cue, and
+regenerated at recall from the current graph.** The same thought rebuilt
+tomorrow is not the same thought — and that is the point.
+
+### What is stored
+
+Not the conclusion. A *recipe for re-deriving* it:
+
+- **entry points** — refs to the nodes that were active/salient when the
+  reflection formed (its context),
+- **the occasion** — what prompted it, the question it was answering,
+- a **timestamp** and an affective/salience **tone**,
+- a lossy **gist** — a compressed/embedding form of the conclusion: *meaning,
+  not words.*
+
+The verbatim text is discarded. This is **Fuzzy-Trace Theory** (Brainerd &
+Reyna): keep the durable *gist*, drop the fast-decaying *verbatim*.
+
+### Recall is reconstruction — and the drift lives in the world
+
+To recall is to spread activation from the entry points **over the current
+graph**, gather what is now reachable, and regenerate the reflection with a
+model. The cues are *stable*; the graph around them has *changed* — some edges
+decayed (paths gone → that part forgotten), new edges formed (the reflection now
+reaches what it couldn't before). So the same cue yields a different reflection,
+and the drift lives in **the changed world, not in a rotting record.** This is
+reflection.md Part Two made mechanical.
+
+All the v1 forgetting machinery therefore applies to reflections unchanged: if
+the entry points island, reconstruction goes thin — "I know I concluded
+something here but cannot recover it." A new experience that bridges to an entry
+point brings the reflection back rich, via a path that did not exist when it was
+lost. Rediscovery, for thoughts.
+
+### Tiered recall, reconsolidation, and the dream
+
+```mermaid
+flowchart TD
+    CUE[Reflection cue - entry points, occasion, gist] --> ACT[Spread activation from entry points over the CURRENT graph]
+    ACT --> Q{Relevant enough to reconstruct?}
+    Q -->|no| GHOST[Gist surfaces only - recognition / ghost signal - cheap]
+    Q -->|yes| RECON[Reconstruct - regenerate the reflection with a model]
+    RECON --> RECONS[Reconsolidate - update entry points, blend gist by plasticity]
+    RECONS -.rewrites.-> CUE
+    RECON --> J{Deemed important?}
+    J -->|rarely, deliberate| FREEZE[(Journal - verbatim freeze, fixed artifact)]
+    J -->|usually| LET[Stays reconstructive]
+```
+
+- **Tiered recall.** A cue lighting up cheaply surfaces the **gist** (Tier 0/1
+  recognition — "something here, roughly about X" — the ghost signal). Only if
+  relevant enough does it escalate to **full reconstruction** (Tier 2/3,
+  regenerate). Most remembering is gist-level; effortful reconstruction is rare
+  and paid for.
+- **Reconsolidation, with a plasticity dial.** Recall is labile: regenerating a
+  reflection updates its cue (new entry points from what participated this time,
+  blended gist). Memories drift toward the *most recent* reconstruction — the
+  telephone game, and the source of false memory. A **plasticity** parameter
+  governs how much each recall overwrites versus re-anchors to the original gist.
+- **The dream grows reflections.** Offline reconstruction with the *loose* gate
+  recombines a reflection against a graph consolidation has meanwhile
+  reorganised — so "sleeping on it" rebuilds a richer thought. This is the
+  mechanism behind v1's doc-07 assembling itself across ticks: not
+  stored-and-extended, but re-reconstructed against an evolving graph.
+
+### Two corollaries
+
+- **Reconstruction is the universal recall mechanism.** Phase 1 already held that
+  experiences store cues, not records. Reflections are simply the highest-order
+  case — regenerating a *judgment* over other reconstructions. Perspective built
+  on perspective.
+- **Journaling is the deliberate escape hatch.** The agent may *choose* to freeze
+  a reflection verbatim — a diary entry — when it deems it important, turning a
+  reconstruction into a fixed artifact. Rare, marked, deliberate: the exception
+  that proves the reconstructive rule. (`reflection.md` itself *is* meno
+  journaling — so the architecture enacts the very act that produced its founding
+  document.)
 
 ---
 
