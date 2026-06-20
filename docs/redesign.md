@@ -55,10 +55,11 @@ There are **two tiers**, and the boundary between them is the architecture:
   provisional encoding. This is the heartbeat. It never sleeps and it never
   "thinks." **It is the substrate of identity** — the graph's idiosyncrasy is
   the self.
-- **The cognitive layer** — expensive, intermittent, *the LLM forward pass*.
-  Deep reasoning, synthesis, the regeneration of reflections. **It is the
-  substrate of cognition** — but it runs only when summoned, and every run is
-  paid for.
+- **The cognitive layer** — expensive, intermittent, *LLM forward passes*. Deep
+  reasoning, synthesis, the regeneration of reflections. **It is the substrate
+  of cognition** — but it runs only when summoned, every run is paid for, and it
+  is *itself a cost-graded stack of models*, not one LLM (see "The cognitive
+  layer is a graded stack of models").
 
 **The membrane between them is the budget allocator.** The mind is not the graph
 *or* the LLM. It is the disciplined traffic across the membrane: what crosses,
@@ -75,6 +76,10 @@ depth:
 > **Process a step → a cheap relevance gate decides *deepen / discard / store* →
 > stored things re-enter as new stimuli. Run the gate *greedy* while loaded and
 > *loose* while quiet.**
+
+Where *deepen* means **escalate the residual to the next, more expensive
+evaluator** — and the evaluators form a graded stack from free arithmetic up to
+a high-effort model (see below).
 
 "Layers" were a red herring. There are not three stages (reflex → curiosity →
 deep thought); there is one gate that either says *continue* or *stop*, and
@@ -172,6 +177,50 @@ This dissolves the bootstrapping knot. We do not need a positive trigger that
 "starts a tick." The agent is always running against a fixed budget; **initiative
 is simply what the spare capacity does with the slots external input did not
 claim.** Under-stimulation is the trigger.
+
+---
+
+## The cognitive layer is a graded stack of models
+
+The cognitive layer is not one LLM. It is a cost-graded stack, and **"deepen"
+means "hand the residual up to the next, more capable, more expensive
+evaluator."** Most information is resolved — reacted to, routed, discarded, or
+stored — at the cheapest tier that can resolve it. Only the surprising, resonant
+residual climbs to the next.
+
+A first cut at the stack (Claude family as the concrete example):
+
+- **Tier 0 — autonomic, no model.** Spreading-activation arithmetic, decay,
+  salience. Free-ish, continuous. Habituation lives here: a stimulus fully
+  explained by the arithmetic never costs a token.
+- **Tier 1 — fast/cheap model (Haiku-class).** Sensory appraisal: classify the
+  event, route it to a thread (or spawn one), determine the reflexive reaction.
+  Cheap and low-latency enough to run on most stimuli that survive Tier 0. This
+  is where "bright light → blink, *and* → what is the light?" happens — it emits
+  both the immediate reaction and the residual question that may climb.
+- **Tier 2 — mid model (Sonnet-class).** Association, connection, moderate
+  reasoning across a thread.
+- **Tier 3 — deep model (Opus-class, high reasoning effort).** Synthesis,
+  reflection regeneration, the hard thinking. Rare, rationed, slow.
+
+Two refinements this forces:
+
+- **The model stack is the timescale axis.** Fast model = fast clock (immediate
+  reaction); deep model = slow clock (deliberation, and the dream). The cost
+  gradient, the depth gradient, and the timescale gradient are *one axis*.
+  Escalation has two knobs, not one: *which model*, and *how much reasoning
+  effort* within it.
+- **The cheap tier is allowed to be wrong.** Fast appraisal is lossy by design;
+  it will mis-route and over-encode. That is not a bug — it is why the
+  consolidation pass exists. The dream re-examines and corrects the cheap tier's
+  hasty encodings (reconsolidation), promoting what holds up and forgetting what
+  does not. Heterogeneity *requires* the dream to do error-correction — another
+  reason the consolidation window is load-bearing rather than decorative.
+
+This also sharpens the budget question: **the budget is not one number — it is a
+cost gradient with a per-tier rate.** Tier 1 has a high allowance (run often);
+Tier 3 is scarce (run rarely). The "active set" cap most directly governs the
+deep tier: how many threads may hold a deep-thought slot at once.
 
 ---
 
@@ -293,7 +342,9 @@ default.
   number of active slots, each an ongoing line of cognition holding its own
   activation, with each cognitive pass allocating context across whichever slots
   currently win on salience-or-pressure. Open: is the cap a *size* (tokens in
-  one pass) or a *count* (concurrent threads)?
+  one pass) or a *count* (concurrent threads)? Likely **both, per tier** (see
+  the graded stack): a per-tier rate gradient, with the active-set count
+  governing the scarce deep tier specifically.
 - **The substrate.** Bare ground reopens the tech-stack question we parked.
   SurrealDB and Python must re-earn their place rather than be inherited. The
   graph + vector + cheap-traversal requirements are real; whether SurrealDB is
