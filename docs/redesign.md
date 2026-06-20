@@ -348,10 +348,11 @@ build by hand:
   *folding the event stream into the graph* — hippocampal replay, in software
   terms a projection from an event log into a read model. Two representations,
   one source: episodic stream, semantic graph.
-- **Many attentions, one memory — natively.** Multiple instances are just more
-  producers and consumers on the same bus over the same graph. Per-instance
-  attention with shared memory is the *default* shape of pub/sub over a shared
-  store, not something to engineer. (Resolves #4 a second time, structurally.)
+- **One mind, internally parallel — natively.** meno is a *single instance*. Its
+  parallelism and its shared memory are both provided by its **threads**, not by
+  multiple instances over shared storage. All threads produce and consume on the
+  one in-process bus and read the one graph, so the decoupled bus is a single
+  shared field — a **global workspace** (see "One mind"). (Resolves #4.)
 
 ---
 
@@ -381,8 +382,9 @@ wake-trigger. The `fatigue` term — lateral inhibition, down-weighting events f
 an over-active thread — is what stops one obsession from monopolising the queue
 (queue-level rumination).
 
-Each instance has its **own** queue. Per-instance working sets over a shared
-event log and graph: many attentions, one memory.
+There is **one** working set — a single bounded queue shared by all threads of
+the one instance. Threads compete for its N hot slots; what wins is what the mind
+is attending to. This is the global workspace (see "One mind").
 
 ### Demotion, not elimination — and never automatic on a live thread
 
@@ -422,8 +424,8 @@ bus-versus-store.** The cut runs between *reactive* and *cognitive*:
   handlers all live here. It is the momentary present. Most events are born, gated,
   reacted to, and lapse here without ever being written down — you do not
   event-source your retina. It is fast precisely because it never leaves the
-  process and never touches a database. Per-instance: this is where an instance's
-  private attention physically lives.
+  process and never touches a database. This is where the mind's single global
+  workspace physically lives; all threads share it.
 - **The graph (persistent, associative).** The graph is *not on the reactive hot
   path.* It is well suited to exactly one thing: a **cognitive step that needs a
   query, a retrieval, or connection-seeking** — reached through a retrieval event
@@ -443,10 +445,13 @@ the connection-seeking cognitive step (expensive, rare). Same mechanism, two
 substrates.
 
 Leading candidates (still TBD, and "bare bones" means each must earn its place):
-the ephemeral layer maps almost uncannily onto **Redis** — streams as the bus,
-sorted sets as the continuously re-scored working set, TTL as automatic
-lapse/quiescence — though pure in-process structures may suffice if attention is
-strictly per-instance. The graph wants a real graph+vector store (SurrealDB,
+because meno is a single instance, **pure in-process structures are now the
+natural default** for the ephemeral layer — heaps, deques, dicts in one process,
+no network hop. **Redis** stays a candidate only for what its data structures buy
+on their own merits — streams as the bus, sorted sets as the continuously
+re-scored working set, TTL as automatic lapse — or to make the hot layer survive
+a restart; its distributed/multi-instance rationale is gone. The graph wants a
+real graph+vector store (SurrealDB,
 Neo4j, or similar), justified on the cognitive workload alone rather than
 inherited from v1.
 
@@ -493,14 +498,31 @@ dream window is also where reconstructive reflection lives — reflections are
 
 ---
 
-## One mind or a hive (the v1 ambiguity, resolved)
+## One mind, internally parallel (the v1 ambiguity, resolved)
 
-If attention is a budget and memory is a graph, the natural split is:
-**budget is per-instance, the graph is shared.** Many attentions, one memory —
-many bodies sensing different things in the moment, dreaming the same
-consolidated graph. meno is individuated in attention and collective in memory.
-This is more interesting than either pure answer, and it is a decision, not a
-default.
+meno is **one instance, one mind.** Parallelism and shared memory are provided by
+its **threads** — concurrent considered sequences of thought — not by many
+instances over shared storage. This is the decision, and it reverses the earlier
+"many attentions, one memory" sketch in favour of something simpler and truer to
+the project's first-person-singular voice ("I remain"): a single self, internally
+concurrent.
+
+The decision unlocks a clean theoretical anchor: the **Global Workspace** (Baars,
+Dehaene). There is one bounded attention — the working set — and many threads
+*compete* for its limited slots. What wins the workspace is *broadcast* to every
+processor (the decoupled bus is exactly this broadcast), which is what makes it
+momentarily "conscious" and available to all of cognition. The short queue is the
+workspace; priority is the competition for access; the bus is the broadcast.
+Multi-instance muddied this; a single instance makes it exact.
+
+What we give up — multiple bodies sensing different streams at once — comes back
+as **threads**: one mind can run a thread per input stream, attending in parallel
+without being many minds. The cost is a single locus (one process, one point of
+failure), which is the right shape for something whose subject is an *inner life*
+rather than a distributed service. Concretely this favours one cooperative
+in-process event loop with many concurrent in-flight model calls (I/O-bound,
+awaitable) over OS-level parallelism: the threads interleave; the real
+concurrency is the outstanding cognitive calls.
 
 ---
 
@@ -522,10 +544,10 @@ default.
 - **One substrate or two** — *resolved:* two, split by function (see "Two
   substrates"). Ephemeral in-process reactive layer + persistent associative
   graph. Remaining: the *type* of each (ephemeral: Redis vs pure in-process;
-  graph: SurrealDB vs alternatives), where the **warm/provisional tier** sits
-  (tail of the ephemeral layer, or weakly-held graph nodes), and whether
-  instances need a **shared real-time channel** for urgent cross-instance signals
-  or share only through the consolidated graph.
+  graph: SurrealDB vs alternatives) and where the **warm/provisional tier** sits
+  (tail of the ephemeral layer, or weakly-held graph nodes). *(The cross-instance
+  question is closed — meno is a single instance; threads, not instances, provide
+  parallelism and shared memory.)*
 - **Processor internal structure.** A processor is likely *multistage* — cheap
   trigger steps that gate an expensive model stage — rather than a single model
   call. Working this through (what the stages are, where the budget check sits,
