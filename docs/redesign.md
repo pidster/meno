@@ -240,10 +240,17 @@ processing.
 
 Two consequences keep us honest:
 
-- **The gate must be autonomic.** It runs after *every* step and most
-  information dies at it, so it cannot be an LLM call — that would defeat the
-  budget. Spreading activation is graph traversal and arithmetic. Cognitive
-  budget is spent *only* when the gate says "continue into actual reasoning."
+- **The gate must be autonomic — and it runs over the working set, not the
+  graph.** It fires after *every* step and most information dies at it, so it
+  cannot be an LLM call *and* it cannot be a graph query — either would defeat
+  the budget. The hot gate is cheap in-process arithmetic: activation spreading
+  among the events and threads *currently active in the working set*. Full
+  spreading activation **over the persistent graph** is a different, more
+  expensive thing — a *cognitive* retrieval step (the connection-seeking handler
+  of §"Two substrates"), spent only when a processor has already decided this is
+  worth thinking about. So "retrieval and attention are the same machine" holds
+  at the level of *mechanism* (both are spreading activation), but they run at
+  two tiers: cheap, over the hot set; expensive, over the graph.
 - **What climbs is surprise.** What propagates upward is not the stimulus but
   its *unexplained residual* — the prediction error no cheaper pass could
   resolve. The bandwidth limit at the top is protected by the cheap gate below
@@ -405,6 +412,46 @@ scheduler may set a thought down gently; only the mind may let it go.
 
 ---
 
+## Two substrates, split by function
+
+The "one substrate or two" fork resolves to **two — but split by function, not by
+bus-versus-store.** The cut runs between *reactive* and *cognitive*:
+
+- **The ephemeral reactive substrate (in-process, volatile, type TBD).** The bus,
+  the short working-set queue, hot activation/decay, and the reflexive Tier-0/1
+  handlers all live here. It is the momentary present. Most events are born, gated,
+  reacted to, and lapse here without ever being written down — you do not
+  event-source your retina. It is fast precisely because it never leaves the
+  process and never touches a database. Per-instance: this is where an instance's
+  private attention physically lives.
+- **The graph (persistent, associative).** The graph is *not on the reactive hot
+  path.* It is well suited to exactly one thing: a **cognitive step that needs a
+  query, a retrieval, or connection-seeking** — reached through a retrieval event
+  handler, used by the Tier-2/3 processors that have already decided something is
+  worth thinking about. A model latency dwarfs a graph query, so the cost lands
+  where it belongs: with the expensive tier, never on the reflex.
+
+Consolidation (the dream) is the bridge: it moves the *committed subset* of
+ephemeral activity into the graph. This refines the earlier "episodic memory for
+free" claim — the ephemeral stream is **not** durable episodic memory; durable
+memory is only what was committed and consolidated. The graph is the persistent
+store; the hot layer is genuinely transient.
+
+This also re-homes the gate cleanly: the **hot gate** is in-process activation
+over the working set (cheap, runs constantly); **graph spreading activation** is
+the connection-seeking cognitive step (expensive, rare). Same mechanism, two
+substrates.
+
+Leading candidates (still TBD, and "bare bones" means each must earn its place):
+the ephemeral layer maps almost uncannily onto **Redis** — streams as the bus,
+sorted sets as the continuously re-scored working set, TTL as automatic
+lapse/quiescence — though pure in-process structures may suffice if attention is
+strictly per-instance. The graph wants a real graph+vector store (SurrealDB,
+Neo4j, or similar), justified on the cognitive workload alone rather than
+inherited from v1.
+
+---
+
 ## Greedy while waking, loose while dreaming
 
 The gate, run greedily, manufactures the exact pathology the reflection
@@ -472,13 +519,13 @@ default.
 - **What a "storage-trigger" costs.** If every write re-enters the gate, write
   amplification could be severe. The autonomic layer must make re-entry cheap or
   rate-limited, or the heartbeat becomes a fibrillation.
-- **One substrate or two.** The event bus and the graph could share a substrate
-  — SurrealDB live queries / change feeds can act as the bus over the same store
-  that holds the graph and vectors (one system, simpler ops, but couples bus
-  semantics to the DB). Or the bus is separate (e.g. NATS / Redis Streams) for
-  cleaner decoupling and back-pressure, with the graph as a downstream
-  projection. "Bare bones" means deciding this on merits, not inheriting
-  SurrealDB.
+- **One substrate or two** — *resolved:* two, split by function (see "Two
+  substrates"). Ephemeral in-process reactive layer + persistent associative
+  graph. Remaining: the *type* of each (ephemeral: Redis vs pure in-process;
+  graph: SurrealDB vs alternatives), where the **warm/provisional tier** sits
+  (tail of the ephemeral layer, or weakly-held graph nodes), and whether
+  instances need a **shared real-time channel** for urgent cross-instance signals
+  or share only through the consolidated graph.
 - **Processor internal structure.** A processor is likely *multistage* — cheap
   trigger steps that gate an expensive model stage — rather than a single model
   call. Working this through (what the stages are, where the budget check sits,
