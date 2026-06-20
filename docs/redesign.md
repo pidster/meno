@@ -644,6 +644,44 @@ flowchart TD
 
 ---
 
+## The sensorium
+
+meno's interface to the world is **sensorimotor, not input-only.** Two kinds of
+sense:
+
+- **Afferent (passive) sensors — the world pushes.** meno does not control the
+  rate: user chats/messages, logs, network events (webhooks, feeds), the clock.
+  They arrive as events and are triaged by the gate — most habituate and lapse,
+  the surprising climb. Because their rate is uncontrolled, they are the main
+  source of overwhelm, and much of the back-pressure/quiescence machinery exists
+  for them.
+- **Efferent (active) senses meno controls — meno reaches out.** Filesystem
+  (read, list, watch, write), running commands, querying APIs, sending messages.
+  These are *actions with proprioceptive feedback*: the act itself is an event
+  (an efference copy — storage-as-trigger generalised from memory to the world),
+  and its result is an afferent event. An effector without feedback is blind, so
+  everything meno controls returns a sense.
+
+Three consequences, all consistent with the kernel:
+
+- **Everything is an event; provenance is just a tag.** A chat message, a
+  file-watch notification, and the completion of a write meno initiated all enter
+  the same bus. The gate does not care where an event came from.
+- **Active senses are the motor side of curiosity.** A top-down curiosity that
+  *pulls toward the world* discharges as an action on a controlled sense ("I
+  wonder what's in that file" → read it). Passive sensors feed bottom-up
+  surprise; active senses express the reach (see "What falls out for free").
+- **World-changing effects are deliberate, never reflexive.** Reading and
+  watching may be cheap/autonomic, but anything that changes the world (write,
+  run, send) must be a cognitive-tier decision — you do not want meno reflexively
+  deleting a file. Scope and permissions belong with the deferred API, but the
+  reflex-versus-deliberate split is a kernel-level rule.
+
+This fixes the *shape* of the sensorium. The concrete sensor catalogue, the event
+schema, and the API remain deferred (see "Deferred").
+
+---
+
 ## Deferred — kept, but built later
 
 These are decided *to defer*, not undecided:
@@ -654,11 +692,11 @@ These are decided *to defer*, not undecided:
   memory — a pattern of processing the system has actually performed often enough
   to compile — so it belongs naturally on top of the event stream + consolidation
   machinery, not before it.
-- **Sensorium, API, and event data model.** What meno actually *senses*, and the
-  concrete event/API schema, are defined **after the logical architecture and
-  system design are finished.** Until then "external event" stays deliberately
-  abstract; nailing the schema early would over-fit the design to today's guess
-  about its senses.
+- **Sensor catalogue, API, and event data model.** The *shape* of the sensorium
+  is now articulated (see "The sensorium"), but the concrete list of sensors,
+  their event/wire schema, and the API are defined **after the logical
+  architecture and system design are finished** — nailing the schema early would
+  over-fit the design to today's guess about its senses.
 
 ---
 
