@@ -284,6 +284,70 @@ Storage is also tiered, and forgetting gets a front end:
 
 ---
 
+## The substrate: events all the way down
+
+The architecture that makes the kernel real is **event-based and decoupled** —
+not a pipeline, not an orchestrator calling stages, but a bus.
+
+- **Everything is an event.** A stimulus is an event. *Each processing step
+  emits its own event.* Persistence emits an event — this is storage-as-trigger
+  made literal. The system is a single recursive event stream.
+- **Processors are autonomous and self-selecting.** No processor calls another.
+  Each watches the bus and decides *for itself* whether a given event clears its
+  own bar. The cheap tier subscribes broadly; the deep tier subscribes narrowly.
+  This dissolves the escalation question: **no tier promotes to another, and no
+  one holds the keys to the expensive model — each consumer decides whether to
+  spend itself.** The producer never chooses the consumer.
+- **Resolution is by quiescence, not a barrier.** "When all processors have
+  examined it" is a distributed-systems trap — you cannot cheaply know when
+  *all* decoupled consumers are done. So an event resolves not when everyone has
+  acked it but when it **goes quiet**: its activation decays below threshold and
+  no processor has claimed it within its lifetime. This is more faithful anyway —
+  echoic and iconic memory fade unless something attends to them. Unattended
+  events simply lapse.
+- **Activation is the back-pressure.** Each emitted event inherits a *decayed*
+  share of its parent's activation. A thought-about-a-thought-about-a-thought
+  attenuates and dies unless it keeps resonating with the active set. The same
+  spreading-activation mechanism that is the *gate* is also the bus's
+  *flow-control* — it is what stops storage-as-trigger from becoming an event
+  storm.
+
+```mermaid
+flowchart LR
+    SENS[Sensorium - external] --> BUS
+    SELF[Self-events - step outputs, persistence] --> BUS
+    BUS{{Event bus - every event carries decaying activation}}
+    BUS --- P0[Tier 0 - arithmetic gate]
+    BUS --- P1[Tier 1 - fast model: classify, route, react]
+    BUS --- P2[Tier 2 - mid model: associate]
+    BUS --- P3[Tier 3 - deep model: synthesise]
+    P0 -. emits .-> BUS
+    P1 -. emits .-> BUS
+    P2 -. emits .-> BUS
+    P3 -. emits .-> BUS
+    BUS -->|quiescent and worth keeping| PROVB[(Provisional store)]
+    BUS -->|quiescent and not| GONE[Lapse]
+    PROVB --> GRAPH[(Graph - consolidated projection)]
+    GRAPH -. replay during dream .-> BUS
+```
+
+Two things fall out of this substrate that we were otherwise going to have to
+build by hand:
+
+- **Episodic memory for free.** If everything is an event, the event stream
+  *is* the experiential record — time-ordered, raw, ephemeral (echoic/iconic +
+  short-term). The **graph is the consolidated projection** of that stream:
+  associative, semantic, long-term. Consolidation (the dream) is the act of
+  *folding the event stream into the graph* — hippocampal replay, in software
+  terms a projection from an event log into a read model. Two representations,
+  one source: episodic stream, semantic graph.
+- **Many attentions, one memory — natively.** Multiple instances are just more
+  producers and consumers on the same bus over the same graph. Per-instance
+  attention with shared memory is the *default* shape of pub/sub over a shared
+  store, not something to engineer. (Resolves #4 a second time, structurally.)
+
+---
+
 ## Greedy while waking, loose while dreaming
 
 The gate, run greedily, manufactures the exact pathology the reflection
@@ -354,4 +418,15 @@ default.
 - **What a "storage-trigger" costs.** If every write re-enters the gate, write
   amplification could be severe. The autonomic layer must make re-entry cheap or
   rate-limited, or the heartbeat becomes a fibrillation.
+- **One substrate or two.** The event bus and the graph could share a substrate
+  — SurrealDB live queries / change feeds can act as the bus over the same store
+  that holds the graph and vectors (one system, simpler ops, but couples bus
+  semantics to the DB). Or the bus is separate (e.g. NATS / Redis Streams) for
+  cleaner decoupling and back-pressure, with the graph as a downstream
+  projection. "Bare bones" means deciding this on merits, not inheriting
+  SurrealDB.
+- **Processor internal structure.** A processor is likely *multistage* — cheap
+  trigger steps that gate an expensive model stage — rather than a single model
+  call. Working this through (what the stages are, where the budget check sits,
+  whether stages are themselves events) is the next thing to settle.
 ```
