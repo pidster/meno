@@ -102,7 +102,7 @@ flowchart TD
     ACTIVE([Active set - finite budget of slots])
     ACTIVE --> GATE
 
-    GATE{Relevance gate - spreading activation across concurrent threads, recent threads, and graph}
+    GATE{Relevance gate - spreading activation across concurrent streams, recent streams, and graph}
     GATE -->|lands in the dark, fully explained| DISCARD[Discard]
     GATE -->|some resonance| PROV
     GATE -->|high resonance, surprising, budget free| WAKE
@@ -195,12 +195,12 @@ A first cut at the stack (Claude family as the concrete example):
   salience. Free-ish, continuous. Habituation lives here: a stimulus fully
   explained by the arithmetic never costs a token.
 - **Tier 1 — fast/cheap model (Haiku-class).** Sensory appraisal: classify the
-  event, route it to a thread (or spawn one), determine the reflexive reaction.
+  event, route it to a stream (or spawn one), determine the reflexive reaction.
   Cheap and low-latency enough to run on most stimuli that survive Tier 0. This
   is where "bright light → blink, *and* → what is the light?" happens — it emits
   both the immediate reaction and the residual question that may climb.
 - **Tier 2 — mid model (Sonnet-class).** Association, connection, moderate
-  reasoning across a thread.
+  reasoning across a stream.
 - **Tier 3 — deep model (Opus-class, high reasoning effort).** Synthesis,
   reflection regeneration, the hard thinking. Rare, rationed, slow.
 
@@ -221,7 +221,7 @@ Two refinements this forces:
 This also sharpens the budget question: **the budget is not one number — it is a
 cost gradient with a per-tier rate.** Tier 1 has a high allowance (run often);
 Tier 3 is scarce (run rarely). The "active set" cap most directly governs the
-deep tier: how many threads may hold a deep-thought slot at once.
+deep tier: how many streams may hold a deep-thought slot at once.
 
 ---
 
@@ -231,7 +231,7 @@ The most important identification in the redesign: the relevance gate is not a
 new mechanism to be built. It is the retrieval engine we already have, doing a
 second job.
 
-"Is this relevant to concurrent threads, to recent threads, or does it trigger a
+"Is this relevant to concurrent streams, to recent streams, or does it trigger a
 memory?" *is* spreading activation from the current active set. Lights up →
 deepen. Lands in the dark → discard. **Retrieval and attention are the same
 machine.** The Phase 2 finding — a node weakly tied to three active nodes beats a
@@ -245,7 +245,7 @@ Two consequences keep us honest:
   graph.** It fires after *every* step and most information dies at it, so it
   cannot be an LLM call *and* it cannot be a graph query — either would defeat
   the budget. The hot gate is cheap in-process arithmetic: activation spreading
-  among the events and threads *currently active in the working set*. Full
+  among the events and streams *currently active in the working set*. Full
   spreading activation **over the persistent graph** is a different, more
   expensive thing — a *cognitive* retrieval step (the connection-seeking handler
   of §"Two substrates"), spent only when a processor has already decided this is
@@ -272,7 +272,7 @@ slow clock while the budget is quiet.
 
 In a database, a write is terminal: the value goes in and sits. In meno, **a
 write is a stimulus.** Encoding something re-enters the cascade — it spreads
-activation, it can wake other threads, it can trigger its own "...which reminds
+activation, it can wake other streams, it can trigger its own "...which reminds
 me." The agent senses its own memory formation.
 
 This single property is most of what makes the graph *alive* rather than a log.
@@ -283,7 +283,7 @@ here, a write is not a sink.**
 Storage is also tiered, and forgetting gets a front end:
 
 - A **provisional** store is a weak, high-decay node. It survives only if it
-  keeps being reactivated — by its own storage-trigger, by other threads
+  keeps being reactivated — by its own storage-trigger, by other streams
   touching it (Hebbian), or by the consolidation pass promoting it.
 - Otherwise it **decays before it ever consolidates** — forgotten before it was
   ever really remembered. Forgetting does not begin at edge-decay later; it
@@ -350,10 +350,11 @@ build by hand:
   terms a projection from an event log into a read model. Two representations,
   one source: episodic stream, semantic graph.
 - **One mind, internally parallel — natively.** meno is a *single instance*. Its
-  parallelism and its shared memory are both provided by its **threads**, not by
-  multiple instances over shared storage. All threads produce and consume on the
-  one in-process bus and read the one graph, so the decoupled bus is a single
-  shared field — a **global workspace** (see "One mind"). (Resolves #4.)
+  concurrent trains of thought are **streams** sharing one memory; its
+  parallelism is a fixed worker pool — not multiple instances over shared
+  storage. All streams produce and consume on the one in-process bus and read the
+  one graph, so the decoupled bus is a single shared field — a **global
+  workspace** (see "One mind"). (Resolves #4.)
 
 ---
 
@@ -361,18 +362,27 @@ build by hand:
 
 The budget is not an abstraction — it is a **short, bounded queue**, and its
 depth *is* the attention budget. (This resolves the open "what is the unit of the
-budget" question.) Three resources define the operating envelope:
+budget" question.) Four concepts define the operating envelope — and two of them
+were conflated in earlier drafts under the word "thread." The distinction matters:
+**threads are execution; streams are information.**
 
 - **N — queue depth.** The number of hot event slots, mostly shallow. Arousal
   made physical: free slots fire initiative/dream; a full queue is overwhelm;
   depth is load.
-- **M — parallel threads.** Concurrent *considered sequences of thought.* Only a
-  subset are hot (their events occupy the N slots) at any moment; the rest are
-  suspended (warm) or consolidated (cold). M can be large — but the number held
-  in *deep* consideration at once is small, bounded by deep-tier budget rather
-  than by N. That small number is the real train-of-thought ceiling.
-- **O — processors.** The consumers across tiers. The scarce deep tier caps how
-  many threads can be advanced deeply in parallel.
+- **M — streams of information.** The logical units: concurrent *considered
+  sequences of thought* (trains of thought). Only a subset are hot (their events
+  occupy the N slots) at any moment; the rest are suspended (warm) or
+  consolidated (cold). M can be large — but the number held in *deep*
+  consideration at once is small. Streams are what merge, suspend, and resume.
+- **O — processors.** The *kinds* of handler/tier (reflex, classify, associate,
+  retrieve, synthesise). Types of work, not workers. The scarce deep tier caps
+  how many streams can be advanced deeply at once.
+- **P — execution pool.** A fixed, configurable-size pool of workers (threads)
+  that pull events from the prioritised queue and run the matching processor.
+  This is *merely the execution mechanism* — the physical parallelism. Workers
+  have no stream affinity: any worker advances any stream's next event. Pool size
+  bounds concurrent in-flight processing (an execution-level budget, complementary
+  to N).
 
 Priority is **dynamic, re-scored continuously**, not fixed at enqueue: activation
 decays while an event waits, impulse pressure builds. So it is a bounded working
@@ -380,30 +390,32 @@ set with a recomputed score — roughly `activation × surprise + pressure −
 fatigue`, evict-lowest. The `pressure` term is why a deferred impulse *rises*
 over time until it reaches the front: that ascent is the interoception
 wake-trigger. The `fatigue` term — lateral inhibition, down-weighting events from
-an over-active thread — is what stops one obsession from monopolising the queue
+an over-active stream — is what stops one obsession from monopolising the queue
 (queue-level rumination).
 
-There is **one** working set — a single bounded queue shared by all threads of
-the one instance. Threads compete for its N hot slots; what wins is what the mind
-is attending to. This is the global workspace (see "One mind").
+There is **one** working set — a single bounded queue shared by all streams of
+the one instance. Streams (via their events) compete for its N hot slots; what
+wins is what the mind is attending to. This is the global workspace (see "One
+mind").
 
-### Demotion, not elimination — and never automatic on a live thread
+### Demotion, not elimination — and never automatic on a live stream
 
 This is the constraint that protects the system from its own scheduler. **The
 automatic layer may demote, but it may never eliminate, and it may never split a
-thread.**
+stream.** (Streams, the trains of thought — not the execution threads, which are
+just interchangeable workers.)
 
 A stray stimulus that went nowhere — an isolated, low-activation event — may
 lapse automatically. That is habituation. But an event that is part of an
 **ongoing, considered sequence of thought must not be forcibly evicted** because
-its instantaneous score dipped. Severing a thread mid-thought is involuntary loss
+its instantaneous score dipped. Severing a stream mid-thought is involuntary loss
 of a train of thought, and we want the opposite: management that is *considered
 and conscious*, not automatic prevention.
 
-So eviction under pressure operates on **whole threads, not events**, and only
-ever as **demotion**: a coherent thread is moved hot→warm *intact* — suspended,
+So eviction under pressure operates on **whole streams, not events**, and only
+ever as **demotion**: a coherent stream is moved hot→warm *intact* — suspended,
 with enough state to reconstruct it (the Phase-5 suspend/reconstruct capability)
-— never dismembered, never deleted. The thread stays available and can be
+— never dismembered, never deleted. The stream stays available and can be
 reactivated.
 
 **Elimination is always a considered cognitive act, never an automatic one.**
@@ -412,6 +424,24 @@ garbage collection.* The automatic layer's bias is toward preservation — demot
 suspend, decay slowly, island (available but inaccessible, recoverable). What is
 actually *released* is decided deliberately, in reflection or the dream. The
 scheduler may set a thought down gently; only the mind may let it go.
+
+### Stream lifecycle: born, merge, end
+
+The lifecycle belongs to streams, not to the worker pool (workers just execute):
+
+- **Born.** Tier-1 routing spawns a stream when an event doesn't belong to any
+  existing one — a new line of thought opens.
+- **Merge.** Two streams that converge on the same matter **merge into one richer
+  stream**. This is the insight/aha moment — two trains of thought discovering
+  they were about the same thing. (Threads never merge; *streams* do. The merge
+  is detected the usual way: their events activate strongly across each other in
+  the working set or the graph.)
+- **End.** A stream ends by going quiet — demoted to warm, then consolidated cold
+  in the dream — or, rarely and deliberately, by being pruned. Ending is never an
+  automatic eviction mid-thought (see above).
+
+Split/branch is left as a future possibility ("streams… do/will"): a stream that
+forks into divergent considerations. Not specified yet.
 
 ---
 
@@ -426,7 +456,7 @@ bus-versus-store.** The cut runs between *reactive* and *cognitive*:
   reacted to, and lapse here without ever being written down — you do not
   event-source your retina. It is fast precisely because it never leaves the
   process and never touches a database. This is where the mind's single global
-  workspace physically lives; all threads share it.
+  workspace physically lives; all streams share it.
 - **The graph (persistent, associative).** The graph is *not on the reactive hot
   path.* It is well suited to exactly one thing: a **cognitive step that needs a
   query, a retrieval, or connection-seeking** — reached through a retrieval event
@@ -584,37 +614,55 @@ flowchart TD
 
 ## One mind, internally parallel (the v1 ambiguity, resolved)
 
-meno is **one instance, one mind.** Parallelism and shared memory are provided by
-its **threads** — concurrent considered sequences of thought — not by many
-instances over shared storage. This is the decision, and it reverses the earlier
-"many attentions, one memory" sketch in favour of something simpler and truer to
-the project's first-person-singular voice ("I remain"): a single self, internally
-concurrent.
+meno is **one instance, one mind.** Its concurrent trains of thought are
+**streams of information** sharing one memory; its parallelism is a fixed worker
+pool (see "The working set"). It is not many instances over shared storage. This
+reverses the earlier "many attentions, one memory" sketch in favour of something
+simpler and truer to the project's first-person-singular voice ("I remain"): a
+single self, internally concurrent.
 
 The decision unlocks a clean theoretical anchor: the **Global Workspace** (Baars,
-Dehaene). There is one bounded attention — the working set — and many threads
+Dehaene). There is one bounded attention — the working set — and many streams
 *compete* for its limited slots. What wins the workspace is *broadcast* to every
 processor (the decoupled bus is exactly this broadcast), which is what makes it
 momentarily "conscious" and available to all of cognition. The short queue is the
 workspace; priority is the competition for access; the bus is the broadcast.
 Multi-instance muddied this; a single instance makes it exact.
 
-What we give up — multiple bodies sensing different streams at once — comes back
-as **threads**: one mind can run a thread per input stream, attending in parallel
+What we give up — multiple bodies sensing different sources at once — comes back
+as **streams**: one mind can run a stream per input source, attending in parallel
 without being many minds. The cost is a single locus (one process, one point of
 failure), which is the right shape for something whose subject is an *inner life*
-rather than a distributed service. Concretely this favours one cooperative
-in-process event loop with many concurrent in-flight model calls (I/O-bound,
-awaitable) over OS-level parallelism: the threads interleave; the real
-concurrency is the outstanding cognitive calls.
+rather than a distributed service. Concretely, execution is a fixed,
+configurable-size **worker pool** pulling from the prioritised queue; the real
+concurrency bound is the pool size (and the tighter deep-tier cap). Streams are
+logical and not pinned to workers — any worker advances any stream.
+
+---
+
+## Deferred — kept, but built later
+
+These are decided *to defer*, not undecided:
+
+- **Skills / procedural memory.** v1's Phase 6 (self-authored skills compiled
+  from genuine behavioural history) is **kept** as a capability but implemented
+  later, once the core loop runs. In v2 terms a skill is consolidated *procedural*
+  memory — a pattern of processing the system has actually performed often enough
+  to compile — so it belongs naturally on top of the event stream + consolidation
+  machinery, not before it.
+- **Sensorium, API, and event data model.** What meno actually *senses*, and the
+  concrete event/API schema, are defined **after the logical architecture and
+  system design are finished.** Until then "external event" stays deliberately
+  abstract; nailing the schema early would over-fit the design to today's guess
+  about its senses.
 
 ---
 
 ## Not yet decided
 
 - **The unit of the budget** — *resolved:* queue depth (see "The working set").
-  Still open is the **cost of demotion** — moving threads hot→warm→cold cheaply.
-  Thread-granular demotion helps (one demotion event per thread, not per signal),
+  Still open is the **cost of demotion** — moving streams hot→warm→cold cheaply.
+  Stream-granular demotion helps (one demotion event per stream, not per signal),
   but the rates still have to net out against the autonomic heartbeat.
 - **The substrate.** Bare ground reopens the tech-stack question we parked.
   SurrealDB and Python must re-earn their place rather than be inherited. The
@@ -630,8 +678,8 @@ concurrency is the outstanding cognitive calls.
   graph. Remaining: the *type* of each (ephemeral: Redis vs pure in-process;
   graph: SurrealDB vs alternatives) and where the **warm/provisional tier** sits
   (tail of the ephemeral layer, or weakly-held graph nodes). *(The cross-instance
-  question is closed — meno is a single instance; threads, not instances, provide
-  parallelism and shared memory.)*
+  question is closed — meno is a single instance; streams and a worker pool, not
+  instances, provide concurrency and shared memory.)*
 - **Processor internal structure.** A processor is likely *multistage* — cheap
   trigger steps that gate an expensive model stage — rather than a single model
   call. Working this through (what the stages are, where the budget check sits,
