@@ -348,6 +348,63 @@ build by hand:
 
 ---
 
+## The working set: a short, prioritised queue
+
+The budget is not an abstraction — it is a **short, bounded queue**, and its
+depth *is* the attention budget. (This resolves the open "what is the unit of the
+budget" question.) Three resources define the operating envelope:
+
+- **N — queue depth.** The number of hot event slots, mostly shallow. Arousal
+  made physical: free slots fire initiative/dream; a full queue is overwhelm;
+  depth is load.
+- **M — parallel threads.** Concurrent *considered sequences of thought.* Only a
+  subset are hot (their events occupy the N slots) at any moment; the rest are
+  suspended (warm) or consolidated (cold). M can be large — but the number held
+  in *deep* consideration at once is small, bounded by deep-tier budget rather
+  than by N. That small number is the real train-of-thought ceiling.
+- **O — processors.** The consumers across tiers. The scarce deep tier caps how
+  many threads can be advanced deeply in parallel.
+
+Priority is **dynamic, re-scored continuously**, not fixed at enqueue: activation
+decays while an event waits, impulse pressure builds. So it is a bounded working
+set with a recomputed score — roughly `activation × surprise + pressure −
+fatigue`, evict-lowest. The `pressure` term is why a deferred impulse *rises*
+over time until it reaches the front: that ascent is the interoception
+wake-trigger. The `fatigue` term — lateral inhibition, down-weighting events from
+an over-active thread — is what stops one obsession from monopolising the queue
+(queue-level rumination).
+
+Each instance has its **own** queue. Per-instance working sets over a shared
+event log and graph: many attentions, one memory.
+
+### Demotion, not elimination — and never automatic on a live thread
+
+This is the constraint that protects the system from its own scheduler. **The
+automatic layer may demote, but it may never eliminate, and it may never split a
+thread.**
+
+A stray stimulus that went nowhere — an isolated, low-activation event — may
+lapse automatically. That is habituation. But an event that is part of an
+**ongoing, considered sequence of thought must not be forcibly evicted** because
+its instantaneous score dipped. Severing a thread mid-thought is involuntary loss
+of a train of thought, and we want the opposite: management that is *considered
+and conscious*, not automatic prevention.
+
+So eviction under pressure operates on **whole threads, not events**, and only
+ever as **demotion**: a coherent thread is moved hot→warm *intact* — suspended,
+with enough state to reconstruct it (the Phase-5 suspend/reconstruct capability)
+— never dismembered, never deleted. The thread stays available and can be
+reactivated.
+
+**Elimination is always a considered cognitive act, never an automatic one.**
+This is the fifth principle applied to the scheduler: *pruning is grief, not
+garbage collection.* The automatic layer's bias is toward preservation — demote,
+suspend, decay slowly, island (available but inaccessible, recoverable). What is
+actually *released* is decided deliberately, in reflection or the dream. The
+scheduler may set a thought down gently; only the mind may let it go.
+
+---
+
 ## Greedy while waking, loose while dreaming
 
 The gate, run greedily, manufactures the exact pathology the reflection
@@ -402,13 +459,10 @@ default.
 
 ## Not yet decided
 
-- **The unit of the budget.** Candidate: the context window itself — a fixed
-  number of active slots, each an ongoing line of cognition holding its own
-  activation, with each cognitive pass allocating context across whichever slots
-  currently win on salience-or-pressure. Open: is the cap a *size* (tokens in
-  one pass) or a *count* (concurrent threads)? Likely **both, per tier** (see
-  the graded stack): a per-tier rate gradient, with the active-set count
-  governing the scarce deep tier specifically.
+- **The unit of the budget** — *resolved:* queue depth (see "The working set").
+  Still open is the **cost of demotion** — moving threads hot→warm→cold cheaply.
+  Thread-granular demotion helps (one demotion event per thread, not per signal),
+  but the rates still have to net out against the autonomic heartbeat.
 - **The substrate.** Bare ground reopens the tech-stack question we parked.
   SurrealDB and Python must re-earn their place rather than be inherited. The
   graph + vector + cheap-traversal requirements are real; whether SurrealDB is
