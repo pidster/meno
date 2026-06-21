@@ -11,12 +11,10 @@ warm-tier placement is still an open decision (redesign.md). See decision D12.
 """
 from __future__ import annotations
 
-import itertools
 import json
 from pathlib import Path
 from typing import Union
 
-from . import graph as graphmod
 from .graph import Graph, Node, ReflectionCue
 
 
@@ -61,9 +59,10 @@ def dict_to_graph(data: dict, g: Graph) -> Graph:
                             created_at=cd.get("created_at", 0.0))
         g.cues[cue.id] = cue
         max_cue = max(max_cue, cue.id)
-    # advance the module id counters so freshly-created ids never collide with loaded ones
-    graphmod._node_ids = itertools.count(max_node + 1)
-    graphmod._cue_ids = itertools.count(max_cue + 1)
+    # advance THIS graph's id counters past the loaded maxima (per-instance, D15)
+    # — never touch global state, so other live instances are unaffected.
+    g._node_seq = max(g._node_seq, max_node)
+    g._cue_seq = max(g._cue_seq, max_cue)
     return g
 
 

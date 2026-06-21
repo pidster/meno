@@ -56,11 +56,27 @@ class WorkingSet:
         return [e.embedding for e in self.events.values() if e.embedding]
 
     def _enforce_capacity(self) -> None:
-        while len(self.events) > self.cfg.working_set_capacity:
-            # find the lowest-scoring event, demote its WHOLE stream intact
+        cap = self.cfg.working_set_capacity
+        while len(self.events) > cap:
+            before = len(self.events)
             lowest = min(self.events, key=lambda i: self.score(self.events[i]))
-            sid = self.events[lowest].stream_id
-            for e in [ev for ev in self.events.values() if ev.stream_id == sid]:
-                self.events.pop(e.id, None)
-            self.streams.suspend(sid)
-            self.demoted_streams.append(sid)
+            ev = self.events[lowest]
+            sid = ev.stream_id
+            cohort = [e for e in self.events.values()
+                      if sid is not None and e.stream_id == sid]
+            if sid is None or len(cohort) <= 1 or len(cohort) > cap:
+                # an orphan (no stream), a singleton, or a stream too big to ever
+                # hold whole: lapse just this one event. (A stream larger than the
+                # working set cannot be held intact — trimming its lowest events is
+                # the honest concession, rather than collapsing the set to ~1.)
+                self.events.pop(lowest, None)
+                ev.status = Status.LAPSED
+            else:
+                # demote the WHOLE stream intact (suspended, resumable) — the design
+                # intent: set a train of thought down gently, never split it.
+                for e in cohort:
+                    self.events.pop(e.id, None)
+                self.streams.suspend(sid)
+                self.demoted_streams.append(sid)
+            if len(self.events) >= before:   # progress guard: never spin
+                break

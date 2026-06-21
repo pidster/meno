@@ -140,3 +140,44 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   calls run serially per quiescence pass; the async worker pool that would issue
   them concurrently is still deferred. Tests inject a fake client, so the suite
   stays offline and deterministic.
+
+### D14 — Strategy after the adversarial review: embedder before graph DB; stay on Python
+- **Decision.** Two strategic forks are now locked (see `review-findings.md`):
+  (1) **a real embedder before a graph database** — wire rediscovery, add a real
+  embedder on graph-touching ops, and defer the graph DB to a genuine
+  scale/persistence trigger (and prefer a single store with native vectors when it
+  comes). Embeddings and a graph DB are complements: the embedder carries
+  *capability*, the DB only *scale*. (2) **Stay on Python** — build the deferred
+  async execution layer and index the two naive structures in Python; a PyO3 Rust
+  graph core stays a *profile-triggered* future, not a present rewrite.
+- **Why.** The review showed the bottleneck is wiring and algorithms, not the
+  backend or the language; Python's ecosystem and iteration speed fit this
+  still-exploratory, dynamics-dominated phase, and the concurrency we need
+  (overlapping network waits) is asyncio's sweet spot.
+- **Sequencing.** Fundamentals (wire the kernel) and correctness come *before*
+  either backend work.
+
+### D15 — Correctness fixes (P2), pre-wiring
+- **Decision.** Fixed the HIGH/MED correctness bugs the review found, ahead of the
+  P0 kernel-wiring:
+  - **Per-instance id allocation.** Node/cue/stream ids now come from counters on
+    `Graph`/`StreamManager`, not module-global `itertools.count`. `persistence.load`
+    sets the instance counter past the loaded maximum instead of clobbering a
+    global. (Fixes the multi-instance collision/overwrite hazard, F10.) Event ids
+    stay process-global — they are ephemeral, never persisted, and only keyed
+    within one instance, so monotonic uniqueness suffices.
+  - **`_enforce_capacity` rewrite.** Orphan (`stream_id is None`) and singleton
+    events lapse individually; a stream larger than the working set is trimmed to
+    capacity event-by-event (it cannot be held whole — the honest concession)
+    rather than collapsing the set to ~1; whole-stream demotion only when the
+    stream fits; a progress guard prevents any spin. (Fixes F9.)
+  - **Stream routing seed.** `best_sim` seeds at `-inf` so the genuinely
+    best-matching stream is chosen before the threshold test (a 0.0 seed silently
+    rejected zero/negative cosines). (Fixes M2.)
+  - **Journaling no longer drifts on freeze.** `reconstruct(..., reconsolidate=False)`
+    lets `journal()` freeze a reflection without first mutating its gist. (Fixes L4.)
+  - **Empty wake message.** A summary-less resumed stream wakes as "an unfinished
+    thought" rather than an empty string. (Fixes L1.)
+- **Deferred to P0:** the *fundamentals* (islanding-thins-reconstruction, merge,
+  curiosity, rediscovery, graph-spread-in-cognition, cross-burst surprise, the
+  heartbeat storm) and the meaning-asserting tests that pin them.

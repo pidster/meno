@@ -28,8 +28,8 @@ class Controller:
                 continue
             # initiative grants a deep slot to the impulse that insisted
             self.mind.deep_budget = max(self.mind.deep_budget, 1)
-            ev = Event(content=f"returning to: {stream.summary}", kind=Kind.SELF,
-                       source="initiative", stream_id=sid,
+            ev = Event(content=f"returning to: {stream.summary or 'an unfinished thought'}",
+                       kind=Kind.SELF, source="initiative", stream_id=sid,
                        activation=max(0.6, stream.pressure))
             ev.payload["role"] = "wake"
             stream.deferred = False

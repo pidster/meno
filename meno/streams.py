@@ -4,7 +4,6 @@ lifecycle; streams do. Streams — not events — are the unit eviction protects
 """
 from __future__ import annotations
 
-import itertools
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -12,8 +11,6 @@ from typing import Dict, List, Optional
 from .config import Config
 from .embeddings import EmbeddingModel, cosine
 from .event import Event
-
-_stream_ids = itertools.count(1)
 
 
 @dataclass
@@ -26,7 +23,7 @@ class Stream:
     event_ids: List[int] = field(default_factory=list)
     node_ids: List[int] = field(default_factory=list)   # graph nodes encoded from this stream
     summary: str = ""
-    id: int = field(default_factory=lambda: next(_stream_ids))
+    id: int = 0                     # assigned by StreamManager.route (per-instance, D15)
     last_active: float = field(default_factory=time.time)
 
 
@@ -36,6 +33,7 @@ class StreamManager:
         self.cfg = config
         self.active: Dict[int, Stream] = {}
         self.warm: Dict[int, Stream] = {}   # suspended, resumable
+        self._stream_seq = 0                 # per-instance id counter (D15)
 
     def get(self, sid: Optional[int]) -> Optional[Stream]:
         if sid is None:
@@ -44,10 +42,13 @@ class StreamManager:
 
     # --- born / route (cheap, Tier-0-ish: similarity to centroids) ---
     def route(self, event: Event) -> int:
-        if event.stream_id in self.active:
+        if event.stream_id is not None and event.stream_id in self.active:
             self._absorb(event)
             return event.stream_id
-        best_id, best_sim = None, 0.0
+        # pick the genuinely best-matching stream, THEN test the threshold.
+        # seed at -inf so zero/negative cosines can still win (a 0.0 seed silently
+        # rejected them, making low thresholds a no-op — D15/M2).
+        best_id, best_sim = None, float("-inf")
         for sid, s in self.active.items():
             sim = cosine(event.embedding, s.centroid)
             if sim > best_sim:
@@ -57,7 +58,8 @@ class StreamManager:
             self._absorb(event)
             return best_id
         # born: a new line of thought
-        s = Stream(centroid=list(event.embedding), summary=event.content[:60])
+        self._stream_seq += 1
+        s = Stream(centroid=list(event.embedding), summary=event.content[:60], id=self._stream_seq)
         self.active[s.id] = s
         event.stream_id = s.id
         self._absorb(event)

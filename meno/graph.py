@@ -10,7 +10,6 @@ behind the same surface.
 """
 from __future__ import annotations
 
-import itertools
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -18,9 +17,6 @@ from typing import Dict, List, Optional, Tuple
 from .config import Config
 from .embeddings import EmbeddingModel, cosine
 from .models import ModelProvider
-
-_node_ids = itertools.count(1)
-_cue_ids = itertools.count(1)
 
 
 @dataclass
@@ -30,7 +26,7 @@ class Node:
     kind: str = "experience"          # experience | concept | provisional
     salience: float = 1.0
     meta: dict = field(default_factory=dict)
-    id: int = field(default_factory=lambda: next(_node_ids))
+    id: int = 0                       # assigned by Graph.add_node (per-instance, D15)
     created_at: float = field(default_factory=time.time)
 
 
@@ -43,7 +39,7 @@ class ReflectionCue:
     gist: List[float]                 # lossy embedding of the conclusion (meaning, not words)
     verbatim: Optional[str] = None    # set only if deliberately journaled
     recalls: int = 0
-    id: int = field(default_factory=lambda: next(_cue_ids))
+    id: int = 0                       # assigned by Graph.store_cue (per-instance, D15)
     created_at: float = field(default_factory=time.time)
 
 
@@ -54,13 +50,16 @@ class Graph:
         self.nodes: Dict[int, Node] = {}
         self.edges: Dict[Tuple[int, int], float] = {}   # undirected, key = (min,max)
         self.cues: Dict[int, ReflectionCue] = {}
+        self._node_seq = 0              # per-instance id counters (D15) — no global state
+        self._cue_seq = 0
 
     # --- structure ---
     def add_node(self, content: str, *, kind: str = "experience",
                  salience: float = 1.0, embedding: Optional[List[float]] = None,
                  meta: Optional[dict] = None) -> Node:
         emb = embedding if embedding is not None else self.embed.embed(content)
-        node = Node(content, emb, kind, salience, meta or {})
+        self._node_seq += 1
+        node = Node(content, emb, kind, salience, meta or {}, id=self._node_seq)
         self.nodes[node.id] = node
         return node
 
@@ -114,6 +113,7 @@ class Graph:
     # --- reflection cues (reconstructive memory) ---
     def store_cue(self, entry_points: List[int], occasion: str, tone: float,
                   conclusion: str, journal: bool = False) -> ReflectionCue:
+        self._cue_seq += 1
         cue = ReflectionCue(
             entry_points=list(entry_points),
             occasion=occasion,
@@ -121,6 +121,7 @@ class Graph:
             # gist embeds occasion + conclusion (meaning), so a topical probe can find it
             gist=self.embed.embed(f"{occasion} {conclusion}"),
             verbatim=conclusion if journal else None,
+            id=self._cue_seq,
         )
         self.cues[cue.id] = cue
         return cue
@@ -129,22 +130,27 @@ class Graph:
         """Cheap, gist-level recognition (the ghost signal). No model."""
         return cosine(cue.gist, probe_embedding)
 
-    def reconstruct(self, cue: ReflectionCue, model: ModelProvider) -> str:
+    def reconstruct(self, cue: ReflectionCue, model: ModelProvider,
+                    reconsolidate: bool = True) -> str:
         """Full reconstruction: spread from the cue's entry points over the
-        CURRENT graph, regenerate, then reconsolidate. The same cue yields a
-        different reflection because the graph changed — drift lives in the world.
-        Journaled cues return their frozen verbatim instead."""
+        CURRENT graph, regenerate, then (by default) reconsolidate. The same cue
+        yields a different reflection because the graph changed — drift lives in
+        the world. Journaled cues return their frozen verbatim instead. Pass
+        ``reconsolidate=False`` to read without mutating the cue (used by
+        journaling, so freezing doesn't first drift the gist — D15)."""
         if cue.verbatim is not None:
             return cue.verbatim
         act = self.spread(cue.entry_points, hops=2, decay=0.5)
         reachable = sorted(act.items(), key=lambda kv: kv[1], reverse=True)
         material = [self.nodes[nid].content for nid, _ in reachable if nid in self.nodes][:6]
         text = model.synthesise(cue.occasion, material)
-        # reconsolidation: blend the gist toward this fresh reconstruction (plasticity)
-        new_gist = self.embed.embed(text)
-        p = self.cfg.reconsolidation_plasticity
-        cue.gist = [(1 - p) * g + p * n for g, n in zip(cue.gist, new_gist)]
-        cue.recalls += 1
-        # the recall touched these nodes -> they become the updated entry points
-        cue.entry_points = [nid for nid, _ in reachable[:max(1, len(cue.entry_points))] if nid in self.nodes] or cue.entry_points
+        if reconsolidate:
+            # blend the gist toward this fresh reconstruction (plasticity)
+            new_gist = self.embed.embed(text)
+            p = self.cfg.reconsolidation_plasticity
+            cue.gist = [(1 - p) * g + p * n for g, n in zip(cue.gist, new_gist)]
+            cue.recalls += 1
+            # the recall touched these nodes -> they become the updated entry points
+            cue.entry_points = [nid for nid, _ in reachable[:max(1, len(cue.entry_points))]
+                                if nid in self.nodes] or cue.entry_points
         return text

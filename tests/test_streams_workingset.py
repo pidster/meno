@@ -60,15 +60,19 @@ def test_deferred_pressure_builds_and_wakes():
 
 def test_working_set_capacity_demotes_whole_stream():
     embed = HashingEmbedding()
-    cfg = Config(working_set_capacity=3, stream_match_threshold=0.9)
+    cfg = Config(working_set_capacity=4, stream_match_threshold=0.3)
     sm = StreamManager(embed, cfg)
     ws = WorkingSet(cfg, sm)
-    for t in ["alpha one", "beta two", "gamma three", "delta four", "epsilon five"]:
+    # two genuine multi-event streams (not singletons), then overflow capacity
+    for t in ["memory reconstruction one", "memory reconstruction two", "memory reconstruction three",
+              "database connection one", "database connection two"]:
         e = mk(embed, t)
         sm.route(e)
         ws.admit(e)
     assert ws.depth() <= cfg.working_set_capacity
-    assert sm.warm                              # overflow demoted a whole stream
+    assert sm.warm                              # a whole multi-event stream was demoted intact
+    for sid in sm.warm:                         # and it was NOT split — all its events left the hot set
+        assert not any(ev.stream_id == sid for ev in ws.events.values())
 
 
 def test_rescore_lapses_quiet_events():

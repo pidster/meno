@@ -162,7 +162,9 @@ class Meno:
                 best, best_sim = cue, sim
         if best is None:
             return {"journaled": False}
-        text = self.graph.reconstruct(best, self.models) if best.verbatim is None else best.verbatim
+        # freeze WITHOUT reconsolidating — journaling shouldn't drift the cue first (D15)
+        text = (best.verbatim if best.verbatim is not None
+                else self.graph.reconstruct(best, self.models, reconsolidate=False))
         best.verbatim = text
         self.trace(f"journaled reflection {best.id} verbatim")
         return {"journaled": True, "cue": best.id, "text": text}
