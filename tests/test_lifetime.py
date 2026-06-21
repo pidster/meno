@@ -150,6 +150,33 @@ def test_journaled_or_recalled_reflections_never_become_ghosts():
     assert j.id in m.graph.cues and r.id in m.graph.cues   # both kept, anchored to the self
 
 
+def test_recall_reinforces_the_web_so_hubs_are_earned_not_recency():
+    """R5 panel: particularity was a recency artifact — edges never reinforced, so
+    the NEWEST node was always the densest hub. Now returning to a reflection
+    strengthens the associations it rests on, so a theme the agent keeps recalling
+    becomes a genuine hub through earned attention."""
+    m = mind()
+    a = m.graph.add_node("a theme i keep returning to").id        # old, often-recalled
+    b = m.graph.add_node("its close companion").id
+    m.graph.link(a, b, 0.45)
+    cue = m.graph.store_cue([a, b], "the recurring theme", tone=0.6,
+                            conclusion="x", material=["a theme i keep returning to"])
+    c = m.graph.add_node("a passing recent thought").id          # newer, never recalled
+    d = m.graph.add_node("its neighbour").id
+    m.graph.link(c, d, 0.45)
+    w_before = m.graph.edges[(min(a, b), max(a, b))]
+    for _ in range(8):                                            # the agent keeps returning
+        m.graph.reconstruct(cue, m.models, reconsolidate=True)
+    ab = m.graph.edges[(min(a, b), max(a, b))]
+    cd = m.graph.edges[(min(c, d), max(c, d))]
+    assert ab > w_before                                         # the recalled web strengthened
+    assert ab > cd                                               # earned > merely-recent
+    # a read-only audit must NOT reinforce (no measurement contamination)
+    frozen = m.graph.edges[(min(a, b), max(a, b))]
+    m.graph.reconstruct(cue, m.models, reconsolidate=False)
+    assert m.graph.edges[(min(a, b), max(a, b))] == frozen
+
+
 def test_reflection_with_a_living_anchor_is_not_a_ghost():
     m = mind(cue_ghost_ttl=1)
     a = m.graph.add_node("a living anchor").id

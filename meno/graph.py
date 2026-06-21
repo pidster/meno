@@ -211,4 +211,14 @@ class Graph:
             # the recall touched these nodes -> they become the updated entry points
             touched = anchors + [nid for nid, _ in neighbours]
             cue.entry_points = touched[:max(1, len(cue.entry_points))] or cue.entry_points
+            # co-activation during recall REINFORCES the web (Hebbian): returning to a
+            # reflection strengthens the associations it rests on, so a theme the agent
+            # keeps coming back to becomes a genuine hub through EARNED attention — not
+            # merely whichever node was encoded most recently. This connects accumulated
+            # return (cue.recalls) to graph structure, which it otherwise never reached
+            # (R5 panel: particularity was a recency artifact). Read-only audits use
+            # reconsolidate=False and so never contaminate the measurement.
+            core = touched[:4]
+            for x, y in zip(core, core[1:]):
+                self.link(x, y, weight=self.cfg.hebbian_increment * 0.5)
         return text
