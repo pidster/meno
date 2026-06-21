@@ -72,6 +72,18 @@ def scripted() -> None:
     print(f"  journaled cue {j['cue']}; two reconstructions identical? {a == b}")
     print(f"      frozen: {a}")
 
+    banner("REMAIN — save, then wake a fresh mind from the saved graph")
+    save_path = Path(tempfile.mkdtemp(prefix="meno_save_")) / "memory.json"
+    mind.save(save_path)
+    woken = Meno(config=Config(), workspace=Path(tempfile.mkdtemp(prefix="meno_")))
+    print(f"  fresh mind nodes before load: {woken.snapshot()['nodes']}")
+    woken.load(save_path)
+    print(f"  after waking from saved graph: {woken.snapshot()}")
+    r = woken.recall("associative memory and spreading activation")
+    print(f"  recall after restart -> {r['mode']} (sim={r['similarity']:.2f})")
+    if r["text"]:
+        print(f"      {r['text']}")
+
     banner("SNAPSHOT after dreaming")
     for k, v in mind.snapshot().items():
         print(f"  {k}: {v}")

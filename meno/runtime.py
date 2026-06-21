@@ -167,6 +167,29 @@ class Meno:
         self.trace(f"journaled reflection {best.id} verbatim")
         return {"journaled": True, "cue": best.id, "text": text}
 
+    # --- continuity across restart (sleep, not death) ---
+    def save(self, path) -> None:
+        """Persist the durable self — the cold graph — so meno remains."""
+        from . import persistence
+        persistence.save(self.graph, path)
+
+    def load(self, path) -> None:
+        """Wake from a saved graph. The working set starts empty; recall works
+        immediately, and resurface() can rebuild some working context."""
+        from . import persistence
+        persistence.load(self.graph, path)
+
+    def resurface(self, k: int = 3) -> int:
+        """Rebuild a little working context by re-entering the most salient
+        memories as self-events — reconstruction at the scope of the whole self."""
+        top = sorted(self.graph.nodes.values(), key=lambda n: n.salience, reverse=True)[:k]
+        for node in top:
+            ev = Event(content=node.content, kind=Kind.SELF, source="resurface",
+                       activation=0.7, embedding=list(node.embedding))
+            ev.payload["role"] = "resurface"
+            self.bus.publish(ev)
+        return self.run_until_quiescent()
+
     # --- observability ---
     def snapshot(self) -> dict:
         return {

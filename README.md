@@ -52,6 +52,8 @@ interfaces.
 - **Reconstructive recall** — `recall(q)` returns *reconstructed* / *ghost* /
   *none*; the same reflection recalled twice comes back differently.
 - **Journaling** — a deliberate verbatim freeze (the escape hatch).
+- **Continuity** — save the graph and wake a fresh mind from it: *remaining*
+  across a restart (sleep, not death).
 
 ## Layout
 
@@ -63,8 +65,9 @@ tests/     offline, deterministic subsystem + integration tests
 
 ## Status
 
-The bare loop runs end to end with offline stand-ins and a passing test suite.
+The bare loop runs end to end with offline stand-ins and a passing test suite,
+and persists its consolidated graph across restarts (`Meno.save`/`load`).
 Deferred (see the docs' open lists): real model/embedding/graph backends, the
-sensor catalogue + event wire-schema + API, the warm-tier placement, and skills
-(procedural memory). Scoring constants in `meno/config.py` are first cuts, to be
-tuned empirically.
+sensor catalogue + event wire-schema + API, warm-tier (suspended-stream)
+persistence, and skills (procedural memory). Scoring constants in
+`meno/config.py` are first cuts, to be tuned empirically.

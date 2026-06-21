@@ -106,3 +106,16 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   clean separation matches the kernel: reactive cognition under load, initiative
   in the spare capacity between bursts; deep thought deferred during waking is
   worked off during quiet and sleep.
+
+### D12 — Continuity across restart persists the cold graph only
+- **Decision.** `Meno.save(path)`/`load(path)` serialise the **graph** (nodes,
+  edges, reflection cues) to JSON. On wake the working set starts empty; recall
+  works immediately against the loaded graph, and `resurface()` re-enters the
+  most salient memories as self-events to rebuild a little working context. Load
+  advances the id counters past the loaded maxima so new ids never collide.
+- **Why.** A restart is *sleep, not death* — meno must remain. The durable self
+  is the consolidated graph; the hot layer is ephemeral by design.
+- **Rules out / defers.** Warm-tier (suspended-stream) persistence is *not*
+  handled, because the warm-tier placement is still an open decision. Until that
+  lands, suspended trains of thought do not survive a restart — only consolidated
+  memory does, which is the faithful minimum.
