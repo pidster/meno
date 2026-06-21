@@ -28,8 +28,21 @@
         "final_state": "All 6 break attempts return 0.0; a full stub-built mind reads 'zombie'."
       }
     },
-    "R1": {"name": "Real cognition, validated end to end", "status": "in_progress"},
-    "R2": {"name": "Continuous operation", "status": "pending"},
+    "R1": {
+      "name": "Real cognition, validated end to end",
+      "status": "complete",
+      "module": "meno/models.py (telemetry, _run, cognition_is_real)",
+      "tests": "tests/test_cognition_r1.py (offline + 3 live, key-gated)",
+      "deliverable": "All 5 surfaces validated against real Claude (Haiku/Sonnet/Opus); loud-failure telemetry; verdict FAILS CLOSED on cognition (auto-wired, synth-tier gate); merge caveat closed into a live emergent insight.",
+      "adversarial_review": {
+        "lenses": "theory + data/model + (test/evidence covered inline)",
+        "p0_closed": "cognition gate failed open (None -> alive) and was unwired; now fails closed + auto-derives from provider telemetry",
+        "p1_closed": ["all-or-nothing fallback poisoned long runs / hollow pass -> synth-tier gate + 0.9 floor", "wonder mode/payload could contradict -> validated", "relate fallback corrupts merge topology -> R5 uses strict=True (documented)"],
+        "bug_caught_by_telemetry": "wonder truncated JSON at max_tokens=200 -> silent stub fallback; raised to 512",
+        "final_state": "P0+P1 closed with reproduced evidence; re-review recommends advance."
+      }
+    },
+    "R2": {"name": "Continuous operation", "status": "in_progress"},
     "R3": {"name": "Lifetime-growth hardening (D19)", "status": "pending"},
     "R4": {"name": "Sensorium + warm-tier persistence", "status": "pending"},
     "R5": {"name": "The zombie test (acceptance gate)", "status": "pending"}

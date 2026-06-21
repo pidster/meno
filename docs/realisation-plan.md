@@ -103,6 +103,17 @@ A run that is mechanically perfect but fails these is a zombie, and fails.
 - **Review focus:** Data/Model Semantics + User-Intent (autonomy/privacy/resource bounds).
 
 ## Phase R5 — The zombie test  *(needs real model; the acceptance gate)*
+
+**Harness hygiene (from the R1 review):**
+- Call `zombie_report(meno)` and let it **auto-derive** `cognition_real` from the
+  run's provider telemetry — do NOT hand-pass `cognition_real=True` (that would
+  re-open the fail-open hole the R1 gate closed).
+- The verdict sits at `indeterminate` until the run has fired at least one real
+  `synthesise` (a dream/reflect cycle). Run the loop long enough to dream before
+  judging, or the gate correctly refuses to certify.
+- Use `strict=True` (or assert `not provider.degraded`) for the accumulation run,
+  so a silent degradation can't quietly edit the graph mid-run.
+
 - Run Meno continuously with real cognition + embedder + sensorium, accumulating
   experience over an extended session. Then convene an adversarial panel whose
   job is to **prove it is a zombie** (any fresh instance reproduces its graph).
