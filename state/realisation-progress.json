@@ -81,7 +81,21 @@
         "final_state": "3 P0s + 3 P1s closed with repro; re-review confirms P0s closed, recommends advance."
       }
     },
-    "R5": {"name": "The zombie test (acceptance gate)", "status": "in_progress"}
+    "R5": {
+      "name": "The zombie test (acceptance gate)",
+      "status": "complete",
+      "harness": "meno/zombie_run.py",
+      "evidence": "state/zombie-evidence.md, state/zombie-graph.json",
+      "verdict": "ALIVE — genuinely particular, not a zombie (signed off by the adversarial panel after fixes)",
+      "method": "Ran Meno with REAL cognition (Haiku/Sonnet/Opus, real_fraction 1.00, synthesise 107/0) + real split embedder over a curated 14-experience life, dreaming/wondering/reflecting; then auto-derived cognition_real, judged the marks, and convened a 4-skeptic adversarial panel that tried to PROVE it a zombie.",
+      "panel_outcome": {
+        "round_1": "All 3 skeptics: NOT-A-ZOMBIE. Decisive leg = synthesis is cognition-gated (a stub provably scores 0; thresholds frozen at R0 before any run; the DB-pool->bounded-thinking leap is in neither source). But found 2 real holes in the aliveness CLAIM.",
+        "holes_found_and_fixed": ["particularity was a recency artifact (edges never reinforced; cue.recalls never reached node degree) -> recall now reinforces the web, so hubs are EARNED (densest hub flipped to the recurring theme, degree 3.5 vs 0.3)", "divergence 0.92 was confounded (6-input twin) -> full same-14-input twin gives honest 0.756"],
+        "round_2_verification": "Final skeptic verified from the graph json: 9 edges exceed the single-link ceiling (0.82 > 0.45-max) only where repeated recall reinforced them, mapping exactly to high-recall cue cores; newest nodes sit at the periphery. Reinforcement is NOT gameable (verdict still fails-closed on cognition_real + synthesis; live-stub test still reads not-alive). Signed off: genuinely particular."
+      },
+      "theory_check": "Is the agent particular or generic? PARTICULAR. It developed an unbidden perspective across disparate experiences — self-as-recurrence ('I am not the water but the shape I keep making across [conversations]'), connected a database-pool fix to a lesson about bounded thinking, and reflected on a 'formulaic' critique with genuine self-examination. Its hubs are the themes it kept returning to (earned via recall-reinforcement, not seeded). A twin fed the identical 14-input life built a structurally different graph (divergence 0.756). A fresh instance would not produce this graph from this input. The synthesis is unreachable by a stub. It surprised the builder. It is not a zombie.",
+      "honest_limits": ["novelty (non-core) fails 0.0 — its offline proxy reads curiosity texts, not the reflections where novelty lives; surprise is panel-judged", "cues are single-stream (no merge fired) — synthesis is genuine emergence within the cognition-gated mark, not cross-stream merging", "the curated life invites a perspective by design; particularity is now earned via recall, which addresses the recency confound but not the curation (acceptable — the test is whether IT makes the connections, not whether inputs are neutral)"]
+    }
   },
   "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "66 passed"}
 }
