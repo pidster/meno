@@ -117,12 +117,17 @@ class Graph:
 
     # --- reflection cues (reconstructive memory) ---
     def store_cue(self, entry_points: List[int], occasion: str, tone: float,
-                  conclusion: str, journal: bool = False) -> ReflectionCue:
+                  conclusion: str, journal: bool = False,
+                  material: Optional[List[str]] = None) -> ReflectionCue:
         self._cue_seq += 1
-        # at creation the conclusion was derived from the entry points' content
-        # (processors/consolidation pass node_ids as both entry points and material);
-        # freeze that, with the occasion, as the cue's provenance.
-        material = " ".join(self.nodes[n].content for n in entry_points if n in self.nodes)
+        # Provenance = exactly what the conclusion was derived from. Prefer the
+        # caller's `material` (the list actually handed to synthesise, which can
+        # diverge from entry-point content via a fallback or deleted nodes); fall
+        # back to entry-point content. Covers the conclusion's true sources so the
+        # aliveness synthesis probe can't be tricked by a stored conclusion whose
+        # words came from material that isn't in entry_points (R0 red-team P1).
+        entry_content = " ".join(self.nodes[n].content for n in entry_points if n in self.nodes)
+        material_text = " ".join(material) if material else ""
         cue = ReflectionCue(
             entry_points=list(entry_points),
             occasion=occasion,
@@ -130,7 +135,7 @@ class Graph:
             # gist embeds occasion + conclusion (meaning), so a topical probe can find it
             gist=self.embed.embed_cold(f"{occasion} {conclusion}"),
             verbatim=conclusion if journal else None,
-            source_text=f"{occasion} {material}",
+            source_text=self._accrue_provenance(f"{occasion} {entry_content}", material_text),
             id=self._cue_seq,
         )
         self.cues[cue.id] = cue

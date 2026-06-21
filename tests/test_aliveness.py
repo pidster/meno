@@ -199,6 +199,21 @@ def test_synthesis_boilerplate_covers_every_stub_template_including_fallbacks():
     assert synthesis(m.graph, texts)["score"] == 0.0
 
 
+def test_synthesis_provenance_covers_material_not_just_entry_points():
+    """R0 red-team P1: a conclusion's words can come from the `material` handed to
+    synthesise (e.g. a fallback, or nodes deleted after the fact), which may diverge
+    from entry-point content. store_cue now freezes provenance from the actual
+    material, so even a RAW stored stub conclusion (no reconstruct) scores 0."""
+    m = fresh()
+    n1 = m.graph.add_node("the thread").id
+    n2 = m.graph.add_node("the topic").id
+    occ = "the thread"
+    material = ["antarctic subglacial vostok"]                 # diverges from entry content
+    conclusion = m.models.synthesise(occ, material)
+    cue = m.graph.store_cue([n1, n2], occ, tone=0.9, conclusion=conclusion, material=material)
+    assert synthesis(m.graph, {cue.id: conclusion})["score"] == 0.0   # raw conclusion, still 0
+
+
 def test_synthesis_requires_at_least_two_memories():
     m = fresh()
     a = m.graph.add_node("a lone memory").id

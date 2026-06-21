@@ -83,8 +83,10 @@ class ConsolidationCycle:
                 s = sm.active[merged]
                 s.refractory = False
                 material = [g.nodes[n].content for n in s.node_ids if n in g.nodes][:6]
-                text = self.mind.models.synthesise(f"insight: {s.summary}", material or [s.summary])
-                g.store_cue(s.node_ids, f"insight: {s.summary}", tone=0.9, conclusion=text)
+                synth_material = material or [s.summary]
+                text = self.mind.models.synthesise(f"insight: {s.summary}", synth_material)
+                g.store_cue(s.node_ids, f"insight: {s.summary}", tone=0.9,
+                            conclusion=text, material=synth_material)
                 report["merges"] += 1
 
         # 4. reconsolidation — re-reconstruct reflections against the evolved graph

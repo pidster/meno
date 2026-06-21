@@ -153,11 +153,12 @@ class Synthesiser(Processor):
         occasion = stream.summary if stream and stream.summary else event.content[:60]
         node_ids = list(stream.node_ids) if stream else ([event.node_id] if event.node_id else [])
         material = [mind.graph.nodes[n].content for n in node_ids if n in mind.graph.nodes][:6]
-        text = mind.models.synthesise(occasion, material or [event.content])
+        synth_material = material or [event.content]
+        text = mind.models.synthesise(occasion, synth_material)
         # Default is reconstructive — journaling is a separate, DELIBERATE act
         # (decision D10). Surprise is the wrong proxy: a novel percept is ~1.0.
         cue = mind.graph.store_cue(node_ids, occasion, tone=event.surprise,
-                                   conclusion=text, journal=False)
+                                   conclusion=text, journal=False, material=synth_material)
         if stream is not None:
             stream.deferred = False
             stream.pressure = 0.0
