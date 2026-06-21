@@ -55,6 +55,10 @@ class FilesystemSensor(Sensor):
     source = "filesystem"
     _TEXT_SUFFIXES = frozenset(
         ".txt .md .rst .py .js .ts .json .yaml .yml .toml .cfg .ini .csv .log .html".split())
+    # never read these, even with an allowed suffix (e.g. 'credentials.txt') — a
+    # blunt secret guard so a watched project dir can't bleed obvious secrets in.
+    _SECRET_MARKERS = ("credential", "secret", "password", "passwd", "id_rsa",
+                       "id_ed25519", "id_dsa", "htpasswd", "private_key", ".pem", ".key")
 
     def __init__(self, root, *, max_bytes: int = 64_000, max_chars: int = 2000,
                  max_per_poll: int = 8, suffixes=None) -> None:
@@ -63,11 +67,18 @@ class FilesystemSensor(Sensor):
         self.max_chars = max_chars
         self.max_per_poll = max_per_poll
         self.suffixes = frozenset(suffixes) if suffixes else self._TEXT_SUFFIXES
+        try:
+            self._root_dev = self.root.stat().st_dev      # confine to the root's device
+        except OSError:
+            self._root_dev = None
         self._seen: dict = {}              # resolved path -> mtime, for change detection
+        self._cursor = 0                   # round-robins the per-poll window (anti-starvation)
 
     def _eligible(self, p: Path) -> bool:
         if not p.is_file() or p.suffix.lower() not in self.suffixes:
             return False
+        if any(m in p.name.lower() for m in self._SECRET_MARKERS):
+            return False                   # obvious secret by name -> never read
         try:
             rp = p.resolve()
             rel = rp.relative_to(self.root)    # within root? (rejects symlink escapes)
@@ -76,9 +87,16 @@ class FilesystemSensor(Sensor):
         if any(part.startswith(".") for part in rel.parts):
             return False                   # hidden file or anything under a dotdir
         try:
-            return p.stat().st_size <= self.max_bytes
+            st = p.stat()
         except OSError:
             return False
+        # confine to root's filesystem and reject hardlinks (a 2nd name with no link
+        # target that resolve() can't see through — the symlink guard misses them).
+        if self._root_dev is not None and st.st_dev != self._root_dev:
+            return False
+        if st.st_nlink > 1:
+            return False
+        return st.st_size <= self.max_bytes
 
     def poll(self) -> List[Percept]:
         out: List[Percept] = []
@@ -86,9 +104,8 @@ class FilesystemSensor(Sensor):
             candidates = sorted(self.root.rglob("*"))
         except OSError:
             return out
+        present, changed = set(), []
         for p in candidates:
-            if len(out) >= self.max_per_poll:
-                break
             if not self._eligible(p):
                 continue
             try:
@@ -96,15 +113,25 @@ class FilesystemSensor(Sensor):
             except OSError:
                 continue
             rp = p.resolve()
-            if self._seen.get(rp) == mtime:
-                continue                   # unchanged since last poll
-            self._seen[rp] = mtime
+            present.add(rp)
+            if self._seen.get(rp) != mtime:
+                changed.append((p, rp, mtime))
+        # prune change-detection state of files that have gone (no unbounded _seen leak)
+        self._seen = {k: v for k, v in self._seen.items() if k in present}
+        if not changed:
+            return out
+        # round-robin the window so a few constantly-changing files can't permanently
+        # starve the rest; mark a file seen ONLY once actually read.
+        start = self._cursor % len(changed)
+        ordered = changed[start:] + changed[:start]
+        for p, rp, mtime in ordered[:self.max_per_poll]:
             try:
                 text = p.read_text(errors="ignore")[:self.max_chars]
             except OSError:
                 continue
-            rel = rp.relative_to(self.root)
-            out.append((f"file {rel}: {text}", self.source, {"path": str(rp)}))
+            self._seen[rp] = mtime
+            out.append((f"file {rp.relative_to(self.root)}: {text}", self.source, {"path": str(rp)}))
+        self._cursor += len(out)
         return out
 
 

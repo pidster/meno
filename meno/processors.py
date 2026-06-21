@@ -50,7 +50,11 @@ class Appraiser(Processor):
         node = mind.graph.add_node(
             event.content, kind="provisional",
             salience=mind.cfg.provisional_salience,
-            meta={"event": event.id, "stream": event.stream_id})
+            # carry PROVENANCE: where this memory came from. World-sensed content
+            # (source != self/cognition) must be distinguishable from the agent's own
+            # thought, so the self-graph isn't quietly contaminated by ingested text.
+            meta={"event": event.id, "stream": event.stream_id,
+                  "source": event.source, "external": event.kind == Kind.SENSE})
         event.node_id = node.id
         event.status = Status.PROVISIONAL
         event.depth_reached = max(event.depth_reached, 1)

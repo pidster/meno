@@ -102,6 +102,70 @@ def test_driver_senses_the_world_through_a_filesystem_channel():
     assert any("associative" in n.content for n in m.graph.nodes.values())
 
 
+# --- sensorium hardening (R4 review P0/P1) --------------------------------- #
+def test_filesystem_sensor_does_not_escape_root_via_hardlink():
+    """R4 review P0: a hardlink inside root is a second name for an outside file
+    that resolve() can't see through. It must not be read."""
+    root, outside = _tmproot(), _tmproot()
+    secret = outside / "secret.txt"
+    secret.write_text("SECRET-OUTSIDE-ROOT-via-hardlink")
+    try:
+        os.link(secret, root / "hl.txt")        # hardlink (not symlink)
+    except (OSError, NotImplementedError):
+        return                                   # platform/fs without hardlinks: skip
+    s = FilesystemSensor(root)
+    texts = " ".join(t for t, _, _ in s.poll())
+    assert "SECRET-OUTSIDE-ROOT" not in texts
+
+
+def test_filesystem_sensor_skips_secret_named_files_even_with_allowed_suffix():
+    root = _tmproot()
+    (root / "credentials.txt").write_text("AKIA-not-to-be-read")
+    (root / "db.secret.json").write_text("password: hunter2")
+    (root / "notes.txt").write_text("a harmless note")
+    s = FilesystemSensor(root)
+    texts = " ".join(t for t, _, _ in s.poll())
+    assert "harmless note" in texts
+    assert "AKIA-not-to-be-read" not in texts and "hunter2" not in texts
+
+
+def test_sensed_nodes_carry_external_provenance():
+    """World-sensed content must be distinguishable from the agent's own thought in
+    the graph (R4 review P0): the node records its source and external flag."""
+    root = _tmproot()
+    (root / "world.md").write_text("a fact from the world about geology")
+    m = mind()
+    d = Driver(m, sleep=lambda _: None)
+    d.add_sensor(FilesystemSensor(root))
+    d.run(max_cycles=3)
+    sensed = [n for n in m.graph.nodes.values() if n.meta.get("source") == "filesystem"]
+    assert sensed and all(n.meta.get("external") for n in sensed)
+
+
+def test_seen_state_is_pruned_when_files_vanish():
+    root = _tmproot()
+    s = FilesystemSensor(root)
+    for i in range(20):
+        f = root / f"transient{i}.txt"
+        f.write_text("x")
+        s.poll()
+        f.unlink()
+        s.poll()
+    assert len(s._seen) <= 1                      # deleted files don't accumulate
+
+
+def test_per_poll_cap_round_robins_so_no_file_is_starved():
+    root = _tmproot()
+    for i in range(12):
+        (root / f"f{i:02d}.txt").write_text(f"content {i}")
+    s = FilesystemSensor(root, max_per_poll=4)
+    ever = set()
+    for _ in range(5):
+        for _, _, payload in s.poll():
+            ever.add(payload["path"])
+    assert len(ever) == 12                        # all eventually sensed, none starved
+
+
 # --- warm-tier persistence: a restart resumes mid-thought ------------------ #
 def test_warm_streams_survive_save_and_load():
     a = mind()
@@ -147,3 +211,23 @@ def test_restart_resumes_a_suspended_impulse_through_the_evolved_graph():
     woke = [e for e in b.bus.log[n0:]
             if e.source == "initiative" and e.stream_id == sid]
     assert woke                                        # it resumed the suspended impulse
+
+
+def test_warm_streams_skipped_on_embedder_dim_mismatch():
+    """R4 review P1: warm centroids are hot-space embeddings. Restoring them under a
+    different-dimensioned embedder would corrupt routing silently — better to wake
+    from the cold graph alone than resume a half-thought in the wrong space."""
+    from meno.event import Event
+    a = Meno(config=Config(), embed=HashingEmbedding(dim=64), models=StubModelProvider(),
+             workspace=tempfile.mkdtemp())
+    ev = Event(content="a thought in 64-dim space")
+    ev.embedding = a.embed.embed(ev.content)
+    sid = a.streams.route(ev)
+    a.streams.suspend(sid)
+    path = Path(tempfile.mkdtemp()) / "state.json"
+    a.save(path)
+
+    b = Meno(config=Config(), embed=HashingEmbedding(dim=128), models=StubModelProvider(),
+             workspace=tempfile.mkdtemp())
+    b.load(path)
+    assert not b.streams.warm                          # mismatched embedder -> warm tier skipped

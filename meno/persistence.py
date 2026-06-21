@@ -77,6 +77,10 @@ def dict_to_graph(data: dict, g: Graph) -> Graph:
 def streams_to_dict(sm: StreamManager) -> dict:
     return {
         "stream_seq": sm._stream_seq,
+        # the centroid lives in the embedder's HOT space; tag its dimension so a
+        # restore under a different embedder can't silently corrupt routing (the
+        # cold-embedder-pinning hazard, for the hot/centroid space — R4 review).
+        "centroid_dim": (len(next(iter(sm.warm.values())).centroid) if sm.warm else None),
         "warm": [
             {"id": s.id, "centroid": s.centroid, "pressure": s.pressure,
              "fatigue": s.fatigue, "deferred": s.deferred, "refractory": s.refractory,
@@ -88,6 +92,18 @@ def streams_to_dict(sm: StreamManager) -> dict:
 
 
 def restore_streams(data: dict, sm: StreamManager) -> None:
+    saved_dim = data.get("centroid_dim")
+    if saved_dim is not None:
+        try:
+            cur_dim = len(sm.embed.embed_hot("probe"))
+        except Exception:
+            cur_dim = saved_dim
+        if cur_dim != saved_dim:
+            # the embedder changed: warm centroids would route in the wrong space.
+            # Better to wake without the half-thought than to resume it corrupted —
+            # the cold graph still loads. Advance the id counter and skip the warm tier.
+            sm._stream_seq = max(sm._stream_seq, data.get("stream_seq", 0))
+            return
     sm.warm.clear()
     max_sid = 0
     for sd in data.get("warm", []):
