@@ -132,25 +132,51 @@ class Graph:
 
     def reconstruct(self, cue: ReflectionCue, model: ModelProvider,
                     reconsolidate: bool = True) -> str:
-        """Full reconstruction: spread from the cue's entry points over the
-        CURRENT graph, regenerate, then (by default) reconsolidate. The same cue
-        yields a different reflection because the graph changed — drift lives in
-        the world. Journaled cues return their frozen verbatim instead. Pass
-        ``reconsolidate=False`` to read without mutating the cue (used by
-        journaling, so freezing doesn't first drift the gist — D15)."""
+        """Reconstruct a reflection from its cue against the CURRENT graph.
+
+        Richness comes from the **reachable neighbourhood** — the associations the
+        entry points still connect to via surviving edges — not from the entry
+        points' own content. So forgetting genuinely thins recall (F1): when edges
+        have decayed the neighbourhood is gone and only the (fading) anchors
+        remain → a *partial* reconstruction; when even the anchors have faded
+        below salience → a *ghost* ("I know I concluded something here but can't
+        recover it"). The same cue therefore yields a different reflection as the
+        world changes — drift lives in the graph, not a frozen record.
+
+        Journaled cues return their frozen verbatim. ``reconsolidate=False`` reads
+        without mutating the cue (used by journaling — D15)."""
         if cue.verbatim is not None:
             return cue.verbatim
         act = self.spread(cue.entry_points, hops=2, decay=0.5)
-        reachable = sorted(act.items(), key=lambda kv: kv[1], reverse=True)
-        material = [self.nodes[nid].content for nid, _ in reachable if nid in self.nodes][:6]
+        entry = set(cue.entry_points)
+        # neighbours reached via surviving edges (NOT the entry points themselves)
+        neighbours = sorted(((nid, a) for nid, a in act.items()
+                             if nid not in entry and nid in self.nodes),
+                            key=lambda kv: kv[1], reverse=True)
+        # anchors: entry points still present and not yet faded by node-decay
+        anchors = [nid for nid in cue.entry_points
+                   if nid in self.nodes and self.nodes[nid].salience >= self.cfg.recall_salience_floor]
+
+        if not anchors and not neighbours:
+            # islanded AND faded: available but inaccessible — the ghost signal
+            return f"(something about {cue.occasion} — but the details won't come)"
+
+        material = ([self.nodes[nid].content for nid in anchors] +
+                    [self.nodes[nid].content for nid, _ in neighbours])[:6]
         text = model.synthesise(cue.occasion, material)
+        # "structured" = the entry set still has surviving associative edges (to
+        # neighbours, or amongst its own anchors). Forgetting strips those edges;
+        # when none remain the reflection has lost its web and recall goes thin.
+        structured = bool(neighbours) or any(not self.islanded(nid) for nid in anchors)
+        if not structured:
+            text = "(partial) " + text
+
         if reconsolidate:
-            # blend the gist toward this fresh reconstruction (plasticity)
             new_gist = self.embed.embed(text)
             p = self.cfg.reconsolidation_plasticity
             cue.gist = [(1 - p) * g + p * n for g, n in zip(cue.gist, new_gist)]
             cue.recalls += 1
             # the recall touched these nodes -> they become the updated entry points
-            cue.entry_points = [nid for nid, _ in reachable[:max(1, len(cue.entry_points))]
-                                if nid in self.nodes] or cue.entry_points
+            touched = anchors + [nid for nid, _ in neighbours]
+            cue.entry_points = touched[:max(1, len(cue.entry_points))] or cue.entry_points
         return text

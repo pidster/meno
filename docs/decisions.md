@@ -181,3 +181,17 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
 - **Deferred to P0:** the *fundamentals* (islanding-thins-reconstruction, merge,
   curiosity, rediscovery, graph-spread-in-cognition, cross-burst surprise, the
   heartbeat storm) and the meaning-asserting tests that pin them.
+
+### D16 — Reconstruction richness comes from surviving structure (F1, the keystone)
+- **Decision.** `Graph.reconstruct` no longer rebuilds a reflection from its entry
+  points' own content. Material now comes from the **reachable neighbourhood**
+  (associations via surviving edges) plus the entry points as *anchors* gated by
+  node salience (`recall_salience_floor`). Recall degrades with forgetting:
+  full → **(partial)** once the entry set is islanded (no surviving edges) →
+  **ghost** ("the details won't come") once the anchors also fade. "Thin" keys on
+  *loss of surviving structure*, not absolute neighbour count, so a freshly-chained
+  young reflection is not falsely marked partial.
+- **Why.** The review proved the old code returned the full reflection even with
+  the entire neighbourhood islanded — the keystone reconstructive claim was false.
+  Forgetting must actually impoverish recall, or "reconstructive memory" is a
+  lookup. Pinned by `tests/test_kernel_fidelity.py` (fails on the old behaviour).

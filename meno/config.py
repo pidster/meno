@@ -52,6 +52,7 @@ class Config:
     # --- reflection ---
     reconsolidation_plasticity: float = 0.30   # how far a recalled gist moves toward the new reconstruction
     journal_importance: float = 0.85           # surprise above which a reflection is journaled verbatim
+    recall_salience_floor: float = 0.20        # an entry-point anchor below this salience has faded from recall
 
     @property
     def load_norm_base(self) -> int:
