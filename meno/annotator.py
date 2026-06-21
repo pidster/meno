@@ -7,6 +7,8 @@ graph — full graph spreading activation is the expensive cognitive step.
 """
 from __future__ import annotations
 
+from collections import deque
+
 from .config import Config
 from .embeddings import EmbeddingModel, cosine
 from .event import Event
@@ -21,14 +23,19 @@ class Annotator:
         self.ws = working_set
         self.streams = streams
         self.cfg = config
+        # F5: a recency buffer of recently-seen embeddings. Surprise is measured
+        # against THIS, not the working set — which claim() drains mid-burst, so
+        # everything looked novel (surprise ~1.0), gutting cross-burst habituation
+        # and the tier thresholds.
+        self.recency: deque = deque(maxlen=config.recency_window)
 
     def annotate(self, event: Event) -> Event:
         if event.embedding is None:
             event.embedding = self.embed.embed(event.content)
-        # surprise = unexplained residual vs. what is already hot
-        actives = self.ws.embeddings()
-        max_sim = max((cosine(event.embedding, e) for e in actives), default=0.0)
+        # surprise = unexplained residual vs. what has recently been seen
+        max_sim = max((cosine(event.embedding, e) for e in self.recency), default=0.0)
         event.surprise = max(0.0, 1.0 - max_sim)
+        self.recency.append(event.embedding)
         # activation modulated by surprise (you pay attention to what surprises you)
         event.activation *= (0.5 + 0.5 * event.surprise)
         # stream membership (cheap, similarity-based)

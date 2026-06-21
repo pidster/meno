@@ -19,6 +19,7 @@ class Stream:
     pressure: float = 0.0           # deferred-impulse pressure (builds while unattended-but-wanted)
     fatigue: float = 0.0            # lateral inhibition (rises when worked hard)
     deferred: bool = False          # wanted deep work but couldn't afford it
+    refractory: bool = False        # just synthesised — can't re-fire until the next dream (F6)
     suspended: bool = False
     event_ids: List[int] = field(default_factory=list)
     node_ids: List[int] = field(default_factory=list)   # graph nodes encoded from this stream

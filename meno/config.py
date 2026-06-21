@@ -25,10 +25,12 @@ class Config:
     gate_base: float = 0.18             # base relevance bar to be worth processing
     gate_load_gain: float = 0.6         # bar rises with normalised load (greedy)
     gate_loose: float = 0.02            # dream-time bar (loose)
+    recency_window: int = 24            # F5: surprise = novelty vs the last N seen embeddings
 
     # --- tier escalation thresholds (on surprise) ---
     tier2_min: float = 0.30             # associate above this surprise/resonance
-    tier3_min: float = 0.62             # synthesise above this surprise
+    tier3_min: float = 0.62             # a single percept this surprising warrants synthesis
+    synth_min_nodes: int = 3            # ...or a stream that has accumulated this much coherent material
 
     # --- streams ---
     stream_match_threshold: float = 0.28   # cosine to join an existing stream
@@ -48,11 +50,20 @@ class Config:
     dream_recombine_window: int = 80    # only the most-recent N nodes are eligible
     dream_recombine_cap: int = 120      # hard cap on new loose links per dream
     provisional_salience: float = 0.35  # provisional nodes start weak
+    rediscovery_threshold: float = 0.45 # F4: similarity at which a new node re-bridges an islanded one
+    rediscovery_cap: int = 8            # max rediscoveries per dream
 
     # --- reflection ---
     reconsolidation_plasticity: float = 0.30   # how far a recalled gist moves toward the new reconstruction
     journal_importance: float = 0.85           # surprise above which a reflection is journaled verbatim
     recall_salience_floor: float = 0.20        # an entry-point anchor below this salience has faded from recall
+
+    # --- curiosity (the pull-toward-the-world drive; decays, unlike impulse) F3 ---
+    curiosity_birth: float = 0.7          # intensity a new curiosity starts at
+    curiosity_decay: float = 0.85         # per heartbeat tick (relaxes when unattended)
+    curiosity_discharge_threshold: float = 0.45  # intensity above which a curiosity can act
+    curiosity_register_cap: int = 16      # bounded register
+    boredom_ticks: int = 3                # consecutive idle heartbeat ticks before reaching out
 
     @property
     def load_norm_base(self) -> int:

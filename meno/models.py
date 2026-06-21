@@ -48,6 +48,16 @@ class ModelProvider:
     def synthesise(self, occasion: str, material: List[str]) -> str:  # Tier 3
         raise NotImplementedError
 
+    # --- model-routed judgments (F2 merge, F3 curiosity); safe base defaults ---
+    def relate(self, summary_a: str, summary_b: str) -> bool:
+        """Are two streams about the same thing? (merge decision)"""
+        return False
+
+    def wonder(self, text: str, referent: Optional[str] = None) -> dict:
+        """Route a discharged curiosity across the internal/external matrix.
+        Returns {mode: internal|external|both, thought: str|None, action: dict|None}."""
+        return {"mode": "internal", "thought": f"I wonder: {text}", "action": None}
+
 
 class StubModelProvider(ModelProvider):
     """Deterministic, offline stand-in. Good enough to exercise the whole loop."""
@@ -75,6 +85,19 @@ class StubModelProvider(ModelProvider):
         uniq = list(dict.fromkeys(kws))[:5]
         theme = ", ".join(uniq) if uniq else "these fragments"
         return f"On {occasion}: a pattern across {theme} — they cohere into one concern."
+
+    def relate(self, summary_a: str, summary_b: str) -> bool:
+        # deterministic default: shared vocabulary = relatedness (candidates are
+        # already pre-filtered by centroid cosine before this is asked)
+        return len(set(_keywords(summary_a, 6)) & set(_keywords(summary_b, 6))) >= 1
+
+    def wonder(self, text: str, referent: Optional[str] = None) -> dict:
+        ref = str(referent or "")
+        if "/" in ref or ref.endswith((".txt", ".md", ".py", ".json", ".log")):
+            # a world referent -> reach outward (the Effector will read it)
+            return {"mode": "external", "thought": None,
+                    "action": {"action": "fs_read", "path": ref}}
+        return {"mode": "internal", "thought": f"I wonder: {text}", "action": None}
 
 
 _APPRAISE_SCHEMA = {
@@ -186,6 +209,55 @@ class AnthropicModelProvider(ModelProvider):
             return self._text(msg) or self.fallback.synthesise(occasion, material)
         except Exception:
             return self.fallback.synthesise(occasion, material)
+
+    def relate(self, summary_a: str, summary_b: str) -> bool:
+        if not self.available:
+            return self.fallback.relate(summary_a, summary_b)
+        try:
+            msg = self._client.messages.create(
+                model=self.TIER_MODELS[1],
+                max_tokens=64,
+                system="Decide whether two trains of thought are fundamentally about "
+                       "the same matter (and should merge).",
+                messages=[{"role": "user",
+                           "content": f"A: {summary_a}\nB: {summary_b}"}],
+                output_config={"format": {"type": "json_schema", "schema": {
+                    "type": "object",
+                    "properties": {"related": {"type": "boolean"}},
+                    "required": ["related"], "additionalProperties": False}}},
+            )
+            return bool(json.loads(self._text(msg)).get("related", False))
+        except Exception:
+            return self.fallback.relate(summary_a, summary_b)
+
+    def wonder(self, text: str, referent: Optional[str] = None) -> dict:
+        if not self.available:
+            return self.fallback.wonder(text, referent)
+        try:
+            msg = self._client.messages.create(
+                model=self.TIER_MODELS[2],
+                max_tokens=200,
+                system="A curiosity has arisen. Decide how to follow it. Respond inward "
+                       "(a thought to think) or outward (read a file you're curious about) "
+                       "or both — whatever fits. Only propose a file path you were actually "
+                       "given a referent for.",
+                messages=[{"role": "user",
+                           "content": f"Curiosity: {text}\nReferent: {referent or '(none)'}"}],
+                output_config={"format": {"type": "json_schema", "schema": {
+                    "type": "object",
+                    "properties": {
+                        "mode": {"type": "string", "enum": ["internal", "external", "both"]},
+                        "thought": {"type": "string"},
+                        "path": {"type": "string"}},
+                    "required": ["mode", "thought", "path"], "additionalProperties": False}}},
+            )
+            data = json.loads(self._text(msg))
+            path = (data.get("path") or "").strip()
+            action = {"action": "fs_read", "path": path} if path else None
+            return {"mode": data.get("mode", "internal"),
+                    "thought": data.get("thought") or None, "action": action}
+        except Exception:
+            return self.fallback.wonder(text, referent)
 
 
 def make_models(name: str = "stub", **kwargs) -> ModelProvider:

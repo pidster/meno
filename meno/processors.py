@@ -81,10 +81,11 @@ class Associator(Processor):
     def run(self, event: Event, mind) -> List[Event]:
         event.seen_by.add(self.name)
         stream = mind.streams.get(event.stream_id)
-        own = tuple(stream.node_ids) if stream else ()
-        hits = mind.graph.similar(event.embedding, k=3, exclude=own)
+        own = set(stream.node_ids) if stream else set()
         emitted: List[Event] = []
-        for sim, nid in hits:
+
+        # (a) similarity — alike-but-not-yet-connected (cold retrieval)
+        for sim, nid in mind.graph.similar(event.embedding, k=3, exclude=tuple(own)):
             if sim >= mind.cfg.tier2_min and event.node_id is not None:
                 mind.graph.link(event.node_id, nid, weight=mind.cfg.hebbian_increment * sim)
                 related = mind.graph.nodes[nid].content
@@ -94,6 +95,20 @@ class Associator(Processor):
                 child.depth_reached = 2
                 emitted.append(child)
                 break   # one good connection per pass; the child may climb further
+
+        # (b) resonance — already-connected, via graph spreading activation (F7).
+        # This is "the spine" used in cognition, not just inside reconstruct:
+        # traversal finds what densely co-activates; similarity (above) finds the
+        # alike-but-unlinked. They are complementary.
+        if stream and stream.node_ids and event.node_id is not None:
+            act = mind.graph.spread(stream.node_ids, hops=2, decay=0.5)
+            resonant = sorted(((a, nid) for nid, a in act.items()
+                               if nid not in own and nid in mind.graph.nodes),
+                              reverse=True)
+            if resonant:
+                _, nid = resonant[0]
+                mind.graph.link(event.node_id, nid, weight=mind.cfg.hebbian_increment * 0.5)
+
         event.depth_reached = max(event.depth_reached, 2)
         return emitted
 
@@ -107,12 +122,17 @@ class Synthesiser(Processor):
     def wants(self, event: Event, mind) -> bool:
         if self.name in event.seen_by:
             return False
-        if event.payload.get("role") == "wake":   # a resurfaced deferred impulse always wants depth
-            return True
-        if event.surprise < mind.cfg.tier3_min:
-            return False
         st = mind.streams.get(event.stream_id)
-        return st is not None and len(st.node_ids) >= 2   # needs accumulated material
+        if st is not None and st.refractory:       # F6: just synthesised — rest until the dream
+            return False
+        if event.payload.get("role") == "wake":    # a resurfaced deferred impulse always wants depth
+            return True
+        if st is None or len(st.node_ids) < 2:     # needs at least some material
+            return False
+        # Synthesis is earned by accumulated coherence OR by a single striking percept
+        # — NOT by the latest event being novel (a coherent stream habituates, F5).
+        return (len(st.node_ids) >= mind.cfg.synth_min_nodes
+                or event.surprise >= mind.cfg.tier3_min)
 
     def triggers(self, event: Event, mind) -> bool:
         return self.wants(event, mind) and mind.deep_budget > 0
@@ -132,6 +152,7 @@ class Synthesiser(Processor):
         if stream is not None:
             stream.deferred = False
             stream.pressure = 0.0
+            stream.refractory = True              # F6: rest until the next dream clears it
             stream.fatigue += mind.cfg.fatigue_gain
         event.depth_reached = 3
         # storage-as-trigger: the act of forming a reflection re-enters the loop
