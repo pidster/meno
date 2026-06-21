@@ -75,6 +75,7 @@ reconsolidates reflections. **Initiative** is what spare budget does in the quie
 python -m meno                 # scripted demo of the whole loop (offline)
 python -m meno --interactive   # feed stimuli; commands: dream | recall <q> | snapshot | quit
 python -m meno --anthropic     # real Claude models (needs `pip install anthropic` + ANTHROPIC_API_KEY)
+python -m meno --split-embed   # real local embeddings (needs `pip install sentence-transformers`)
 python -m pytest -q            # the test suite (offline, deterministic)
 ```
 
@@ -82,8 +83,11 @@ Defaults are offline: `StubModelProvider` + `HashingEmbedding` + in-process grap
 so no API key or network is needed. Real cognitive models (Haiku 4.5 / Sonnet 4.6
 / Opus 4.8, behind `AnthropicModelProvider`) are selectable via `--anthropic` or
 `Meno(models=make_models("anthropic"))`; they fall back to the stub on any error.
-A real embedder and a vector/graph DB are likewise selectable behind the same
-interfaces (not yet implemented).
+A **real local embedder** is selectable behind a hot/cold split
+(`--split-embed` / `make_embedder("split")`: cheap hashing on the per-event hot
+path, sentence-transformers on the graph-touching cold path; D20) — default stays
+the offline `HashingEmbedding`. A vector/graph DB is likewise selectable behind
+the same interface (not yet implemented).
 
 ## Working agreements
 

@@ -42,10 +42,14 @@ class Appraiser(Processor):
     def run(self, event: Event, mind) -> List[Event]:
         event.seen_by.add(self.name)
         res = mind.models.appraise(event.content, event.surprise)
-        # encode as a provisional node (forgetting has a front end: weak, decays)
+        # encode as a provisional node (forgetting has a front end: weak, decays).
+        # The node lives in the GRAPH, so it must carry a COLD vector — not the
+        # event's hot one (which is only for surprise/routing). add_node embeds
+        # cold from content when no embedding is supplied (D20). With a single
+        # embedder the two spaces coincide, so this is a no-op there.
         node = mind.graph.add_node(
             event.content, kind="provisional",
-            salience=mind.cfg.provisional_salience, embedding=event.embedding,
+            salience=mind.cfg.provisional_salience,
             meta={"event": event.id, "stream": event.stream_id})
         event.node_id = node.id
         event.status = Status.PROVISIONAL
@@ -86,8 +90,11 @@ class Associator(Processor):
         own = set(stream.node_ids) if stream else set()
         emitted: List[Event] = []
 
-        # (a) similarity — alike-but-not-yet-connected (cold retrieval)
-        for sim, nid in mind.graph.similar(event.embedding, k=3, exclude=tuple(own)):
+        # (a) similarity — alike-but-not-yet-connected (cold retrieval). The probe
+        # must be in COLD (graph) space to match the node vectors it scores against
+        # — the event's hot embedding would be a different space under a split (D20).
+        probe = mind.embed.embed_cold(event.content)
+        for sim, nid in mind.graph.similar(probe, k=3, exclude=tuple(own)):
             if sim >= mind.cfg.tier2_min and event.node_id is not None:
                 mind.graph.link(event.node_id, nid, weight=mind.cfg.hebbian_increment * sim)
                 related = mind.graph.nodes[nid].content

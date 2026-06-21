@@ -31,7 +31,9 @@ class Annotator:
 
     def annotate(self, event: Event) -> Event:
         if event.embedding is None:
-            event.embedding = self.embed.embed(event.content)
+            # HOT space: surprise + stream routing run on every event and only
+            # need rough novelty/topic. Never compared against graph (cold) vectors.
+            event.embedding = self.embed.embed_hot(event.content)
         # surprise = unexplained residual vs. what has recently been seen
         max_sim = max((cosine(event.embedding, e) for e in self.recency), default=0.0)
         event.surprise = max(0.0, 1.0 - max_sim)

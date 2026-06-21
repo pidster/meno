@@ -227,3 +227,61 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   curiosity discharged before a deferred stream's pressure built to `pressure_wake`
   (~4 ticks). The unit test had masked it by pre-loading pressure. The test now
   exercises the build-up and asserts initiative precedes any curiosity event.
+
+### D19 — Re-audit verdict (post-P0): go for P3; three growth items deferred
+- **Decision.** A full re-audit of the post-P0 code (regressions / unbounded
+  growth / dangling references) returned **go for P3**. Findings:
+  - **Regressions:** none — 43/43 tests pass, including every kernel-fidelity
+    test (F1–F7); the P0 wiring is consistent across modules.
+  - **Dangling references:** none — every cross-structure deref is guarded
+    (`nid in graph.nodes`, `n in g.nodes`); `streams.get` returns `None` for
+    merged-away / suspended ids; `merge` cleans `b_id` and stale `event.stream_id`
+    degrades gracefully.
+  - **Unbounded growth (lifetime-accumulation, logged, NOT P3 blockers):**
+    **A1** `bus.log` retains every Event ever published (with embeddings) — the
+    real leak; **A2** `streams.warm` has no reaper and warm-deferred `pressure`
+    grows unbounded until wake; **A3** `graph.cues` is never pruned and
+    reconsolidation re-spreads all cues each dream (dream cost O(lifetime·cues)).
+    `graph.nodes` growing is *by design* (islanding, not deletion — "pruning is
+    grief"), so it is not counted a leak.
+- **Why deferred.** A1–A3 only bite in a *long-lived* process; they belong with
+  the deferred continuous-operation work (async layer + warm-tier persistence),
+  and P3 (the embedder split) is orthogonal to all three and doesn't worsen them.
+
+### D20 — Embedder: hot/cold split, local cold adapter, stay offline by default (P3)
+- **Decision.** Embedding is split into two **jobs** behind one interface:
+  - **HOT** (`embed_hot`) runs on *every* event — surprise vs the recency buffer,
+    stream routing. Cheap; needs only rough novelty/topic.
+  - **COLD** (`embed_cold`) touches the persistent graph — node vectors, cue
+    gists, recall probes, rediscovery. Rare; wants real semantics.
+  A single-model embedder makes the two identical (the default `HashingEmbedding`,
+  so the offline suite is behaviourally unchanged). `SplitEmbedding(hot, cold)`
+  routes them to two different models, and a `SentenceTransformerEmbedding`
+  (lazy-imported sentence-transformers / torch) is the recommended **cold** half.
+  `make_embedder("hashing"|"local"|"split")` mirrors `make_models`; the demo CLI
+  gains `--local-embed` / `--split-embed` (both fall back to hashing if the local
+  model or its weights are unavailable, so the loop never blocks).
+- **The contract that makes it safe.** Hot and cold are *different spaces with
+  possibly different dimensions*; they must **never meet in a cosine**. The
+  discipline is enforced at exactly four crossing points: the Appraiser gives a
+  new node a **cold** vector (not the event's hot one); the Associator probes the
+  graph with a **cold** vector; `recall`/`journal` embed the probe **cold** (to
+  match the cue gist); `resurface` re-enters content and lets the annotator embed
+  it **hot**. Everything else is already wholly hot (event/stream/working-set) or
+  wholly cold (graph/cue). **Probe↔gist consistency** is the keystone: a naive
+  split that probed recall in hot space would score cross-dimension garbage and
+  miss every memory.
+- **Why.** The stub embedder throttled merge/coherence/recall (the P3 motivation):
+  the cold path needed real semantics, but the hot path runs per-event and only
+  needs to be cheap. The split lets each be right.
+- **Validation.** `tests/test_embeddings.py` pins the contract with
+  *different-dimensioned* stub embedders (so any cross-space cosine would corrupt
+  observably): split routing, node-vectors-are-cold / event-vectors-are-hot,
+  probe↔gist recall round-trip, default-embedder-unchanged. The real local adapter
+  is import- and round-trip-tested when present; it **skips** if the package or
+  its weights are unavailable (this environment's network policy blocks the
+  Hugging Face weight download, so the live-semantics check skips here).
+- **Rules out (for now):** an API embedder and a vector/graph-DB index remain
+  deferred (D14 ordering held: embedder before DB). A persisted graph is tied to
+  the cold embedder that made it — loading it under a different cold model would
+  mismatch the gist space; that pairing is the caller's responsibility.

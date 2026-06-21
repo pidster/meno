@@ -189,7 +189,7 @@ class Meno:
 
     # --- tiered recall (reconstructive reflection) ---
     def recall(self, query: str) -> dict:
-        probe = self.embed.embed(query)
+        probe = self.embed.embed_cold(query)   # COLD: probe must share the cue-gist space (D20)
         best, best_sim = None, 0.0
         for cue in self.graph.cues.values():
             sim = self.graph.recognise(cue, probe)
@@ -207,7 +207,7 @@ class Meno:
     def journal(self, query: str) -> dict:
         """Deliberate escape hatch: freeze the best-matching reflection verbatim,
         turning a reconstruction into a fixed artifact (decision D10)."""
-        probe = self.embed.embed(query)
+        probe = self.embed.embed_cold(query)   # COLD: probe must share the cue-gist space (D20)
         best, best_sim = None, 0.0
         for cue in self.graph.cues.values():
             sim = self.graph.recognise(cue, probe)
@@ -239,8 +239,10 @@ class Meno:
         memories as self-events — reconstruction at the scope of the whole self."""
         top = sorted(self.graph.nodes.values(), key=lambda n: n.salience, reverse=True)[:k]
         for node in top:
+            # re-enter the *content* as a fresh stimulus; let the annotator embed it
+            # HOT for routing — injecting the node's cold vector would cross spaces (D20).
             ev = Event(content=node.content, kind=Kind.SELF, source="resurface",
-                       activation=0.7, embedding=list(node.embedding))
+                       activation=0.7)
             ev.payload["role"] = "resurface"
             self.bus.publish(ev)
         return self.run_until_quiescent()

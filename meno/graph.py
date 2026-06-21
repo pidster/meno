@@ -57,7 +57,7 @@ class Graph:
     def add_node(self, content: str, *, kind: str = "experience",
                  salience: float = 1.0, embedding: Optional[List[float]] = None,
                  meta: Optional[dict] = None) -> Node:
-        emb = embedding if embedding is not None else self.embed.embed(content)
+        emb = embedding if embedding is not None else self.embed.embed_cold(content)
         self._node_seq += 1
         node = Node(content, emb, kind, salience, meta or {}, id=self._node_seq)
         self.nodes[node.id] = node
@@ -119,7 +119,7 @@ class Graph:
             occasion=occasion,
             tone=tone,
             # gist embeds occasion + conclusion (meaning), so a topical probe can find it
-            gist=self.embed.embed(f"{occasion} {conclusion}"),
+            gist=self.embed.embed_cold(f"{occasion} {conclusion}"),
             verbatim=conclusion if journal else None,
             id=self._cue_seq,
         )
@@ -172,7 +172,7 @@ class Graph:
             text = "(partial) " + text
 
         if reconsolidate:
-            new_gist = self.embed.embed(text)
+            new_gist = self.embed.embed_cold(text)
             p = self.cfg.reconsolidation_plasticity
             cue.gist = [(1 - p) * g + p * n for g, n in zip(cue.gist, new_gist)]
             cue.recalls += 1

@@ -5,7 +5,14 @@ self-directed cognition. See docs/redesign.md (logical) and docs/system-design.m
 from __future__ import annotations
 
 from .config import Config
-from .embeddings import EmbeddingModel, HashingEmbedding, cosine
+from .embeddings import (
+    EmbeddingModel,
+    HashingEmbedding,
+    SentenceTransformerEmbedding,
+    SplitEmbedding,
+    cosine,
+    make_embedder,
+)
 from .event import Event, Kind, Status
 from .graph import Graph, Node, ReflectionCue
 from .models import AnthropicModelProvider, ModelProvider, StubModelProvider, make_models
@@ -15,7 +22,8 @@ from .streams import Stream, StreamManager
 __all__ = [
     "Meno", "Config", "Event", "Kind", "Status",
     "Graph", "Node", "ReflectionCue",
-    "EmbeddingModel", "HashingEmbedding", "cosine",
+    "EmbeddingModel", "HashingEmbedding", "SplitEmbedding",
+    "SentenceTransformerEmbedding", "make_embedder", "cosine",
     "ModelProvider", "StubModelProvider", "AnthropicModelProvider", "make_models",
     "Stream", "StreamManager",
 ]

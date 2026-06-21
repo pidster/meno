@@ -34,6 +34,7 @@ implementation choice is logged in [`docs/decisions.md`](docs/decisions.md).
 python -m meno                 # scripted demo of the whole loop (offline)
 python -m meno --interactive   # type stimuli; commands: dream | recall <q> | snapshot | quit
 python -m meno --anthropic     # use real Claude models for cognition (see below)
+python -m meno --split-embed   # real local semantic memory (cheap hot + ST cold; see below)
 python -m pytest -q            # offline, deterministic test suite
 ```
 
@@ -42,9 +43,18 @@ local hashing embedder, and an in-process graph. **Real cognitive models** are a
 drop-in: `pip install anthropic`, set `ANTHROPIC_API_KEY`, and pass `--anthropic`
 (or `Meno(models=make_models("anthropic"))`). The tiers map onto the Claude
 family — Haiku 4.5 appraises, Sonnet 4.6 associates, Opus 4.8 synthesises — and
-every call falls back to the stub on any error, so the loop never blocks. A
-vector/graph DB and a real embedder are likewise selectable behind the same
-interfaces (not yet implemented).
+every call falls back to the stub on any error, so the loop never blocks.
+
+**Real embeddings** are a drop-in too, and they *split by job*: a cheap **hot**
+embedder runs on every event (surprise, stream routing) while a richer **cold**
+embedder serves everything that touches the graph (node vectors, reflection
+gists, recall, rediscovery). `pip install sentence-transformers` and pass
+`--split-embed` (cheap hashing hot + local sentence-transformers cold — the
+recommended real config) or `--local-embed` (the local model for both); both fall
+back to the offline hashing embedder if the package or its weights are
+unavailable. The two spaces never meet in a cosine, so they may differ in
+dimension. A vector/graph DB is likewise selectable behind the same interface
+(not yet implemented).
 
 ## What the demo shows
 
@@ -73,10 +83,13 @@ tests/     offline, deterministic subsystem + integration tests
 ## Status
 
 The bare loop runs end to end with offline stand-ins and a passing test suite,
-persists its consolidated graph across restarts (`Meno.save`/`load`), and can
-drive its cognition with **real Claude models** (`--anthropic`). Deferred (see
-the docs' open lists): a real embedder and a vector/graph DB backend, the sensor
-catalogue + event wire-schema + API, warm-tier (suspended-stream) persistence,
-skills (procedural memory), and the async worker pool that would run model calls
-concurrently. Scoring constants in `meno/config.py` are first cuts, to be tuned
-empirically.
+persists its consolidated graph across restarts (`Meno.save`/`load`), drives its
+cognition with **real Claude models** (`--anthropic`), and backs its associative
+memory with a **real local semantic embedder** behind a hot/cold split
+(`--split-embed`). Deferred (see the docs' open lists): a vector/graph DB backend,
+the sensor catalogue + event wire-schema + API, warm-tier (suspended-stream)
+persistence, skills (procedural memory), and the async worker pool that would run
+model calls concurrently — alongside three logged lifetime-growth items (D19: the
+episodic `bus.log`, the warm-stream pool, and cue accumulation) that only bite in
+a long-running process. Scoring constants in `meno/config.py` are first cuts, to
+be tuned empirically.

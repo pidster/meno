@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 from .config import Config
+from .embeddings import make_embedder
 from .models import make_models
 from .runtime import Meno
 
@@ -32,8 +33,22 @@ def _models(use_anthropic: bool):
     return provider
 
 
-def scripted(use_anthropic: bool = False) -> None:
-    mind = Meno(config=Config(), models=_models(use_anthropic),
+def _embedder(kind: str):
+    """Build the embedder, falling back to the offline default if the local model
+    (sentence-transformers / torch) isn't installed — the loop must never block."""
+    if kind == "hashing":
+        return make_embedder("hashing")
+    try:
+        embed = make_embedder(kind)
+        print(f"  [using '{kind}' embedder (cold dim={embed.dim})]")
+        return embed
+    except Exception as exc:
+        print(f"  [--{kind}-embed requested but unavailable ({exc}); falling back to hashing]")
+        return make_embedder("hashing")
+
+
+def scripted(use_anthropic: bool = False, embedder: str = "hashing") -> None:
+    mind = Meno(config=Config(), models=_models(use_anthropic), embed=_embedder(embedder),
                 workspace=Path(tempfile.mkdtemp(prefix="meno_")), verbose=True)
 
     stimuli = [
@@ -107,8 +122,8 @@ def scripted(use_anthropic: bool = False) -> None:
         print(f"  {k}: {v}")
 
 
-def interactive(use_anthropic: bool = False) -> None:
-    mind = Meno(config=Config(), models=_models(use_anthropic),
+def interactive(use_anthropic: bool = False, embedder: str = "hashing") -> None:
+    mind = Meno(config=Config(), models=_models(use_anthropic), embed=_embedder(embedder),
                 workspace=Path(tempfile.mkdtemp(prefix="meno_")), verbose=True)
     print("meno interactive. commands: dream | recall <q> | snapshot | quit")
     while True:
@@ -133,7 +148,15 @@ def interactive(use_anthropic: bool = False) -> None:
 
 if __name__ == "__main__":
     anthropic = "--anthropic" in sys.argv
+    # embedder selection: default offline hashing; --split-embed is the real
+    # recommended config (cheap hot path + local semantic cold path); --local-embed
+    # uses the local model for both.
+    embedder = "hashing"
+    if "--split-embed" in sys.argv:
+        embedder = "split"
+    elif "--local-embed" in sys.argv:
+        embedder = "local"
     if "--interactive" in sys.argv:
-        interactive(anthropic)
+        interactive(anthropic, embedder)
     else:
-        scripted(anthropic)
+        scripted(anthropic, embedder)
