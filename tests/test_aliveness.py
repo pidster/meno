@@ -181,6 +181,24 @@ def test_synthesis_provenance_is_monotonic_across_reconsolidation():
     assert synthesis(m.graph, {cue.id: text_a})["score"] == 0.0       # monotonic provenance holds
 
 
+def test_synthesis_boilerplate_covers_every_stub_template_including_fallbacks():
+    """R0 red-team P0: a stub template literal that the boilerplate set missed
+    ('these fragments', the no-keyword fallback) read as emergent. Boilerplate is
+    now derived from the stub's real outputs, so EVERY template token — including
+    fallbacks — is covered. Drive it through a real loop with sub-3-char inputs that
+    yield no keywords, forcing the fallback, and assert synthesis stays 0."""
+    from meno.aliveness import _BOILERPLATE
+    assert "fragments" in _BOILERPLATE          # the specific miss, now derived
+
+    m = fresh(embed=make_embedder("hashing"))
+    for s in ["aa bb cc", "aa bb dd", "aa bb ee"]:   # shared tokens -> one stream, 3 nodes
+        m.feed(s)
+        m.run_until_quiescent()
+    texts = {cid: (c.verbatim or m.graph.reconstruct(c, m.models, reconsolidate=False))
+             for cid, c in m.graph.cues.items()}
+    assert synthesis(m.graph, texts)["score"] == 0.0
+
+
 def test_synthesis_requires_at_least_two_memories():
     m = fresh()
     a = m.graph.add_node("a lone memory").id

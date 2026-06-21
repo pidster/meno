@@ -52,6 +52,7 @@ import re
 from typing import Dict, List, Optional
 
 from .graph import Graph
+from .models import StubModelProvider
 
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP = frozenset(
@@ -62,20 +63,45 @@ _STOP = frozenset(
     "one two three rather whether across between among also can could would should will "
     "may might must just only very much many via per such each both either out off".split()
 )
-# Kernel scaffolding the cognition tiers and reconstruct() emit as templates — these
-# are NOT signs of emergent thought, so they must never count as 'fresh' meaning
-# (R0 review). Keep in sync with StubModelProvider templates (models.py) and the
-# reconstruct() scaffolding strings ("(partial) ", the ghost "(something about …)").
-_BOILERPLATE = frozenset(
-    "pattern cohere coheres cohered concern connects connect connection stands alone "
-    "returning rediscovered reflection formed intent insight significance wonder "
-    "thought thinking memory something sense matter partial details come won".split()
-)
-
-
 def _content_terms(text: str) -> set:
     """Meaning-bearing tokens (lowercased, stopworded). The unit of 'aboutness'."""
     return {t for t in _WORD.findall(text.lower()) if t not in _STOP and len(t) > 2}
+
+
+def _stub_scaffolding_terms() -> set:
+    """The deterministic stub's template literals, DERIVED from its actual outputs
+    rather than hand-typed — so the boilerplate set can never drift out of sync with
+    the templates (R0 red-team: the 'these fragments' fallback was missed by a hand
+    list). The stub IS the zombie reference; the constant words it emits as
+    scaffolding are by definition never emergent thought. A marker stands in for
+    'input' and is removed, leaving only the literal template tokens."""
+    s = StubModelProvider()
+    mark = "qzzmark"
+    outs = [
+        s.synthesise("", []),                 # fallback branch -> "these fragments"
+        s.synthesise(mark, [mark]),           # main synthesis template
+        s.associate(mark, []),                # "stands alone for now"
+        s.associate(mark, [mark]),            # "connects to: ..."
+        s.wonder(mark).get("thought") or "",  # "I wonder: ..."
+    ]
+    ap = s.appraise(mark, 0.9)
+    outs += [ap.get("reaction") or "", ap.get("question") or ""]
+    terms = set()
+    for t in outs:
+        terms |= _content_terms(t)
+    terms.discard(mark)
+    return terms
+
+
+# Scaffolding the kernel emits but a model does NOT — reconstruct()'s '(partial)' and
+# ghost "(something about … — but the details won't come)", control's wake text,
+# consolidation's rediscovery — plus generic filler. Unioned with the stub's own
+# (auto-derived) template literals. None of these is ever a sign of emergent thought.
+_KERNEL_SCAFFOLDING = frozenset(
+    "partial something details won come returning rediscovered reflection formed "
+    "intent insight thought thinking memory sense matter".split()
+)
+_BOILERPLATE = _KERNEL_SCAFFOLDING | _stub_scaffolding_terms()
 
 
 def _emergent_terms(text: str, source_terms: set) -> set:
