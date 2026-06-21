@@ -170,14 +170,17 @@ def test_boredom_makes_meno_act_on_its_own():
 
 def test_impulses_take_the_slot_before_curiosity():
     """F3 — impulses (unfinished cognition) precede curiosity (wandering) for the
-    spare slot."""
+    spare slot, even when the impulse's pressure must BUILD across ticks rather
+    than being already over the wake line."""
     ev = Event(content="an unfinished thought")
     m = fresh()
     ev.embedding = m.embed.embed(ev.content)
     sid = m.streams.route(ev)
-    st = m.streams.active[sid]
-    st.deferred = True
-    st.pressure = 1.0                               # already over the wake line
+    m.streams.active[sid].deferred = True            # pressure starts at 0 and must build
     m.curiosities.register("a competing wondering", source="bottom-up")
-    wakes = m.controller.tick()
-    assert any(w.source == "initiative" for w in wakes)   # the impulse resurfaced first
+    n0 = len(m.bus.log)
+    m.heartbeat()
+    order = [e.source for e in m.bus.log[n0:] if e.source in ("initiative", "curiosity")]
+    assert "initiative" in order                      # the impulse resurfaced
+    if "curiosity" in order:                          # and if curiosity also fired,
+        assert order.index("initiative") < order.index("curiosity")   # it came AFTER

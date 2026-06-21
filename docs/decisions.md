@@ -217,3 +217,13 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   unfinished cognition before wandering). Pinned by kernel-fidelity tests:
   bottom-up registration, boredom producing a self-generated event, and
   impulse-precedence.
+
+### D18 — Impulses-first is enforced by pending-state, not timing (P0 verification fix)
+- **Decision.** Curiosity discharge in `heartbeat` is gated behind *no deferred
+  stream pending* (active or warm), not merely on the wake-line being crossed. So
+  while any unfinished cognition exists — even with pressure still building toward
+  its interoceptive wake — curiosity will not jump the queue.
+- **Why.** The P0 re-audit found the precedence leaked: at `boredom_ticks=3`,
+  curiosity discharged before a deferred stream's pressure built to `pressure_wake`
+  (~4 ticks). The unit test had masked it by pre-loading pressure. The test now
+  exercises the build-up and asserts initiative precedes any curiosity event.

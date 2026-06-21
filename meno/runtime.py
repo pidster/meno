@@ -129,7 +129,12 @@ class Meno:
                 idle = 0                                     # not idle — impulses take the slot
             elif self.working_set.depth() == 0 and not self.bus.pending():
                 idle += 1
-                if idle >= self.cfg.boredom_ticks:          # under-stimulated -> reach out
+                deferred_pending = (any(s.deferred for s in self.streams.active.values())
+                                    or any(s.deferred for s in self.streams.warm.values()))
+                # impulses-first, properly: don't wander while unfinished cognition
+                # is still pending — even if its pressure hasn't yet crossed the
+                # wake line (timing must not let curiosity jump the queue).
+                if idle >= self.cfg.boredom_ticks and not deferred_pending:
                     if self.curiosities.top() is None:
                         self._birth_topdown_curiosity()
                     for ev in self._discharge_curiosity():
