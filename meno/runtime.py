@@ -187,10 +187,15 @@ class Meno:
         present = [n for n in self.graph.nodes.values() if n.content != self._last_curiosity_ref]
         cands = [n for n in present if n.salience >= floor] or present \
             or list(self.graph.nodes.values())
-        # the neglected middle: fewest associations first, oldest among those
-        cands.sort(key=lambda n: (degree.get(n.id, 0), n.created_at))
-        pool = cands[:min(5, len(cands))]
-        node = pool[self._curiosity_cursor % len(pool)]
+        # the neglected MIDDLE, in full: everything at or below the median degree —
+        # so a large under-explored region isn't starved behind a fixed window, while
+        # the well-connected hubs (above median) stay off the wondering path. The
+        # cursor then walks this whole set over time, fewest-associations first.
+        degs = sorted(degree.get(n.id, 0) for n in cands)
+        median = degs[len(degs) // 2] if degs else 0
+        neglected = [n for n in cands if degree.get(n.id, 0) <= median]
+        neglected.sort(key=lambda n: (degree.get(n.id, 0), n.created_at))
+        node = neglected[self._curiosity_cursor % len(neglected)]
         frame = self._WONDER_FRAMES[self._curiosity_cursor % len(self._WONDER_FRAMES)]
         self._curiosity_cursor += 1
         self._last_curiosity_ref = node.content
