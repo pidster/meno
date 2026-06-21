@@ -22,6 +22,21 @@ is mechanically live; this plan closes the gap between *runs* and *is alive*.
    become fact; vitality counts placeholders as signal; retrieval can't explain
    activation; or the implementation can pass while ignoring accumulated history.
 
+## Non-goals (anti-Goodhart, from the R0 review)
+
+- **Aliveness scores are tripwires, never optimisation targets.** No phase's
+  success criterion may be "an aliveness number went up." The loop must never read
+  its own aliveness score and steer by it — that manufactures the metric instead of
+  the mind. R5's panel must check the marks were *earned*, not engineered (e.g. a
+  hub emerged from accumulated activation, it wasn't written in).
+- **"Surprise" is panel-judged, not computed.** `novelty` is a necessary-not-
+  sufficient proxy; the acceptance-bar "it does something the builder did not
+  predict" is reserved for the R5 human/adversarial panel and is never considered
+  discharged by `novelty` passing.
+- **Provenance is the real particularity test.** A graph can be *shaped* to look
+  idiosyncratic. R5 must verify the structure has a causal history (concentration
+  tracks accumulated reinforcement), not just a final-state shape.
+
 ## The acceptance bar — the zombie test (defined up front so we don't drift)
 
 A *working* Meno must demonstrate, on a real accumulating run, at least:

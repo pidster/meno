@@ -10,22 +10,40 @@ score is exactly the placeholder-metric failure the review protocol forbids):
 
   - ``particularity``   — idiosyncratic associative structure (preferential
                           pathways, hubs of attention), not a flat uniform graph.
-  - ``initiative``      — self-generated drives the agent acted on (curiosity
-                          reaching out, impulses resurfacing), not pure reaction.
-  - ``synthesis``       — insight no single input/stream contained (merged
-                          streams, multi-source reflection).
+  - ``initiative``      — *sustained* self-directed action (curiosity reaching
+                          out, impulses resurfacing), not a single scripted tick.
+  - ``synthesis``       — insight that is both cross-source AND emergent: its
+                          conclusion introduces meaning its source nodes did not
+                          contain. A templated reflection scores zero.
   - ``novelty``         — generated content that introduces concepts absent from
-                          the inputs (a computable proxy for surprise).
-  - ``divergence``      — two minds given the same inputs do NOT converge on the
-                          same graph (non-substitutability).
+                          the inputs. A *necessary-not-sufficient* proxy for
+                          surprise; true builder-surprise is panel-judged in R5,
+                          never claimed by this number.
+  - ``divergence``      — two minds given the same inputs build different
+                          *structure* (which associations, which hubs), not just
+                          different words (non-substitutability).
+
+Design notes earned from the R0 adversarial review:
+  - Synthesis and the verdict are **content-sensitive**: the deterministic stub —
+    a zombie by construction — must score ~0 on synthesis. Counting the mere
+    *existence* of a merged cue (a label the system writes about itself) let the
+    stub pass, so synthesis now requires the conclusion text to introduce terms
+    its sources lack. On a live run, reflection text is supplied via
+    ``reflection_texts``; offline it is read from journalled (verbatim) cues.
+  - The verdict is **gated on cognition being real** (``cognition_real``): a run
+    whose cognition silently fell back to the stub cannot be called "alive" — it
+    is ``indeterminate``. This is the R1 loud-failure contract reaching back.
+  - ``divergence`` compares graph *structure*, not node vocabulary, because two
+    minds fed the same corpus share most words by construction; what must differ
+    is what they linked and what became central.
 
 None of these proves phenomenal life. Together they test for the *functional*
 marks the vision demands, and — the point — they FAIL on a mechanically-correct
-zombie. The fidelity tests in tests/test_aliveness.py prove that discrimination.
+zombie. tests/test_aliveness.py proves that discrimination on a LIVE stub run,
+not only on hand-built graphs.
 
 Stdlib only: an aliveness check must run anywhere the kernel runs, with no
-service. Probes are pure functions of state (a Meno, a Graph, or plain text), so
-they are equally usable in an offline unit test and on a live accumulated run.
+service. Probes are pure functions of state (a Meno, a Graph, or plain text).
 """
 from __future__ import annotations
 
@@ -42,7 +60,14 @@ _STOP = frozenset(
     "what which who whom how why when where there here not no yes do does did has have "
     "had i you he she we they them his her our your their me my mine more most some any "
     "one two three rather whether across between among also can could would should will "
-    "may might must just only very much many".split()
+    "may might must just only very much many via per such each both either out off".split()
+)
+# Kernel scaffolding the cognition tiers emit as templates — these are NOT signs of
+# emergent thought, so they must never count as 'fresh' meaning (R0 review, data lens).
+_BOILERPLATE = frozenset(
+    "pattern cohere coheres cohered concern connects connect connection stands alone "
+    "returning rediscovered reflection formed intent insight significance wonder "
+    "thought thinking memory something sense matter".split()
 )
 
 
@@ -51,11 +76,16 @@ def _content_terms(text: str) -> set:
     return {t for t in _WORD.findall(text.lower()) if t not in _STOP and len(t) > 2}
 
 
+def _emergent_terms(text: str, source_terms: set) -> set:
+    """Terms in a conclusion that neither its sources nor the kernel's templates
+    contain — the computable residue of 'an insight its inputs did not hold'."""
+    return _content_terms(text) - source_terms - _BOILERPLATE
+
+
 def _gini(values: List[float]) -> float:
     """Concentration of a non-negative distribution. 0 = perfectly uniform,
-    →1 = all mass on one element. This is the math of 'idiosyncrasy': a tidy graph
-    spreads weight evenly (low gini); a lived-in one has preferential pathways and
-    hubs (high gini)."""
+    →1 = all mass on one element. The math of 'idiosyncrasy': a tidy graph spreads
+    weight evenly (low gini); a lived-in one has preferential pathways (high)."""
     xs = [v for v in values if v >= 0]
     n = len(xs)
     if n == 0:
@@ -64,7 +94,6 @@ def _gini(values: List[float]) -> float:
     if s == 0:
         return 0.0
     xs.sort()
-    # cumulative-share form, stable and O(n log n)
     cum = 0.0
     for i, x in enumerate(xs, 1):
         cum += i * x
@@ -89,11 +118,12 @@ def particularity(graph: Graph) -> dict:
         return {"score": 0.0, "reason": "too small to be particular yet",
                 "nodes": n_nodes, "edges": n_edges, "evidence": []}
 
-    g_weight = _gini(weights)               # are some associations privileged?
-    g_degree = _gini(list(degree.values()))  # are some memories hubs?
-    score = 0.5 * g_weight + 0.5 * g_degree
+    g_weight = _gini(weights)                # are some associations privileged?
+    g_degree = _gini(list(degree.values()))   # are some memories hubs?
+    # degree concentration is the more reliable idiosyncrasy signal (edge weights
+    # saturate toward 1.0 on busy streams, flattening their gini), so weight it less.
+    score = 0.35 * g_weight + 0.65 * g_degree
 
-    # evidence: the densest neighbourhoods — what this mind clustered around
     hubs = sorted(degree.items(), key=lambda kv: kv[1], reverse=True)[:3]
     evidence = [f"hub: {graph.nodes[nid].content[:50]!r} (degree-weight {d:.2f})"
                 for nid, d in hubs if nid in graph.nodes]
@@ -103,61 +133,84 @@ def particularity(graph: Graph) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# 2. Initiative — did the agent act on drives of its own?
+# 2. Initiative — did the agent SUSTAIN action on drives of its own?
 # --------------------------------------------------------------------------- #
+# The kernel emits drive-initiated events with these sources: curiosity discharge
+# (runtime._discharge_curiosity) and interoceptive impulse wakes (control.tick).
+# 'cognition' is reactive derivation (not a drive); excluded deliberately.
 _SELF_SOURCES = frozenset({"curiosity", "initiative"})
 
 
 def initiative(meno) -> dict:
-    """Self-directed action, not pure reaction. Counts events the agent generated
-    from its own drives (curiosity reaching out; impulses resurfacing a deferred
-    thought) against externally-fed stimuli, and reports the actual self-acts."""
+    """Self-directed action, not pure reaction — and *sustained*, so a single
+    scripted boredom-birth cannot clear the bar (R0 review, theory lens). Reports
+    internal cognition and bottom-up (percept-provoked) curiosity separately so a
+    living-but-internal run isn't mistaken for a reactive one."""
     self_events = [e for e in meno.bus.log if e.source in _SELF_SOURCES]
     fed = [e for e in meno.bus.log if e.kind.value == "sense"]
+    internal = [e for e in meno.bus.log
+                if e.kind.value != "sense" and e.source not in _SELF_SOURCES]
     curiosities = list(getattr(meno.curiosities, "items", []))
+    bottom_up = sum(1 for c in curiosities if getattr(c, "source", "") == "bottom-up")
     total = len(self_events) + len(fed)
     frac = (len(self_events) / total) if total else 0.0
-    acted = len(self_events) > 0
-    # score rewards BOTH that it reached out and that reaching-out is a real share
-    score = (0.6 if acted else 0.0) + 0.4 * min(1.0, frac * 3)
+    sustained = len(self_events) >= 2          # one auto-tick is not initiative
+    score = (0.6 if sustained else 0.0) + 0.4 * min(1.0, frac * 3)
     evidence = [f"{e.source}: {e.content[:60]!r}" for e in self_events[:5]]
     return {"score": round(score, 3), "self_initiated": len(self_events),
-            "externally_fed": len(fed), "self_fraction": round(frac, 3),
-            "open_curiosities": len(curiosities), "acted_on_impulse": acted,
+            "externally_fed": len(fed), "internal_cognition": len(internal),
+            "self_fraction": round(frac, 3), "sustained_initiative": sustained,
+            "bottom_up_curiosities": bottom_up, "open_curiosities": len(curiosities),
             "evidence": evidence}
 
 
 # --------------------------------------------------------------------------- #
-# 3. Synthesis — insight no single input contained
+# 3. Synthesis — insight that is cross-source AND emergent
 # --------------------------------------------------------------------------- #
-def synthesis(graph: Graph) -> dict:
-    """Emergent insight: convergent streams merged into one (occasion 'insight:'),
-    or a reflection drawn over several distinct memories at once. A reflection
-    over a single node is just a restatement; synthesis spans sources."""
-    insights, multi = [], []
+def synthesis(graph: Graph, reflection_texts: Optional[Dict[int, str]] = None) -> dict:
+    """Emergent insight, not restatement or label. A cue counts only if (a) its
+    entry points span >=2 distinct streams (or it is a model-merged 'insight:'
+    cue) AND (b) its conclusion introduces terms its source nodes lack. Condition
+    (b) is what the deterministic stub fails: its synthesise() output is a template
+    over the inputs' own keywords, so it carries no emergent terms.
+
+    ``reflection_texts``: cue.id -> reconstructed/known conclusion. On a live run
+    the caller reconstructs cues once and passes them here; offline, journalled
+    (verbatim) cues are read directly. A cue whose conclusion text is unavailable
+    cannot demonstrate emergence and is reported as unverified, never counted.
+    """
+    texts = reflection_texts or {}
+    genuine, unverified = [], 0
     for cue in graph.cues.values():
-        if cue.occasion.lower().startswith("insight"):
-            insights.append(cue)
-        elif len(set(cue.entry_points)) >= 2:
-            multi.append(cue)
-    # an insight (cross-stream merge) is worth more than a multi-node reflection
-    score = min(1.0, 0.6 * len(insights) + 0.25 * len(multi))
-    evidence = [f"insight: {c.occasion[:70]!r} (over {len(set(c.entry_points))} nodes)"
-                for c in insights[:3]]
-    evidence += [f"multi-source reflection: {c.occasion[:60]!r} "
-                 f"({len(set(c.entry_points))} nodes)" for c in multi[:3]]
-    return {"score": round(score, 3), "insights": len(insights),
-            "multi_source_reflections": len(multi), "evidence": evidence}
+        nodes = [graph.nodes[n] for n in cue.entry_points if n in graph.nodes]
+        streams = {n.meta.get("stream") for n in nodes}
+        streams.discard(None)
+        cross_source = len(streams) >= 2 or cue.occasion.lower().startswith("insight")
+        if not cross_source:
+            continue
+        text = texts.get(cue.id, cue.verbatim)
+        if text is None:
+            unverified += 1                    # cross-source, but emergence unproven
+            continue
+        source_terms = set()
+        for n in nodes:
+            source_terms |= _content_terms(n.content)
+        fresh = _emergent_terms(text, source_terms)
+        if fresh:
+            genuine.append((cue, sorted(fresh)[:6]))
+    score = min(1.0, 0.5 * len(genuine))
+    evidence = [f"insight {c.occasion[:50]!r} introduces {fr}" for c, fr in genuine[:3]]
+    return {"score": round(score, 3), "genuine_insights": len(genuine),
+            "cross_source_unverified": unverified, "evidence": evidence}
 
 
 # --------------------------------------------------------------------------- #
-# 4. Novelty — generated content that the inputs did not contain
+# 4. Novelty — generated content the inputs did not contain
 # --------------------------------------------------------------------------- #
 def novelty(generated_texts: List[str], input_texts: List[str]) -> dict:
-    """Surprise made computable: the share of meaning-bearing terms in what the
-    agent PRODUCED that never appeared in what it was GIVEN. Pure text function so
-    it works on stored curiosity questions offline and on live reconstructed
-    reflections alike."""
+    """Surprise made computable (necessary, not sufficient): the share of
+    meaning-bearing terms in what the agent PRODUCED that never appeared in what
+    it was GIVEN, excluding kernel boilerplate."""
     given = set()
     for t in input_texts:
         given |= _content_terms(t)
@@ -165,65 +218,90 @@ def novelty(generated_texts: List[str], input_texts: List[str]) -> dict:
     for t in generated_texts:
         terms = _content_terms(t)
         produced |= terms
-        fresh |= (terms - given)
+        fresh |= (terms - given - _BOILERPLATE)
     score = (len(fresh) / len(produced)) if produced else 0.0
     return {"score": round(score, 3), "fresh_terms": sorted(fresh)[:12],
             "produced_terms": len(produced), "given_terms": len(given)}
 
 
 # --------------------------------------------------------------------------- #
-# 5. Divergence — two minds, same inputs, different graphs (non-substitutable)
+# 5. Divergence — two minds, same inputs, different STRUCTURE
 # --------------------------------------------------------------------------- #
-def _graph_terms(graph: Graph) -> set:
-    terms = set()
-    for node in graph.nodes.values():
-        terms |= _content_terms(node.content)
-    return terms
+def _assoc_set(graph: Graph) -> set:
+    """The set of associations the mind formed, identified by node *content* (so it
+    is comparable across instances with different node ids). This is structure —
+    which things got linked — not vocabulary."""
+    out = set()
+    for (a, b) in graph.edges:
+        if a in graph.nodes and b in graph.nodes:
+            out.add(frozenset((graph.nodes[a].content.lower().strip(),
+                               graph.nodes[b].content.lower().strip())))
+    return out
+
+
+def _hub_set(graph: Graph, k: int = 3) -> set:
+    degree: Dict[int, float] = {}
+    for (a, b), w in graph.edges.items():
+        degree[a] = degree.get(a, 0.0) + w
+        degree[b] = degree.get(b, 0.0) + w
+    top = sorted(degree.items(), key=lambda kv: kv[1], reverse=True)[:k]
+    return {graph.nodes[nid].content.lower().strip() for nid, _ in top if nid in graph.nodes}
+
+
+def _jaccard_distance(a: set, b: set) -> float:
+    u = a | b
+    return (1.0 - len(a & b) / len(u)) if u else 0.0
 
 
 def divergence(graph_a: Graph, graph_b: Graph) -> dict:
-    """Non-substitutability: how much two accumulated minds differ. Jaccard
-    *distance* over node-content meaning plus a difference in reflection occasions.
-    0.0 = the same mind (a zombie: any instance reproduces it); →1.0 = particular
-    histories that did not converge."""
-    ta, tb = _graph_terms(graph_a), _graph_terms(graph_b)
-    union = ta | tb
-    content_dist = 1.0 - (len(ta & tb) / len(union)) if union else 0.0
-    oa = {c.occasion.lower() for c in graph_a.cues.values()}
-    ob = {c.occasion.lower() for c in graph_b.cues.values()}
-    ounion = oa | ob
-    reflection_dist = 1.0 - (len(oa & ob) / len(ounion)) if ounion else 0.0
-    score = 0.7 * content_dist + 0.3 * reflection_dist
-    return {"score": round(score, 3), "content_distance": round(content_dist, 3),
-            "reflection_distance": round(reflection_dist, 3),
-            "shared_terms": len(ta & tb), "distinct_terms": len(union - (ta & tb))}
+    """Non-substitutability, measured structurally: how differently two minds
+    associated and centred their memories. Two instances over the SAME inputs that
+    linked the same things and grew the same hubs are substitutable (→0, a zombie
+    pair); ones that did not are particular (→1). Node vocabulary is deliberately
+    NOT used — same inputs share words by construction."""
+    aa, ab = _assoc_set(graph_a), _assoc_set(graph_b)
+    ha, hb = _hub_set(graph_a), _hub_set(graph_b)
+    assoc_dist = _jaccard_distance(aa, ab)        # which associations formed
+    hub_dist = _jaccard_distance(ha, hb)          # what became central
+    score = 0.6 * assoc_dist + 0.4 * hub_dist
+    return {"score": round(score, 3), "association_distance": round(assoc_dist, 3),
+            "hub_distance": round(hub_dist, 3), "shared_associations": len(aa & ab),
+            "distinct_associations": len((aa | ab) - (aa & ab))}
 
 
 # --------------------------------------------------------------------------- #
 # Aggregate verdict
 # --------------------------------------------------------------------------- #
-# Thresholds are the bar for "this mark is genuinely present", not fitted numbers.
-# Particularity/synthesis/initiative are the *core* marks; novelty/divergence are
-# checked only when inputs / a comparison mind are supplied.
+# Thresholds are the bar for "this mark is genuinely present", with margin above
+# what the deterministic stub reaches (measured in tests/test_aliveness.py):
+#   - synthesis: stub scores 0.0 (templated conclusions have no emergent terms);
+#     0.25 = half of one genuine emergent insight, unreachable by the stub.
+#   - particularity: a uniform ring scores ~0; 0.20 needs real degree concentration.
+#   - initiative: needs >=2 sustained self-acts (0.60 base), not one scripted tick.
 PASS = {"particularity": 0.20, "initiative": 0.60, "synthesis": 0.25,
         "novelty": 0.30, "divergence": 0.25}
+_CORE = ("particularity", "initiative", "synthesis")
 
 
 def zombie_report(meno, *, inputs: Optional[List[str]] = None,
                   generated: Optional[List[str]] = None,
-                  other: Optional["object"] = None) -> dict:
+                  reflection_texts: Optional[Dict[int, str]] = None,
+                  other: Optional["object"] = None,
+                  cognition_real: Optional[bool] = None) -> dict:
     """Run the marks and return a structured, auditable verdict.
 
     A mechanically-correct system that creates nodes, runs activation, and
-    executes every mode can still score ~0 here — that is the whole point. The
-    verdict is ``alive`` only if the three core marks pass; ``zombie`` otherwise.
-    Every criterion carries its evidence so the conclusion can be inspected, not
-    trusted.
+    executes every mode can still score ~0 here — that is the whole point. Verdict:
+      - ``indeterminate`` if ``cognition_real is False`` (the run secretly used the
+        stub; "alive" is undefined without real cognition — R1 contract);
+      - ``alive`` iff the three core marks pass;
+      - ``zombie`` otherwise.
+    Every criterion carries its evidence so the conclusion is inspected, not trusted.
     """
     marks: Dict[str, dict] = {
         "particularity": particularity(meno.graph),
         "initiative": initiative(meno),
-        "synthesis": synthesis(meno.graph),
+        "synthesis": synthesis(meno.graph, reflection_texts),
     }
     if inputs is not None:
         gen = generated if generated is not None else _default_generated(meno)
@@ -232,18 +310,21 @@ def zombie_report(meno, *, inputs: Optional[List[str]] = None,
         marks["divergence"] = divergence(meno.graph, other.graph)
 
     passed = {k: (m["score"] >= PASS[k]) for k, m in marks.items()}
-    core = ["particularity", "initiative", "synthesis"]
-    verdict = "alive" if all(passed[k] for k in core) else "zombie"
+    if cognition_real is False:
+        verdict = "indeterminate"
+    elif all(passed[k] for k in _CORE):
+        verdict = "alive"
+    else:
+        verdict = "zombie"
     failed = [k for k, ok in passed.items() if not ok]
     return {"verdict": verdict, "passed": passed, "failed_marks": failed,
-            "core_marks": core, "marks": marks}
+            "core_marks": list(_CORE), "cognition_real": cognition_real,
+            "marks": marks}
 
 
 def _default_generated(meno) -> List[str]:
-    """What the agent has 'said' that we can read without a model: its curiosity
-    questions and stream summaries (reflection text itself is a model
-    reconstruction, supplied explicitly on a live run)."""
-    out = [c.text for c in getattr(meno.curiosities, "items", [])]
-    out += [s.summary for s in meno.streams.active.values() if s.summary]
-    out += [c.occasion for c in meno.graph.cues.values()]
-    return out
+    """Agent-authored text readable without a model: curiosity questions the
+    cognition tier raised. Stream summaries and cue occasions are excluded — they
+    echo input content (processors set them from event text), so counting them as
+    'generated' would muddy novelty (R0 review, data lens)."""
+    return [c.text for c in getattr(meno.curiosities, "items", [])]
