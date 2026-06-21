@@ -76,9 +76,10 @@ def scripted(use_anthropic: bool = False, embedder: str = "hashing") -> None:
         print(f"  {k}: {v}")
 
     banner("QUIET — heartbeat: initiative (impulses) + curiosity (reaching out)")
-    n0 = len(mind.bus.log)
+    n0_id = mind.bus.log[-1].id if mind.bus.log else 0
     mind.heartbeat()
-    self_made = [e for e in mind.bus.log[n0:] if e.source in ("initiative", "curiosity")]
+    self_made = [e for e in mind.bus.log
+                 if e.id > n0_id and e.source in ("initiative", "curiosity")]
     from_cur = sum(e.source == "curiosity" for e in self_made)
     print(f"  meno acted on its own: {len(self_made)} self-generated events "
           f"({from_cur} from curiosity)")

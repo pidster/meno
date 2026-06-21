@@ -39,7 +39,7 @@ class Meno:
         self.streams = StreamManager(self.embed, self.cfg)
         self.working_set = WorkingSet(self.cfg, self.streams)
         self.annotator = Annotator(self.embed, self.working_set, self.streams, self.cfg)
-        self.bus = Bus()
+        self.bus = Bus(log_max=self.cfg.bus_log_max)
         self.curiosities = CuriosityRegister(self.cfg)   # F3: the pull-toward-the-world drive
         self.consolidation = ConsolidationCycle(self)
         self.controller = Controller(self)
@@ -294,7 +294,7 @@ class Meno:
     # --- observability ---
     def snapshot(self) -> dict:
         return {
-            "events_seen": len(self.bus.log),
+            "events_seen": self.bus.total_published,    # lifetime (log itself is bounded)
             "hot": self.working_set.depth(),
             "streams_active": len(self.streams.active),
             "streams_warm": len(self.streams.warm),

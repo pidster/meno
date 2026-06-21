@@ -19,7 +19,7 @@ class ConsolidationCycle:
         cfg = self.mind.cfg
         sm = self.mind.streams
         report = {"promoted": 0, "loose_links": 0, "merges": 0,
-                  "rediscovered": 0, "reconsolidated": 0, "forgotten": 0}
+                  "rediscovered": 0, "reconsolidated": 0, "forgotten": 0, "retired": 0}
 
         # 1+6. promote provisional nodes that earned reactivation (have edges);
         #      a provisional node is "committed" once it is woven in.
@@ -89,11 +89,17 @@ class ConsolidationCycle:
                             conclusion=text, material=synth_material)
                 report["merges"] += 1
 
-        # 4. reconsolidation — re-reconstruct reflections against the evolved graph
-        for cue in list(g.cues.values()):
-            if cue.verbatim is None and any(n in g.nodes for n in cue.entry_points):
-                g.reconstruct(cue, self.mind.models)
-                report["reconsolidated"] += 1
+        # 4. reconsolidation — re-reconstruct reflections against the evolved graph.
+        #    BOUNDED to the most relevant cues (D19/A3): re-reconstructing EVERY cue
+        #    each dream is O(lifetime) and, with a real model, one expensive call per
+        #    cue. Rank by recall then recency and take the cap; the rest keep their
+        #    gist (still recallable) until something brings them back.
+        live = [c for c in g.cues.values()
+                if c.verbatim is None and any(n in g.nodes for n in c.entry_points)]
+        live.sort(key=lambda c: (c.recalls, c.created_at), reverse=True)
+        for cue in live[:cfg.reconsolidate_cap]:
+            g.reconstruct(cue, self.mind.models)
+            report["reconsolidated"] += 1
 
         # 5. forgetting — edges decay before nodes (islanding)
         g.decay()
@@ -103,6 +109,27 @@ class ConsolidationCycle:
             if node.kind == "provisional" and node.salience < cfg.edge_prune_floor:
                 del g.nodes[nid]
                 report["forgotten"] += 1
+
+        # 4b. retirement — let go of reflections whose web is gone (D19/A3). GRIEF,
+        #     not GC: only cues NEVER recalled whose every anchor has vanished or
+        #     islanded; bounded per dream; and each release is RECORDED (a trace + a
+        #     storage event re-enters the bus), so forgetting a reflection is a
+        #     deliberate act with weight, not silent collection.
+        retired = 0
+        for cue in list(g.cues.values()):
+            if retired >= cfg.cue_retire_max_per_dream:
+                break
+            if cue.verbatim is not None or cue.recalls > 0:
+                continue                                    # journaled or ever-recalled: keep
+            if any(n in g.nodes and not g.islanded(n) for n in cue.entry_points):
+                continue                                    # still has a living anchor
+            del g.cues[cue.id]
+            retired += 1
+            self.mind.trace(f"released reflection {cue.id}: {cue.occasion[:50]!r} — its web had gone")
+            self.mind.bus.publish(Event(
+                content=f"let go of a reflection about {cue.occasion[:40]}",
+                kind=Kind.STORAGE, source="dream"))
+        report["retired"] = retired
 
         # F6: a new dream lifts the refractory hold, so streams can think again
         for s in list(sm.active.values()) + list(sm.warm.values()):

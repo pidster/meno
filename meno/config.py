@@ -63,6 +63,12 @@ class Config:
     journal_importance: float = 0.85           # surprise above which a reflection is journaled verbatim
     recall_salience_floor: float = 0.20        # an entry-point anchor below this salience has faded from recall
 
+    # --- lifetime-growth bounds (D19; only bite in a long-lived process — R3) ---
+    bus_log_max: int = 4096             # episodic log ring size (the durable trace is the graph)
+    warm_max_idle_ticks: int = 50       # a suspended stream cold this long is reaped (its nodes persist)
+    reconsolidate_cap: int = 16         # cues re-reconstructed per dream (was O(lifetime) — every cue)
+    cue_retire_max_per_dream: int = 4   # max reflections retired per dream (grief, not GC: bounded + recorded)
+
     # --- curiosity (the pull-toward-the-world drive; decays, unlike impulse) F3 ---
     curiosity_birth: float = 0.7          # intensity a new curiosity starts at
     curiosity_decay: float = 0.85         # per heartbeat tick (relaxes when unattended)

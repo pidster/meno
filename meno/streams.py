@@ -21,6 +21,7 @@ class Stream:
     deferred: bool = False          # wanted deep work but couldn't afford it
     refractory: bool = False        # just synthesised — can't re-fire until the next dream (F6)
     suspended: bool = False
+    idle_ticks: int = 0             # ticks spent cold in `warm` -> reaped past a TTL (D19/A2)
     event_ids: List[int] = field(default_factory=list)
     node_ids: List[int] = field(default_factory=list)   # graph nodes encoded from this stream
     summary: str = ""
@@ -117,20 +118,31 @@ class StreamManager:
         self.active.pop(sid, None)
         self.warm.pop(sid, None)
 
-    # --- autonomic tick: pressure builds, fatigue relaxes ---
+    # --- autonomic tick: pressure builds, fatigue relaxes, cold warm streams reaped ---
     def tick(self) -> List[int]:
-        """Returns ids of streams whose pressure crossed the interoceptive wake line."""
+        """Returns ids of streams whose pressure crossed the interoceptive wake line.
+
+        Pressure is CAPPED at the wake line (D19/A2): an impulse insists until it is
+        granted the slot, it does not grow without bound. Suspended (warm) streams
+        that stay cold past `warm_max_idle_ticks` are reaped — a dormant train of
+        thought nobody returned to is released; its graph nodes persist, so the
+        thinking it produced isn't lost, only the idle thread object."""
         woke = []
+        wake = self.cfg.pressure_wake
         for sid, s in list(self.active.items()):
             s.fatigue *= self.cfg.fatigue_decay
             if s.deferred:
-                s.pressure += self.cfg.pressure_growth
-                if s.pressure >= self.cfg.pressure_wake:
+                s.pressure = min(s.pressure + self.cfg.pressure_growth, wake)
+                if s.pressure >= wake:
                     woke.append(sid)
-        # suspended deferred streams also build pressure (they insist)
         for sid, s in list(self.warm.items()):
-            if s.deferred:
-                s.pressure += self.cfg.pressure_growth
-                if s.pressure >= self.cfg.pressure_wake:
+            if s.deferred:                                  # deferred warm streams insist
+                s.idle_ticks = 0
+                s.pressure = min(s.pressure + self.cfg.pressure_growth, wake)
+                if s.pressure >= wake:
                     woke.append(sid)
+            else:                                           # cold (not wanted) -> age out
+                s.idle_ticks += 1
+                if s.idle_ticks > self.cfg.warm_max_idle_ticks:
+                    del self.warm[sid]
         return woke
