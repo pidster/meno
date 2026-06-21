@@ -70,8 +70,31 @@ def test_telemetry_counts_real_calls_with_a_fake_client():
                 return FakeMsg('{"related": true}')
     p = AnthropicModelProvider(client=FakeClient())
     assert p.relate("a", "b") is True
-    assert p.telemetry["real"] == 1 and p.telemetry["fallback"] == 0
-    assert cognition_is_real(p)
+    assert p.synthesise("occ", ["material"])              # exercise the load-bearing tier
+    assert p.telemetry["real"] == 2 and p.telemetry["fallback"] == 0
+    assert cognition_is_real(p)                            # synth real, no fallbacks
+
+
+def test_cognition_not_real_if_synthesis_tier_degraded():
+    """R1 review P1: the gate is keyed on the deep insight tier. A run where cheap
+    surfaces succeed but a synthesise call fell back is NOT real cognition, even at
+    high overall real_fraction — the reflections may be stub."""
+    class FakeMsg:
+        def __init__(self, text): self.content = [type("B", (), {"type": "text", "text": text})()]
+    class PickyClient:
+        """Succeeds on Haiku relate, fails (empty) on the Opus synthesise."""
+        class messages:
+            @staticmethod
+            def create(**kw):
+                if kw["model"].startswith("claude-opus"):
+                    return FakeMsg("")                    # empty synthesis -> degradation
+                return FakeMsg('{"related": true}')
+    p = AnthropicModelProvider(client=PickyClient())
+    for _ in range(9):
+        p.relate("a", "b")                                # 9 real cheap calls
+    p.synthesise("occ", ["material"])                     # 1 synthesis fallback
+    assert p.real_fraction >= 0.9                         # overall looks high...
+    assert not cognition_is_real(p)                       # ...but the deep tier degraded
 
 
 # --- live: real Claude cognition ------------------------------------------- #

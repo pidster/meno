@@ -52,7 +52,7 @@ import re
 from typing import Dict, List, Optional
 
 from .graph import Graph
-from .models import StubModelProvider
+from .models import StubModelProvider, cognition_is_real
 
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP = frozenset(
@@ -323,13 +323,22 @@ def zombie_report(meno, *, inputs: Optional[List[str]] = None,
     """Run the marks and return a structured, auditable verdict.
 
     A mechanically-correct system that creates nodes, runs activation, and
-    executes every mode can still score ~0 here — that is the whole point. Verdict:
-      - ``indeterminate`` if ``cognition_real is False`` (the run secretly used the
-        stub; "alive" is undefined without real cognition — R1 contract);
-      - ``alive`` iff the three core marks pass;
-      - ``zombie`` otherwise.
+    executes every mode can still score ~0 here — that is the whole point.
+
+    The verdict FAILS CLOSED on cognition (R1 review P0): "alive" is reachable only
+    when cognition is proven real. ``cognition_real`` is auto-derived from
+    ``meno.models``'s telemetry when not given; pass it explicitly (e.g. ``True``
+    in a probe unit test that hand-builds a graph) to override. Verdict:
+      - ``indeterminate`` unless cognition_real is True (a stub/degraded/unproven
+        run is not a candidate for life — "alive" is undefined without real cognition);
+      - ``alive``  if cognition_real is True AND the three core marks pass;
+      - ``zombie`` if cognition_real is True but the marks fail (real cognition,
+        still generic — the true zombie).
     Every criterion carries its evidence so the conclusion is inspected, not trusted.
     """
+    if cognition_real is None:                      # auto-wire from the run's provider
+        cognition_real = cognition_is_real(getattr(meno, "models", None))
+
     marks: Dict[str, dict] = {
         "particularity": particularity(meno.graph),
         "initiative": initiative(meno),
@@ -342,8 +351,8 @@ def zombie_report(meno, *, inputs: Optional[List[str]] = None,
         marks["divergence"] = divergence(meno.graph, other.graph)
 
     passed = {k: (m["score"] >= PASS[k]) for k, m in marks.items()}
-    if cognition_real is False:
-        verdict = "indeterminate"
+    if cognition_real is not True:
+        verdict = "indeterminate"                   # cannot certify life without real cognition
     elif all(passed[k] for k in _CORE):
         verdict = "alive"
     else:

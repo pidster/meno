@@ -297,22 +297,45 @@ class AnthropicModelProvider(ModelProvider):
                     "required": ["mode", "thought", "path"], "additionalProperties": False}}},
             )
             data = json.loads(self._text(msg))
+            mode = data.get("mode", "internal")
+            thought = data.get("thought") or None
             path = (data.get("path") or "").strip()
+            # a route must carry what its mode promises, else it is a no-op dressed
+            # as cognition -> treat as degradation (R1 review, data lens P1.3)
+            if mode in ("internal", "both") and not thought:
+                raise ValueError("internal/both route with no thought")
+            if mode in ("external", "both") and not path:
+                raise ValueError("external/both route with no path")
             action = {"action": "fs_read", "path": path} if path else None
-            return {"mode": data.get("mode", "internal"),
-                    "thought": data.get("thought") or None, "action": action}
+            return {"mode": mode, "thought": thought, "action": action}
         return self._run("wonder", real, self.fallback.wonder, (text, referent))
 
 
+# The whole-run realness floor: a long, genuinely-alive run may suffer a rare
+# transient blip on a cheap, frequent surface (a single relate 5xx); that must not
+# poison the verdict. But the deep insight-bearing tier is gated hard below.
+_REAL_FRACTION_FLOOR = 0.9
+
+
 def cognition_is_real(provider) -> bool:
-    """True only if the provider made real model calls and none fell back to the
-    stub. The zombie verdict depends on this (realisation plan R1): a run that
-    silently degraded to the deterministic stub cannot be called 'alive'. A pure
-    StubModelProvider has no telemetry -> False (it IS the zombie)."""
+    """Is this run's cognition real enough to even ask whether it is alive?
+
+    The zombie verdict depends on this (realisation plan R1): a run that silently
+    degraded to the deterministic stub cannot be called 'alive'. Two conditions,
+    chosen so the gate is neither hollow nor poisoned (R1 review):
+      - the SYNTHESIS tier (the deep, insight-bearing cognition that produces the
+        reflections the zombie test reads) must have run for real and NEVER fallen
+        back — a single silent synthesise fallback means the reflections may be stub;
+      - the run overall must be >=90% real, so wholesale degradation fails even if
+        synthesise happened to succeed, while one cheap-surface blip does not.
+    A pure StubModelProvider has no telemetry -> False (it IS the zombie)."""
     tel = getattr(provider, "telemetry", None)
     if not isinstance(tel, dict):
         return False
-    return tel["real"] > 0 and tel["fallback"] == 0
+    synth = tel["by_method"].get("synthesise", {"real": 0, "fallback": 0})
+    if synth["real"] == 0 or synth["fallback"] > 0:
+        return False
+    return provider.real_fraction >= _REAL_FRACTION_FLOOR
 
 
 def make_models(name: str = "stub", **kwargs) -> ModelProvider:

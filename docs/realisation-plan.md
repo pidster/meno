@@ -74,6 +74,17 @@ A run that is mechanically perfect but fails these is a zombie, and fails.
   making the zombie test meaningless. R1 must surface degradation: a strict mode
   that raises, or a per-run telemetry counter of real-vs-fallback calls that the
   zombie test asserts is ~100% real.
+- **Cognition-gate decisions (from the R1 review):**
+  - The zombie verdict **fails closed**: "alive" is reachable only when cognition
+    is proven real. `zombie_report` auto-derives `cognition_real` from the run's
+    provider telemetry; absent/unproven cognition → `indeterminate`, never `alive`.
+  - The gate keys on the **synthesis tier** (real, zero fallbacks) plus a ≥90%
+    overall real fraction — so one transient cheap-surface blip can't poison a long
+    run, but a degraded *insight* call (or wholesale degradation) does.
+  - **R5 accumulation runs use `strict=True`.** A silent `relate` fallback changes
+    which streams merge — it corrupts graph topology, not just a log line — so a run
+    that claims to accumulate genuine experience must abort loudly on degradation
+    rather than letting the stub quietly edit the agent's mind.
 - **Review focus:** Data/Model Semantics + Theory Coherence.
 
 ## Phase R2 — Continuous operation  *(model-agnostic)*

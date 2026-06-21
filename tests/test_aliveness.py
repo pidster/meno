@@ -262,10 +262,12 @@ def test_divergence_high_for_same_words_different_structure():
 
 # --- aggregate verdict: the discrimination that matters -------------------- #
 def test_zombie_report_calls_a_flat_mind_a_zombie():
+    # cognition_real=True isolates the MARK logic: given real cognition, a flat
+    # graph is the true zombie (real thought, still generic).
     dead = _ring(fresh(), 8, 0.5)
     for s in ["x", "y", "z"]:
         dead.feed(s)
-    rep = zombie_report(dead)
+    rep = zombie_report(dead, cognition_real=True)
     assert rep["verdict"] == "zombie" and "particularity" in rep["failed_marks"]
 
 
@@ -308,9 +310,12 @@ def test_live_stub_run_is_called_zombie_with_real_stub_reflections():
     texts = {cid: m.graph.reconstruct(c, m.models, reconsolidate=False)
              for cid, c in m.graph.cues.items()}
     assert synthesis(m.graph, texts)["score"] == 0.0, "stub reflections must not be emergent"
+    # a stub run is never 'alive': synthesis fails, and cognition isn't real
+    # (auto-derived from the stub provider -> verdict 'indeterminate').
     rep = zombie_report(m, inputs=["associative memory", "volcanoes"], reflection_texts=texts)
-    assert rep["verdict"] == "zombie"
+    assert rep["verdict"] != "alive"
     assert not rep["passed"]["synthesis"]
+    assert rep["cognition_real"] is False          # stub cognition, fail-closed
 
 
 def test_zombie_report_calls_a_lived_in_mind_alive():
@@ -326,7 +331,7 @@ def test_zombie_report_calls_a_lived_in_mind_alive():
     alive.graph.store_cue(ids, "insight: memory and forgetting are one", tone=0.9,
                           conclusion="islanding is the hinge that makes rediscovery possible",
                           journal=True)
-    rep = zombie_report(alive)
+    rep = zombie_report(alive, cognition_real=True)    # given real cognition, this graph is alive
     assert rep["verdict"] == "alive", rep["failed_marks"]
     assert rep["passed"]["particularity"] and rep["passed"]["synthesis"]
 
@@ -344,3 +349,19 @@ def test_verdict_is_indeterminate_when_cognition_was_not_real():
                           conclusion="islanding underwrites surprising rediscovery", journal=True)
     rep = zombie_report(alive, cognition_real=False)
     assert rep["verdict"] == "indeterminate"
+
+
+def test_verdict_fails_closed_when_cognition_unproven():
+    """R1 review P0: the gate must FAIL CLOSED. An alive-looking graph with no
+    cognition evidence (default stub provider, no real calls) must be
+    'indeterminate', never 'alive' — the verdict cannot be reached without proven
+    real cognition."""
+    alive = _idiosyncratic(fresh())                # fresh() uses StubModelProvider
+    alive.bus.log.append(Event(content="q1", kind=Kind.SELF, source="curiosity"))
+    alive.bus.log.append(Event(content="q2", kind=Kind.SELF, source="initiative"))
+    ids = list(alive.graph.nodes)[:2]
+    alive.graph.store_cue(ids, "insight: x", tone=0.9,
+                          conclusion="islanding underwrites surprising rediscovery", journal=True)
+    rep = zombie_report(alive)                      # cognition_real omitted -> auto-derived
+    assert rep["cognition_real"] is False
+    assert rep["verdict"] == "indeterminate"        # NOT 'alive' — fails closed
