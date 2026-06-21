@@ -34,7 +34,12 @@ class Config:
 
     # --- streams ---
     stream_match_threshold: float = 0.28   # cosine to join an existing stream
-    merge_threshold: float = 0.80          # cosine between centroids to merge streams
+    merge_threshold: float = 0.55          # cosine between centroids to merge streams
+                                           # (empirical, real all-MiniLM-L6-v2: genuinely
+                                           # convergent streams centroid ~0.66, divergent
+                                           # ~0.0; 0.80 was unreachable in the real space and
+                                           # merge never fired. Hashing tops out ~0.4, so the
+                                           # offline default still never spuriously merges.)
     centroid_blend: float = 0.20           # how fast a stream centroid moves toward new events
     pressure_growth: float = 0.20          # deferred-impulse pressure accrued per tick
     pressure_wake: float = 0.80            # pressure that forces an interoceptive wake
