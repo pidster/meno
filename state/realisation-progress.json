@@ -42,8 +42,20 @@
         "final_state": "P0+P1 closed with reproduced evidence; re-review recommends advance."
       }
     },
-    "R2": {"name": "Continuous operation", "status": "in_progress"},
-    "R3": {"name": "Lifetime-growth hardening (D19)", "status": "pending"},
+    "R2": {
+      "name": "Continuous operation",
+      "status": "complete",
+      "module": "meno/driver.py + heartbeat boredom-persistence + neglected-curiosity",
+      "tests": "tests/test_driver.py (13)",
+      "deliverable": "Driver runs the default-mode loop autonomously (reactive -> quiet -> dream), idle backoff (no spin), thread-safe bounded ingress, resilient to cycle errors, honest stop. `python -m meno --live` shows the agent wondering with no input.",
+      "adversarial_review": {
+        "p0_closed": ["metronome curiosity (argmax-salience) -> neglected-node, varied framing, anti-repeat", "raised cycle silently killed the driver thread -> resilient continue / loud stop", "stop() lied on join timeout -> returns bool, keeps handle, running stays truthful"],
+        "p2_closed": "curiosity starved most of the neglected middle behind a fixed 5-window -> walks full below-median set",
+        "kernel_change": "boredom (_idle_ticks) persists across heartbeats so a sustained-quiet mind reaches out on its own (the dead top-down path, now live)",
+        "final_state": "3 P0s + N1 closed with run evidence; re-review recommends advance."
+      }
+    },
+    "R3": {"name": "Lifetime-growth hardening (D19)", "status": "in_progress"},
     "R4": {"name": "Sensorium + warm-tier persistence", "status": "pending"},
     "R5": {"name": "The zombie test (acceptance gate)", "status": "pending"}
   },
