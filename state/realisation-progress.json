@@ -1,0 +1,38 @@
+{
+  "project": "meno-realisation",
+  "plan": "docs/realisation-plan.md",
+  "branch": "realise-meno",
+  "goal": "A working Meno that passes the zombie test, not just green tests.",
+  "phases": {
+    "R0": {
+      "name": "Define 'alive' as executable criteria",
+      "status": "complete",
+      "module": "meno/aliveness.py",
+      "tests": "tests/test_aliveness.py (16 tests)",
+      "deliverable": "Evidence-returning probes (particularity, initiative, synthesis, novelty, divergence) + zombie_report verdict, gated on cognition_real.",
+      "adversarial_review": {
+        "rounds": "1 five-lens panel + 4 red-team break rounds",
+        "p0s_found_and_closed": [
+          "synthesis passed the stub via the bare >=2-entry-point branch",
+          "no test ran a live accumulating loop (vacuous discrimination)",
+          "synthesis source_terms re-derived at audit time -> forgetting made stub words emergent (temporal)",
+          "provenance desync: reconstruct could thin source_text while auditor held richer text",
+          "stub template literal 'these fragments' fallback read as emergent"
+        ],
+        "p1_closed": "store_cue froze provenance from entry_points, not the true synthesise material",
+        "structural_fixes": [
+          "ReflectionCue.source_text: provenance frozen at generation, MONOTONIC (never narrows)",
+          "_BOILERPLATE derived from the stub's real outputs (closes the template-drift class)",
+          "verdict gated on cognition_real (stub run -> indeterminate, never alive)"
+        ],
+        "final_state": "All 6 break attempts return 0.0; a full stub-built mind reads 'zombie'."
+      }
+    },
+    "R1": {"name": "Real cognition, validated end to end", "status": "in_progress"},
+    "R2": {"name": "Continuous operation", "status": "pending"},
+    "R3": {"name": "Lifetime-growth hardening (D19)", "status": "pending"},
+    "R4": {"name": "Sensorium + warm-tier persistence", "status": "pending"},
+    "R5": {"name": "The zombie test (acceptance gate)", "status": "pending"}
+  },
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "66 passed"}
+}
