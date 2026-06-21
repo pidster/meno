@@ -89,39 +89,61 @@ def test_initiative_one_scripted_tick_is_not_enough_two_is():
 
 
 # --- 3. synthesis: cross-source AND emergent ------------------------------- #
-def _two_stream_nodes(m: Meno):
-    a = m.graph.add_node("memory is reconstructed at recall", meta={"stream": 1}).id
-    b = m.graph.add_node("forgetting drops edges before nodes", meta={"stream": 2}).id
+def _two_memories(m: Meno):
+    a = m.graph.add_node("memory is reconstructed at recall").id
+    b = m.graph.add_node("forgetting drops edges before nodes").id
     return a, b
 
 
-def test_synthesis_rejects_templated_restatement_accepts_emergent_insight():
-    # a templated 'insight' whose words are all from its sources + boilerplate -> 0
+def test_synthesis_rejects_real_stub_output_accepts_emergent_insight():
+    # the stub's ACTUAL synthesise() output over its sources -> no emergent residue
     templ = fresh()
-    a, b = _two_stream_nodes(templ)
-    templ.graph.store_cue([a, b], "insight: memory + forgetting", tone=0.9,
-                          conclusion="a pattern across memory and forgetting — they cohere",
-                          journal=True)
-    assert synthesis(templ.graph)["score"] == 0.0          # no emergent terms
+    a, b = _two_memories(templ)
+    occ = "insight: memory + forgetting"
+    stub_text = templ.models.synthesise(occ, [templ.graph.nodes[a].content,
+                                              templ.graph.nodes[b].content])
+    templ.graph.store_cue([a, b], occ, tone=0.9, conclusion=stub_text, journal=True)
+    assert synthesis(templ.graph)["score"] == 0.0
 
     # a genuine insight: the conclusion names a mechanism the sources never did
     real = fresh()
-    a, b = _two_stream_nodes(real)
-    real.graph.store_cue([a, b], "insight: memory + forgetting", tone=0.9,
+    a, b = _two_memories(real)
+    real.graph.store_cue([a, b], occ, tone=0.9,
                          conclusion="islanding is the substrate that lets rediscovery surprise",
                          journal=True)
     rep = synthesis(real.graph)
     assert rep["genuine_insights"] == 1 and rep["score"] >= PASS["synthesis"]
-    assert any("islanding" in e or "substrate" in e or "rediscovery" in e for e in rep["evidence"])
+    assert any("islanding" in e or "substrate" in e for e in rep["evidence"])
 
 
-def test_synthesis_single_stream_reflection_is_not_cross_source():
+def test_synthesis_not_gamed_by_occasion_injection_or_partial_scaffolding():
+    """R0 re-review P0: terms that leak in from the cue's own occasion label, or
+    the '(partial)' prefix reconstruct() adds after islanding, must NOT read as
+    emergent. Both let a pure-stub conclusion score 0.5 before this fix."""
+    g = fresh()
+    a = g.graph.add_node("alpha node content").id
+    b = g.graph.add_node("beta node content").id
+    occ = "insight: quantum entanglement protocols + holographic compression scheme"
+    g.graph.store_cue([a, b], occ, tone=0.9,
+                      conclusion=g.models.synthesise(occ, ["alpha node content", "beta node content"]),
+                      journal=True)
+    assert synthesis(g.graph)["score"] == 0.0          # occasion words are not emergent
+
+    p = fresh()
+    a = p.graph.add_node("memory reconstruction").id
+    b = p.graph.add_node("forgetting edges").id
+    p.graph.store_cue([a, b], "insight: memory + forgetting", tone=0.9,
+                      conclusion="(partial) On memory + forgetting: a pattern across memory "
+                                 "— they cohere into one concern.", journal=True)
+    assert synthesis(p.graph)["score"] == 0.0          # '(partial)' is scaffolding
+
+
+def test_synthesis_requires_at_least_two_memories():
     m = fresh()
-    a = m.graph.add_node("a lone memory", meta={"stream": 7}).id
-    b = m.graph.add_node("more of the same lone memory", meta={"stream": 7}).id
-    m.graph.store_cue([a, b], "thinking it over", tone=0.5,
+    a = m.graph.add_node("a lone memory").id
+    m.graph.store_cue([a], "thinking it over", tone=0.5,
                       conclusion="entirely novel emergent vocabulary here", journal=True)
-    assert synthesis(m.graph)["score"] == 0.0      # same stream -> not cross-source
+    assert synthesis(m.graph)["score"] == 0.0      # one source -> not synthesis
 
 
 # --- 4. novelty ------------------------------------------------------------ #
@@ -171,29 +193,47 @@ def test_zombie_report_calls_a_flat_mind_a_zombie():
     assert rep["verdict"] == "zombie" and "particularity" in rep["failed_marks"]
 
 
-def test_live_stub_run_is_called_zombie_even_with_its_own_reflection_text():
+def test_live_stub_run_is_called_zombie_with_real_stub_reflections():
     """THE decisive R0 test (review P0). A real accumulating stub run — a zombie by
-    construction — must read as zombie, and its templated reflections must score 0
-    on synthesis even when we hand the probe the stub's own reconstructed text."""
+    construction — reads as zombie, and the stub's OWN reflections score 0 on
+    synthesis. Non-vacuous: we GUARANTEE cross-source cues exist (a merge-style
+    'insight:' cue built from the stub's real synthesise output, and a genuinely
+    islanded '(partial)' reconstruction) and assert the probe scores them 0."""
     m = fresh(embed=make_embedder("hashing"))
     for s in ["associative memory and spreading activation",
               "spreading activation surfaces unexpected connections",
               "memory is reconstructed rather than retrieved",
               "forgetting drops edges before nodes",
-              "islanded memories can be rediscovered",
-              "the database connection dropped under load",
-              "the database pool is exhausted"]:
+              "islanded memories can be rediscovered"]:
         m.feed(s)
         m.run_until_quiescent()
     m.heartbeat()
     m.dream()
-    # hand synthesis the stub's actual reflection text for every cue
+
+    # (1) a merge-style insight cue from the stub's ACTUAL synthesise output
+    ids = list(m.graph.nodes)[:3]
+    occ = "insight: " + " + ".join(m.graph.nodes[i].content[:20] for i in ids[:2])
+    m.graph.store_cue(ids, occ, tone=0.9,
+                      conclusion=m.models.synthesise(occ, [m.graph.nodes[i].content for i in ids]),
+                      journal=True)
+    # (2) a genuinely islanded reflection -> reconstruct() returns '(partial) ...'
+    x = m.graph.add_node("an isolated thought about volcanoes").id
+    y = m.graph.add_node("an isolated thought about lava").id
+    m.graph.link(x, y, 0.5)
+    cue_p = m.graph.store_cue([x, y], "insight: volcanoes + lava", tone=0.8, conclusion="seed")
+    m.graph.edges.clear()                                  # island: edges gone, nodes remain
+    partial = m.graph.reconstruct(cue_p, m.models, reconsolidate=False)
+    assert partial.startswith("(partial)")                # we really exercised that path
+
+    cross = [c for c in m.graph.cues.values()
+             if len([n for n in set(c.entry_points) if n in m.graph.nodes]) >= 2]
+    assert cross, "test must exercise real cross-source cues, not an empty set"
+
     texts = {cid: m.graph.reconstruct(c, m.models, reconsolidate=False)
              for cid, c in m.graph.cues.items()}
-    assert synthesis(m.graph, texts)["score"] == 0.0          # templated -> no emergence
-    rep = zombie_report(m, inputs=["associative memory", "database pool"],
-                        reflection_texts=texts)
-    assert rep["verdict"] == "zombie", rep["marks"]
+    assert synthesis(m.graph, texts)["score"] == 0.0, "stub reflections must not be emergent"
+    rep = zombie_report(m, inputs=["associative memory", "volcanoes"], reflection_texts=texts)
+    assert rep["verdict"] == "zombie"
     assert not rep["passed"]["synthesis"]
 
 

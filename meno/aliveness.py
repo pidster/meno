@@ -62,12 +62,14 @@ _STOP = frozenset(
     "one two three rather whether across between among also can could would should will "
     "may might must just only very much many via per such each both either out off".split()
 )
-# Kernel scaffolding the cognition tiers emit as templates — these are NOT signs of
-# emergent thought, so they must never count as 'fresh' meaning (R0 review, data lens).
+# Kernel scaffolding the cognition tiers and reconstruct() emit as templates — these
+# are NOT signs of emergent thought, so they must never count as 'fresh' meaning
+# (R0 review). Keep in sync with StubModelProvider templates (models.py) and the
+# reconstruct() scaffolding strings ("(partial) ", the ghost "(something about …)").
 _BOILERPLATE = frozenset(
     "pattern cohere coheres cohered concern connects connect connection stands alone "
     "returning rediscovered reflection formed intent insight significance wonder "
-    "thought thinking memory something sense matter".split()
+    "thought thinking memory something sense matter partial details come won".split()
 )
 
 
@@ -168,33 +170,42 @@ def initiative(meno) -> dict:
 # 3. Synthesis — insight that is cross-source AND emergent
 # --------------------------------------------------------------------------- #
 def synthesis(graph: Graph, reflection_texts: Optional[Dict[int, str]] = None) -> dict:
-    """Emergent insight, not restatement or label. A cue counts only if (a) its
-    entry points span >=2 distinct streams (or it is a model-merged 'insight:'
-    cue) AND (b) its conclusion introduces terms its source nodes lack. Condition
-    (b) is what the deterministic stub fails: its synthesise() output is a template
-    over the inputs' own keywords, so it carries no emergent terms.
+    """Emergent insight, not restatement or label. A cue counts only if (a) it draws
+    on >=2 distinct source memories AND (b) its conclusion introduces terms that
+    none of its sources held. Condition (b) is what the deterministic stub fails:
+    its synthesise() output is a template over the inputs' OWN material, so once we
+    account for everything reconstruct() draws on — the entry points, the nodes its
+    spreading activation reached, the cue's own occasion label, and the kernel
+    scaffolding ('(partial)', ghost text) — the stub conclusion has zero residue.
+    Only a real model that names something the sources didn't can score here.
 
-    ``reflection_texts``: cue.id -> reconstructed/known conclusion. On a live run
-    the caller reconstructs cues once and passes them here; offline, journalled
-    (verbatim) cues are read directly. A cue whose conclusion text is unavailable
-    cannot demonstrate emergence and is reported as unverified, never counted.
+    We do NOT require distinct *streams*: a reflection that synthesises over several
+    memories of one train of thought is still synthesis (and requiring merges would
+    make the mark unreachable, since merges rarely fire — R0 review R-C).
+
+    ``reflection_texts``: cue.id -> reconstructed/known conclusion. On a live run the
+    caller reconstructs cues once and passes them here; offline, journalled cues are
+    read directly. A cue whose text is unavailable cannot show emergence: uncounted.
     """
     texts = reflection_texts or {}
     genuine, unverified = [], 0
     for cue in graph.cues.values():
-        nodes = [graph.nodes[n] for n in cue.entry_points if n in graph.nodes]
-        streams = {n.meta.get("stream") for n in nodes}
-        streams.discard(None)
-        cross_source = len(streams) >= 2 or cue.occasion.lower().startswith("insight")
-        if not cross_source:
+        present = [n for n in set(cue.entry_points) if n in graph.nodes]
+        if len(present) < 2:                   # synthesis draws on >=2 memories
             continue
         text = texts.get(cue.id, cue.verbatim)
         if text is None:
             unverified += 1                    # cross-source, but emergence unproven
             continue
-        source_terms = set()
-        for n in nodes:
-            source_terms |= _content_terms(n.content)
+        # everything reconstruct() could echo: occasion label + entry points + the
+        # spreading-activation neighbourhood it pulls material from. The stub can
+        # only recombine these; a genuine insight adds a term none of them carry.
+        source_terms = _content_terms(cue.occasion)
+        reach = set(cue.entry_points) | set(graph.spread(list(cue.entry_points),
+                                                          hops=2, decay=0.5))
+        for nid in reach:
+            if nid in graph.nodes:
+                source_terms |= _content_terms(graph.nodes[nid].content)
         fresh = _emergent_terms(text, source_terms)
         if fresh:
             genuine.append((cue, sorted(fresh)[:6]))
