@@ -31,15 +31,20 @@ implementation choice is logged in [`docs/decisions.md`](docs/decisions.md).
 ## Run it
 
 ```bash
-python -m meno                 # scripted demo of the whole loop
+python -m meno                 # scripted demo of the whole loop (offline)
 python -m meno --interactive   # type stimuli; commands: dream | recall <q> | snapshot | quit
+python -m meno --anthropic     # use real Claude models for cognition (see below)
 python -m pytest -q            # offline, deterministic test suite
 ```
 
-No API key or network required: the defaults are a deterministic offline model
-stub, a local hashing embedder, and an in-process graph. Real backends (Anthropic
-models, a vector/graph DB, a real embedder) are selectable behind the same
-interfaces.
+No API key or network required by default: a deterministic offline model stub, a
+local hashing embedder, and an in-process graph. **Real cognitive models** are a
+drop-in: `pip install anthropic`, set `ANTHROPIC_API_KEY`, and pass `--anthropic`
+(or `Meno(models=make_models("anthropic"))`). The tiers map onto the Claude
+family — Haiku 4.5 appraises, Sonnet 4.6 associates, Opus 4.8 synthesises — and
+every call falls back to the stub on any error, so the loop never blocks. A
+vector/graph DB and a real embedder are likewise selectable behind the same
+interfaces (not yet implemented).
 
 ## What the demo shows
 
@@ -66,8 +71,10 @@ tests/     offline, deterministic subsystem + integration tests
 ## Status
 
 The bare loop runs end to end with offline stand-ins and a passing test suite,
-and persists its consolidated graph across restarts (`Meno.save`/`load`).
-Deferred (see the docs' open lists): real model/embedding/graph backends, the
-sensor catalogue + event wire-schema + API, warm-tier (suspended-stream)
-persistence, and skills (procedural memory). Scoring constants in
-`meno/config.py` are first cuts, to be tuned empirically.
+persists its consolidated graph across restarts (`Meno.save`/`load`), and can
+drive its cognition with **real Claude models** (`--anthropic`). Deferred (see
+the docs' open lists): a real embedder and a vector/graph DB backend, the sensor
+catalogue + event wire-schema + API, warm-tier (suspended-stream) persistence,
+skills (procedural memory), and the async worker pool that would run model calls
+concurrently. Scoring constants in `meno/config.py` are first cuts, to be tuned
+empirically.

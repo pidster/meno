@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 from .config import Config
+from .models import make_models
 from .runtime import Meno
 
 
@@ -20,8 +21,20 @@ def banner(title: str) -> None:
     print(f"\n=== {title} ===")
 
 
-def scripted() -> None:
-    mind = Meno(config=Config(), workspace=Path(tempfile.mkdtemp(prefix="meno_")), verbose=True)
+def _models(use_anthropic: bool):
+    if not use_anthropic:
+        return make_models("stub")
+    provider = make_models("anthropic")
+    if getattr(provider, "available", False):
+        print("  [using real Anthropic models: Haiku/Sonnet/Opus]")
+    else:
+        print("  [--anthropic requested but no client/key available; falling back to stub]")
+    return provider
+
+
+def scripted(use_anthropic: bool = False) -> None:
+    mind = Meno(config=Config(), models=_models(use_anthropic),
+                workspace=Path(tempfile.mkdtemp(prefix="meno_")), verbose=True)
 
     stimuli = [
         # a "memory" cluster (will cohere into one stream)
@@ -89,8 +102,9 @@ def scripted() -> None:
         print(f"  {k}: {v}")
 
 
-def interactive() -> None:
-    mind = Meno(config=Config(), workspace=Path(tempfile.mkdtemp(prefix="meno_")), verbose=True)
+def interactive(use_anthropic: bool = False) -> None:
+    mind = Meno(config=Config(), models=_models(use_anthropic),
+                workspace=Path(tempfile.mkdtemp(prefix="meno_")), verbose=True)
     print("meno interactive. commands: dream | recall <q> | snapshot | quit")
     while True:
         try:
@@ -113,7 +127,8 @@ def interactive() -> None:
 
 
 if __name__ == "__main__":
+    anthropic = "--anthropic" in sys.argv
     if "--interactive" in sys.argv:
-        interactive()
+        interactive(anthropic)
     else:
-        scripted()
+        scripted(anthropic)

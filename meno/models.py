@@ -1,14 +1,21 @@
 """The cognitive tiers behind a provider interface.
 
-The cognitive layer is a cost-graded stack of models (redesign.md). Here each
-*tier method* names what that tier does — Tier 1 appraises, Tier 2 associates,
-Tier 3 synthesises. The default `StubModelProvider` is deterministic and offline
-so meno runs with no API key (D4). `AnthropicModelProvider` maps the tiers onto
-the Claude family (Haiku / Sonnet / Opus) and is selectable when a key and
-network are available.
+The cognitive layer is a cost-graded stack of models (redesign.md). Each *tier
+method* names what that tier does — Tier 1 appraises, Tier 2 associates, Tier 3
+synthesises. The default `StubModelProvider` is deterministic and offline so meno
+runs with no API key (D4). `AnthropicModelProvider` maps the tiers onto the
+Claude family and is selectable when a key and network are available (D13):
+
+    Tier 1  claude-haiku-4-5    fast appraisal (structured JSON output)
+    Tier 2  claude-sonnet-4-6   association across a stream
+    Tier 3  claude-opus-4-8     synthesis (adaptive thinking + effort)
+
+Every real call falls back to the stub on any error, so the kernel never blocks
+on the network — faithful to the "graceful degradation" the design assumes.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import List, Optional
@@ -50,7 +57,6 @@ class StubModelProvider(ModelProvider):
     def appraise(self, content: str, surprise: float) -> dict:
         kws = _keywords(content)
         label = kws[0] if kws else "stimulus"
-        # a reflexive echo; and, only if surprising, a residual question that may climb
         reaction = f"noted: {label}"
         question = None
         if surprise >= 0.5 and kws:
@@ -60,8 +66,7 @@ class StubModelProvider(ModelProvider):
     def associate(self, stream_summary: str, related: List[str]) -> str:
         if not related:
             return f"{stream_summary} stands alone for now"
-        link = related[0]
-        return f"{stream_summary} connects to: {link}"
+        return f"{stream_summary} connects to: {related[0]}"
 
     def synthesise(self, occasion: str, material: List[str]) -> str:
         kws: List[str] = []
@@ -72,47 +77,119 @@ class StubModelProvider(ModelProvider):
         return f"On {occasion}: a pattern across {theme} — they cohere into one concern."
 
 
+_APPRAISE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "label": {"type": "string"},
+        "reaction": {"type": "string"},
+        "question": {"type": "string"},   # empty string when the percept raises none
+    },
+    "required": ["label", "reaction", "question"],
+    "additionalProperties": False,
+}
+
+_APPRAISE_SYSTEM = (
+    "You are the fast appraisal tier of a cognitive architecture. For each percept, "
+    "give a one-line reflexive reaction (a few words), a short label, and — only if "
+    "the percept is genuinely surprising or leaves something unresolved — a single "
+    "short question it provokes. If it raises no question, return an empty string.")
+
+_ASSOC_SYSTEM = "You connect ideas tersely. One line, no preamble."
+
+_SYNTH_SYSTEM = (
+    "You are the deep synthesis tier of a cognitive architecture. From the material, "
+    "write a short, particular reflection (two or three sentences) that finds the "
+    "pattern across it — a perspective, not a summary. First person is welcome. "
+    "Respond with only the reflection, no preamble.")
+
+
 class AnthropicModelProvider(ModelProvider):
-    """Maps the tiers onto the Claude family. Best-effort; falls back to the stub
-    on any error so the loop never blocks on the network (D4)."""
+    """Maps the tiers onto the Claude family. Best-effort: any error (no client,
+    no key, network failure, refusal, parse failure) falls back to the stub so the
+    loop never blocks (D13)."""
 
     name = "anthropic"
     TIER_MODELS = {1: "claude-haiku-4-5", 2: "claude-sonnet-4-6", 3: "claude-opus-4-8"}
 
-    def __init__(self, fallback: Optional[ModelProvider] = None) -> None:
+    def __init__(self, client=None, fallback: Optional[ModelProvider] = None,
+                 effort: str = "medium") -> None:
         self.fallback = fallback or StubModelProvider()
-        self._client = None
-        try:  # pragma: no cover - exercised only when the dep + key exist
-            import anthropic  # type: ignore
-
-            if os.environ.get("ANTHROPIC_API_KEY"):
-                self._client = anthropic.Anthropic()
-        except Exception:
-            self._client = None
-
-    def _ask(self, tier: int, system: str, prompt: str) -> Optional[str]:  # pragma: no cover
+        self.effort = effort
+        self._client = client
         if self._client is None:
-            return None
-        try:
-            msg = self._client.messages.create(
-                model=self.TIER_MODELS[tier],
-                max_tokens=256,
-                system=system,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
-        except Exception:
-            return None
+            try:  # pragma: no cover - depends on the optional dep + a key
+                import anthropic  # type: ignore
+
+                if os.environ.get("ANTHROPIC_API_KEY"):
+                    self._client = anthropic.Anthropic()
+            except Exception:
+                self._client = None
+
+    @property
+    def available(self) -> bool:
+        return self._client is not None
+
+    @staticmethod
+    def _text(msg) -> str:
+        return "".join(b.text for b in msg.content
+                       if getattr(b, "type", "") == "text").strip()
 
     def appraise(self, content: str, surprise: float) -> dict:
-        return self.fallback.appraise(content, surprise)  # routing stays cheap/deterministic
+        if not self.available:
+            return self.fallback.appraise(content, surprise)
+        try:
+            msg = self._client.messages.create(
+                model=self.TIER_MODELS[1],
+                max_tokens=256,
+                system=_APPRAISE_SYSTEM,
+                messages=[{"role": "user",
+                           "content": f"Percept (surprise={surprise:.2f}): {content}"}],
+                output_config={"format": {"type": "json_schema", "schema": _APPRAISE_SCHEMA}},
+            )
+            data = json.loads(self._text(msg))
+            question = (data.get("question") or "").strip() or None
+            return {"label": data.get("label", "stimulus"),
+                    "reaction": data.get("reaction", ""),
+                    "question": question, "keywords": []}
+        except Exception:
+            return self.fallback.appraise(content, surprise)
 
-    def associate(self, stream_summary: str, related: List[str]) -> str:  # pragma: no cover
-        out = self._ask(2, "You connect ideas tersely.",
-                        f"Thread: {stream_summary}\nRelated: {related}\nState the connection in one line.")
-        return out or self.fallback.associate(stream_summary, related)
+    def associate(self, stream_summary: str, related: List[str]) -> str:
+        if not self.available:
+            return self.fallback.associate(stream_summary, related)
+        try:
+            msg = self._client.messages.create(
+                model=self.TIER_MODELS[2],
+                max_tokens=200,
+                system=_ASSOC_SYSTEM,
+                messages=[{"role": "user",
+                           "content": f"Thread: {stream_summary}\nRelated memory: {related}\n"
+                                      "State the connection in one line."}],
+            )
+            return self._text(msg) or self.fallback.associate(stream_summary, related)
+        except Exception:
+            return self.fallback.associate(stream_summary, related)
 
-    def synthesise(self, occasion: str, material: List[str]) -> str:  # pragma: no cover
-        out = self._ask(3, "You synthesise a short, particular reflection.",
-                        f"Occasion: {occasion}\nMaterial:\n- " + "\n- ".join(material))
-        return out or self.fallback.synthesise(occasion, material)
+    def synthesise(self, occasion: str, material: List[str]) -> str:
+        if not self.available:
+            return self.fallback.synthesise(occasion, material)
+        try:
+            prompt = f"Occasion: {occasion}\nMaterial:\n- " + "\n- ".join(material or ["(none)"])
+            msg = self._client.messages.create(
+                model=self.TIER_MODELS[3],
+                max_tokens=1500,                       # room for adaptive thinking + a short reflection
+                thinking={"type": "adaptive"},         # Opus 4.8: adaptive only (no budget_tokens)
+                output_config={"effort": self.effort},  # low | medium | high | max
+                system=_SYNTH_SYSTEM,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return self._text(msg) or self.fallback.synthesise(occasion, material)
+        except Exception:
+            return self.fallback.synthesise(occasion, material)
+
+
+def make_models(name: str = "stub", **kwargs) -> ModelProvider:
+    """Factory for selecting a provider by name (used by the runtime/CLI)."""
+    if name == "anthropic":
+        return AnthropicModelProvider(**kwargs)
+    return StubModelProvider()

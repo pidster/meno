@@ -8,7 +8,7 @@ from .config import Config
 from .embeddings import EmbeddingModel, HashingEmbedding, cosine
 from .event import Event, Kind, Status
 from .graph import Graph, Node, ReflectionCue
-from .models import AnthropicModelProvider, ModelProvider, StubModelProvider
+from .models import AnthropicModelProvider, ModelProvider, StubModelProvider, make_models
 from .runtime import Meno
 from .streams import Stream, StreamManager
 
@@ -16,7 +16,7 @@ __all__ = [
     "Meno", "Config", "Event", "Kind", "Status",
     "Graph", "Node", "ReflectionCue",
     "EmbeddingModel", "HashingEmbedding", "cosine",
-    "ModelProvider", "StubModelProvider", "AnthropicModelProvider",
+    "ModelProvider", "StubModelProvider", "AnthropicModelProvider", "make_models",
     "Stream", "StreamManager",
 ]
 

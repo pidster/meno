@@ -119,3 +119,24 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   handled, because the warm-tier placement is still an open decision. Until that
   lands, suspended trains of thought do not survive a restart — only consolidated
   memory does, which is the faithful minimum.
+
+### D13 — Real cognitive models: Anthropic tiers behind the provider interface
+- **Decision.** `AnthropicModelProvider` maps the three cognitive tiers onto the
+  Claude family — **Tier 1 `claude-haiku-4-5`** (fast appraisal via structured
+  JSON output), **Tier 2 `claude-sonnet-4-6`** (association), **Tier 3
+  `claude-opus-4-8`** (synthesis with adaptive thinking + `effort`). Selectable
+  via `make_models("anthropic")`, the `Meno(models=...)` arg, or `python -m meno
+  --anthropic`. The offline `StubModelProvider` remains the default (D4).
+- **Why / how, grounded in the API reference.** Opus 4.8 takes adaptive thinking
+  only (`thinking={"type":"adaptive"}`) with `output_config.effort` — `budget_tokens`
+  and `temperature` are removed and 400. Appraisal uses `output_config.format`
+  (json_schema, supported on Haiku 4.5) so the Tier-1 reaction/question parse
+  reliably. Every call **falls back to the stub on any error** (no client, no key,
+  network failure, refusal, parse failure) so the kernel never blocks on the
+  network — matching the design's graceful-degradation assumption.
+- **Rules out / defers.** Real *embeddings* are not integrated — Anthropic offers
+  no embeddings endpoint, so a real embedder stays a separate pluggable upgrade;
+  `HashingEmbedding` remains the default. The synchronous core (D7) means real
+  calls run serially per quiescence pass; the async worker pool that would issue
+  them concurrently is still deferred. Tests inject a fake client, so the suite
+  stays offline and deterministic.
