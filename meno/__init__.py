@@ -15,7 +15,14 @@ from .embeddings import (
 )
 from .event import Event, Kind, Status
 from .graph import Graph, Node, ReflectionCue
-from .models import AnthropicModelProvider, ModelProvider, StubModelProvider, make_models
+from .models import (
+    AnthropicModelProvider,
+    CognitionDegraded,
+    ModelProvider,
+    StubModelProvider,
+    cognition_is_real,
+    make_models,
+)
 from .runtime import Meno
 from .streams import Stream, StreamManager
 from .aliveness import (
@@ -33,6 +40,7 @@ __all__ = [
     "EmbeddingModel", "HashingEmbedding", "SplitEmbedding",
     "SentenceTransformerEmbedding", "make_embedder", "cosine",
     "ModelProvider", "StubModelProvider", "AnthropicModelProvider", "make_models",
+    "cognition_is_real", "CognitionDegraded",
     "Stream", "StreamManager",
     "zombie_report", "particularity", "initiative", "synthesis",
     "novelty", "divergence",
