@@ -60,8 +60,13 @@ def scripted(use_anthropic: bool = False) -> None:
     for k, v in mind.snapshot().items():
         print(f"  {k}: {v}")
 
-    banner("QUIET — heartbeat: initiative works the deferred backlog")
+    banner("QUIET — heartbeat: initiative (impulses) + curiosity (reaching out)")
+    n0 = len(mind.bus.log)
     mind.heartbeat()
+    self_made = [e for e in mind.bus.log[n0:] if e.source in ("initiative", "curiosity")]
+    from_cur = sum(e.source == "curiosity" for e in self_made)
+    print(f"  meno acted on its own: {len(self_made)} self-generated events "
+          f"({from_cur} from curiosity)")
 
     banner("DREAM — consolidation pass")
     report = mind.dream()

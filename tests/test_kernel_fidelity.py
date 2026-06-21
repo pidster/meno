@@ -144,3 +144,40 @@ def test_islanded_node_is_rediscovered_in_the_dream():
     report = m.dream()
     assert report["rediscovered"] >= 1
     assert not m.graph.islanded(b.id)        # brought back via a path that did not exist
+
+
+def test_bottom_up_curiosity_registers_from_an_unresolved_question():
+    """F3 — a surprising percept raises a question that registers as a curiosity
+    (the unresolved residue), rather than just lapsing."""
+    m = fresh()
+    m.feed("a startling and surprising novel event about volcanoes")
+    m.run_until_quiescent()
+    assert any(c.source == "bottom-up" for c in m.curiosities.items)
+
+
+def test_boredom_makes_meno_act_on_its_own():
+    """F3 — sustained under-stimulation discharges a curiosity, so meno generates
+    its own event (reaches inward or outward) with no external prompt. This is the
+    'initiative' the project's whole purpose hinges on; it was entirely absent."""
+    m = fresh()
+    m.feed("something interesting about lava and magma")
+    m.run_until_quiescent()
+    n_before = len(m.bus.log)
+    m.heartbeat()                                   # quiet phase -> boredom -> reach out
+    self_generated = [e for e in m.bus.log[n_before:] if e.source == "curiosity"]
+    assert self_generated                           # meno did something on its own
+
+
+def test_impulses_take_the_slot_before_curiosity():
+    """F3 — impulses (unfinished cognition) precede curiosity (wandering) for the
+    spare slot."""
+    ev = Event(content="an unfinished thought")
+    m = fresh()
+    ev.embedding = m.embed.embed(ev.content)
+    sid = m.streams.route(ev)
+    st = m.streams.active[sid]
+    st.deferred = True
+    st.pressure = 1.0                               # already over the wake line
+    m.curiosities.register("a competing wondering", source="bottom-up")
+    wakes = m.controller.tick()
+    assert any(w.source == "initiative" for w in wakes)   # the impulse resurfaced first

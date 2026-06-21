@@ -64,6 +64,8 @@ class Appraiser(Processor):
             child = event.child(q, inherit=mind.cfg.activation_inherit, kind=Kind.SELF)
             child.payload["role"] = "question"
             emitted.append(child)
+            # bottom-up curiosity: an unresolved question is a pull worth keeping (F3)
+            mind.curiosities.register(q, source="bottom-up", stream_id=event.stream_id)
         return emitted
 
 
@@ -154,6 +156,7 @@ class Synthesiser(Processor):
             stream.pressure = 0.0
             stream.refractory = True              # F6: rest until the next dream clears it
             stream.fatigue += mind.cfg.fatigue_gain
+            mind.curiosities.satisfy(stream.id)  # F3: the reflection answers the stream's curiosities
         event.depth_reached = 3
         # storage-as-trigger: the act of forming a reflection re-enters the loop
         storage = event.child(f"reflection formed: {text}", inherit=mind.cfg.activation_inherit,

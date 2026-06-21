@@ -19,6 +19,7 @@ from .embeddings import EmbeddingModel, HashingEmbedding, cosine
 from .event import Event, Kind, Status
 from .graph import Graph
 from .models import ModelProvider, StubModelProvider
+from .curiosity import CuriosityRegister
 from .processors import DEFAULT_PROCESSORS, Synthesiser
 from .streams import StreamManager
 from .working_set import WorkingSet
@@ -39,6 +40,7 @@ class Meno:
         self.working_set = WorkingSet(self.cfg, self.streams)
         self.annotator = Annotator(self.embed, self.working_set, self.streams, self.cfg)
         self.bus = Bus()
+        self.curiosities = CuriosityRegister(self.cfg)   # F3: the pull-toward-the-world drive
         self.consolidation = ConsolidationCycle(self)
         self.controller = Controller(self)
         self.processors = processors or DEFAULT_PROCESSORS
@@ -112,21 +114,67 @@ class Meno:
         return steps
 
     def heartbeat(self, ticks: int = 8) -> int:
-        """The quiet phase: build pressure on deferred streams, resurface them as
-        interoceptive wakes (each granted a deep slot), and let initiative work
-        through the backlog. This is where deep thought deferred during waking
-        actually happens."""
+        """The quiet phase. Two kinds of initiative compete for the spare slot, and
+        **impulses come first** (finish unfinished cognition before wandering):
+        interoceptive wakes resurface deferred streams; only when no impulse fired
+        and meno has been *under-stimulated* for `boredom_ticks` does **curiosity**
+        reach toward the world (model-routed discharge — F3)."""
         total = 0
+        idle = 0
         for _ in range(ticks):
-            wakes = self.controller.tick()
+            wakes = self.controller.tick()                  # impulses first
             for w in wakes:
                 self.bus.publish(w)
+            if wakes:
+                idle = 0                                     # not idle — impulses take the slot
+            elif self.working_set.depth() == 0 and not self.bus.pending():
+                idle += 1
+                if idle >= self.cfg.boredom_ticks:          # under-stimulated -> reach out
+                    if self.curiosities.top() is None:
+                        self._birth_topdown_curiosity()
+                    for ev in self._discharge_curiosity():
+                        self.bus.publish(ev)
             total += self.run_until_quiescent()
+            self.curiosities.decay()                         # curiosities relax over time
             deferred_left = (any(s.deferred for s in self.streams.active.values())
                              or any(s.deferred for s in self.streams.warm.values()))
-            if not wakes and not deferred_left:
+            top = self.curiosities.top()
+            curious = top is not None and top.intensity >= self.cfg.curiosity_discharge_threshold
+            if not wakes and not deferred_left and not curious:
                 break
         return total
+
+    # --- curiosity (F3): birth and model-routed discharge ---
+    def _birth_topdown_curiosity(self) -> None:
+        """Boredom with an empty register: reach toward the most salient memory."""
+        if not self.graph.nodes:
+            return
+        node = max(self.graph.nodes.values(), key=lambda n: n.salience)
+        self.curiosities.register(f"what more is there about {node.content[:40]}?",
+                                  source="top-down", referent=node.content)
+
+    def _discharge_curiosity(self) -> List[Event]:
+        """Let the model route the top curiosity across the internal/external
+        matrix: an inward thought, an outward action (the Effector self-fires),
+        both, or neither-yet."""
+        cur = self.curiosities.top()
+        if cur is None or cur.intensity < self.cfg.curiosity_discharge_threshold:
+            return []
+        route = self.models.wonder(cur.text, cur.referent)
+        emitted: List[Event] = []
+        mode = route.get("mode", "internal")
+        if mode in ("internal", "both") and route.get("thought"):
+            ev = Event(content=route["thought"], kind=Kind.SELF, source="curiosity")
+            ev.payload["role"] = "wonder"
+            emitted.append(ev)
+        if mode in ("external", "both") and route.get("action"):
+            act = dict(route["action"])
+            ev = Event(content=f"intent: {act.get('action')} {act.get('path', '')}",
+                       kind=Kind.INTENT, source="curiosity", payload=act)
+            emitted.append(ev)
+        cur.intensity *= 0.3                                  # discharged — relaxes
+        self.trace(f"curiosity discharged ({mode}): {cur.text[:40]!r}")
+        return emitted
 
     # --- circadian: the dream ---
     def dream(self) -> dict:
@@ -202,4 +250,5 @@ class Meno:
             "nodes": len(self.graph.nodes),
             "edges": len(self.graph.edges),
             "reflections": len(self.graph.cues),
+            "curiosities": len(self.curiosities.items),
         }

@@ -53,6 +53,8 @@ interfaces (not yet implemented).
 - **Escalation & deferral** — a scarce deep tier; relevant-but-unaffordable work
   *defers* (builds pressure) rather than being dropped.
 - **Initiative** — the heartbeat resurfaces deferred impulses and finishes them.
+- **Curiosity** — under-stimulation makes meno *reach out on its own* (a
+  model-routed inward thought or outward action); impulses take precedence.
 - **The dream** — consolidation promotes, recombines, reconsolidates, forgets.
 - **Reconstructive recall** — `recall(q)` returns *reconstructed* / *ghost* /
   *none*; the same reflection recalled twice comes back differently.

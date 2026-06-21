@@ -195,3 +195,25 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   the entire neighbourhood islanded — the keystone reconstructive claim was false.
   Forgetting must actually impoverish recall, or "reconstructive memory" is a
   lookup. Pinned by `tests/test_kernel_fidelity.py` (fails on the old behaviour).
+
+### D17 — Curiosity: the pull-toward-the-world drive (F3, P0)
+- **Decision.** A `CuriosityRegister` parallel to impulse pressure, with intensity
+  that **decays** (relaxes when unattended) — the opposite dynamic to impulse.
+  Two origins: **bottom-up** (an appraiser question that goes unresolved registers
+  a curiosity) and **top-down** (sustained under-stimulation — empty working set +
+  bus for `boredom_ticks` — births a reach toward the most salient memory).
+  **Discharge is model-routed**: when there's spare capacity and no pending
+  impulse, `ModelProvider.wonder` chooses across the internal/external matrix —
+  an inward thought (SELF), an outward action (INTENT → the Effector self-fires),
+  both, or neither. The stub gives a deterministic default (world-referent →
+  external read; else internal); a real model decides freely. A reflection
+  `satisfy`s its stream's curiosities.
+- **Why.** Curiosity was entirely absent — only impulse (push) existed, so meno
+  never reached toward the world on its own. This is the initiative the project's
+  purpose hinges on. Per Pid: the discharge form isn't predetermined (the full
+  internal/external matrix is possible) — the mechanism provides the capacity and
+  the *model* makes the call.
+- **Ordering.** **Impulses before curiosity** for the spare slot (finish
+  unfinished cognition before wandering). Pinned by kernel-fidelity tests:
+  bottom-up registration, boredom producing a self-generated event, and
+  impulse-precedence.
