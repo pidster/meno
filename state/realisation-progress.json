@@ -55,8 +55,20 @@
         "final_state": "3 P0s + N1 closed with run evidence; re-review recommends advance."
       }
     },
-    "R3": {"name": "Lifetime-growth hardening (D19)", "status": "in_progress"},
-    "R4": {"name": "Sensorium + warm-tier persistence", "status": "pending"},
+    "R3": {
+      "name": "Lifetime-growth hardening (D19)",
+      "status": "complete",
+      "modules": "meno/bus.py, streams.py, consolidation.py, graph.py, config.py",
+      "tests": "tests/test_lifetime.py (10)",
+      "deliverable": "A1 bus.log bounded ring + lifetime counter + windowed stream id-lists; A2 warm-stream reaper + capped pressure; A3 reconsolidation cost capped, and reflection forgetting given the faithful tiered descent (islanded ghost -> rediscovery via gist -> reflective, journaled grief).",
+      "adversarial_review": {
+        "p0_closed": ["cue retirement was GC that deleted ghost memories (denied reflections the islanding tier) -> tiered ghost/rediscovery/reflective-grief", "retirement never fired + dream O(nodes*edges) -> fires+capped, dream ~linear (O(edges) promote, O(cues*entry) ghost)", "event_ids/node_ids leaked 1:1 with lifetime -> windowed to 256"],
+        "high_closed": "grief reflection was gist-only + self-grieved forever -> journaled (durable/recallable, exempt from ghost path)",
+        "deferred": "residual O(nodes) similar() in rediscovery is the roadmap's indexing/ANN concern (profile-triggered scale phase), not a leak",
+        "final_state": "3 P0s + HIGH closed with measured evidence; re-review recommends advance."
+      }
+    },
+    "R4": {"name": "Sensorium + warm-tier persistence", "status": "in_progress"},
     "R5": {"name": "The zombie test (acceptance gate)", "status": "pending"}
   },
   "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "66 passed"}
