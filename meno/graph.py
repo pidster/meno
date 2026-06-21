@@ -38,7 +38,13 @@ class ReflectionCue:
     tone: float                       # affective/salience signature
     gist: List[float]                 # lossy embedding of the conclusion (meaning, not words)
     verbatim: Optional[str] = None    # set only if deliberately journaled
+    # the material the conclusion was derived from (occasion + the content the model
+    # was given), frozen at generation time. Provenance for the aliveness synthesis
+    # probe: emergence must be judged against what the reflection actually drew on,
+    # not against a graph that has since forgotten those nodes (R0 red-team P0).
+    source_text: str = ""
     recalls: int = 0
+    ghost_ticks: int = 0              # dreams spent islanded-and-unrecovered (D19/A3 tiered forgetting)
     id: int = 0                       # assigned by Graph.store_cue (per-instance, D15)
     created_at: float = field(default_factory=time.time)
 
@@ -112,8 +118,17 @@ class Graph:
 
     # --- reflection cues (reconstructive memory) ---
     def store_cue(self, entry_points: List[int], occasion: str, tone: float,
-                  conclusion: str, journal: bool = False) -> ReflectionCue:
+                  conclusion: str, journal: bool = False,
+                  material: Optional[List[str]] = None) -> ReflectionCue:
         self._cue_seq += 1
+        # Provenance = exactly what the conclusion was derived from. Prefer the
+        # caller's `material` (the list actually handed to synthesise, which can
+        # diverge from entry-point content via a fallback or deleted nodes); fall
+        # back to entry-point content. Covers the conclusion's true sources so the
+        # aliveness synthesis probe can't be tricked by a stored conclusion whose
+        # words came from material that isn't in entry_points (R0 red-team P1).
+        entry_content = " ".join(self.nodes[n].content for n in entry_points if n in self.nodes)
+        material_text = " ".join(material) if material else ""
         cue = ReflectionCue(
             entry_points=list(entry_points),
             occasion=occasion,
@@ -121,10 +136,21 @@ class Graph:
             # gist embeds occasion + conclusion (meaning), so a topical probe can find it
             gist=self.embed.embed_cold(f"{occasion} {conclusion}"),
             verbatim=conclusion if journal else None,
+            source_text=self._accrue_provenance(f"{occasion} {entry_content}", material_text),
             id=self._cue_seq,
         )
         self.cues[cue.id] = cue
         return cue
+
+    @staticmethod
+    def _accrue_provenance(existing: str, addition: str) -> str:
+        """Provenance is MONOTONIC: a reflection's source_text may grow as it is
+        re-reconstructed against new neighbourhoods, but never narrows. A term the
+        reflection ever legitimately drew on stays accounted for, so a later thinning
+        (after forgetting) can't strand an earlier, richer reconstruction and make
+        its words look emergent (R0 red-team P0, desync variant). Word-deduped to
+        stay bounded over a long life."""
+        return " ".join(dict.fromkeys((existing + " " + addition).split()))
 
     def recognise(self, cue: ReflectionCue, probe_embedding: List[float]) -> float:
         """Cheap, gist-level recognition (the ghost signal). No model."""
@@ -159,11 +185,17 @@ class Graph:
 
         if not anchors and not neighbours:
             # islanded AND faded: available but inaccessible — the ghost signal
+            cue.source_text = self._accrue_provenance(cue.source_text, cue.occasion)
             return f"(something about {cue.occasion} — but the details won't come)"
 
         material = ([self.nodes[nid].content for nid in anchors] +
                     [self.nodes[nid].content for nid, _ in neighbours])[:6]
         text = model.synthesise(cue.occasion, material)
+        # accrue provenance NOW, while the material still exists: the reflection drew
+        # on these nodes (incl. spread neighbours not in entry_points). Forgetting may
+        # delete them before the aliveness probe audits the text (R0 red-team P0).
+        cue.source_text = self._accrue_provenance(
+            cue.source_text, cue.occasion + " " + " ".join(material))
         # "structured" = the entry set still has surviving associative edges (to
         # neighbours, or amongst its own anchors). Forgetting strips those edges;
         # when none remain the reflection has lost its web and recall goes thin.
@@ -179,4 +211,14 @@ class Graph:
             # the recall touched these nodes -> they become the updated entry points
             touched = anchors + [nid for nid, _ in neighbours]
             cue.entry_points = touched[:max(1, len(cue.entry_points))] or cue.entry_points
+            # co-activation during recall REINFORCES the web (Hebbian): returning to a
+            # reflection strengthens the associations it rests on, so a theme the agent
+            # keeps coming back to becomes a genuine hub through EARNED attention — not
+            # merely whichever node was encoded most recently. This connects accumulated
+            # return (cue.recalls) to graph structure, which it otherwise never reached
+            # (R5 panel: particularity was a recency artifact). Read-only audits use
+            # reconsolidate=False and so never contaminate the measurement.
+            core = touched[:4]
+            for x, y in zip(core, core[1:]):
+                self.link(x, y, weight=self.cfg.hebbian_increment * 0.5)
         return text

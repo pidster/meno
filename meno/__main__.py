@@ -76,9 +76,10 @@ def scripted(use_anthropic: bool = False, embedder: str = "hashing") -> None:
         print(f"  {k}: {v}")
 
     banner("QUIET — heartbeat: initiative (impulses) + curiosity (reaching out)")
-    n0 = len(mind.bus.log)
+    n0_id = mind.bus.log[-1].id if mind.bus.log else 0
     mind.heartbeat()
-    self_made = [e for e in mind.bus.log[n0:] if e.source in ("initiative", "curiosity")]
+    self_made = [e for e in mind.bus.log
+                 if e.id > n0_id and e.source in ("initiative", "curiosity")]
     from_cur = sum(e.source == "curiosity" for e in self_made)
     print(f"  meno acted on its own: {len(self_made)} self-generated events "
           f"({from_cur} from curiosity)")
@@ -146,6 +147,31 @@ def interactive(use_anthropic: bool = False, embedder: str = "hashing") -> None:
             mind.run_until_quiescent()
 
 
+def live(use_anthropic: bool = False, embedder: str = "hashing", cycles: int = 40) -> None:
+    """Continuous operation (R2): the driver runs the default-mode loop on its own.
+    Seed a little, then let it drive itself — watch it wonder, resurface, and dream
+    with no further input."""
+    from .driver import Driver
+    mind = Meno(config=Config(), models=_models(use_anthropic), embed=_embedder(embedder),
+                workspace=Path(tempfile.mkdtemp(prefix="meno_")), verbose=True)
+    for s in ["memory is reconstructed at recall, not replayed",
+              "forgetting thins edges before nodes, islanding memories",
+              "spreading activation surfaces unexpected connections"]:
+        mind.feed(s)
+        mind.run_until_quiescent()
+    banner(f"LIVE — driving {cycles} autonomous cycles (no further input)")
+    driver = Driver(mind, dream_every=8, sleep=lambda _: None)
+    driver.run(max_cycles=cycles)
+    self_ev = [e for e in mind.bus.log if e.source in ("curiosity", "initiative")]
+    print(f"  driver: {driver.telemetry()}")
+    print(f"  self-initiated acts: {len(self_ev)}")
+    for e in self_ev[:5]:
+        print(f"    · {e.source}: {e.content[:60]}")
+    banner("SNAPSHOT after living")
+    for k, v in mind.snapshot().items():
+        print(f"  {k}: {v}")
+
+
 if __name__ == "__main__":
     anthropic = "--anthropic" in sys.argv
     # embedder selection: default offline hashing; --split-embed is the real
@@ -158,5 +184,7 @@ if __name__ == "__main__":
         embedder = "local"
     if "--interactive" in sys.argv:
         interactive(anthropic, embedder)
+    elif "--live" in sys.argv:
+        live(anthropic, embedder)
     else:
         scripted(anthropic, embedder)

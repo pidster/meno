@@ -126,19 +126,31 @@ _SYNTH_SYSTEM = (
     "Respond with only the reflection, no preamble.")
 
 
+class CognitionDegraded(RuntimeError):
+    """Raised (in strict mode) when a real model call fails and would otherwise
+    silently fall back to the stub. The point of strict mode is that a run cannot
+    pretend to be real cognition while secretly running the zombie (realisation
+    plan R1: make cognition failure loud)."""
+
+
 class AnthropicModelProvider(ModelProvider):
-    """Maps the tiers onto the Claude family. Best-effort: any error (no client,
-    no key, network failure, refusal, parse failure) falls back to the stub so the
-    loop never blocks (D13)."""
+    """Maps the tiers onto the Claude family. By default best-effort: any error (no
+    client, no key, network failure, refusal, parse failure) falls back to the stub
+    so the loop never blocks (D13) — BUT every fallback is RECORDED in `telemetry`,
+    so a caller can tell real cognition from silent degradation (the difference
+    between a living run and a zombie). `strict=True` raises instead, for validation
+    and for runs that must abort rather than degrade unnoticed."""
 
     name = "anthropic"
     TIER_MODELS = {1: "claude-haiku-4-5", 2: "claude-sonnet-4-6", 3: "claude-opus-4-8"}
 
     def __init__(self, client=None, fallback: Optional[ModelProvider] = None,
-                 effort: str = "medium") -> None:
+                 effort: str = "medium", strict: bool = False) -> None:
         self.fallback = fallback or StubModelProvider()
         self.effort = effort
+        self.strict = strict
         self._client = client
+        self.reset_telemetry()
         if self._client is None:
             try:  # pragma: no cover - depends on the optional dep + a key
                 import anthropic  # type: ignore
@@ -152,15 +164,54 @@ class AnthropicModelProvider(ModelProvider):
     def available(self) -> bool:
         return self._client is not None
 
+    # --- cognition telemetry: the loud-failure substrate (R1) ---
+    def reset_telemetry(self) -> None:
+        self.telemetry = {"real": 0, "fallback": 0, "last_error": None,
+                          "by_method": {}}
+
+    @property
+    def real_fraction(self) -> float:
+        t = self.telemetry
+        n = t["real"] + t["fallback"]
+        return (t["real"] / n) if n else 0.0
+
+    @property
+    def degraded(self) -> bool:
+        return self.telemetry["fallback"] > 0
+
+    def _by(self, method: str) -> dict:
+        return self.telemetry["by_method"].setdefault(method, {"real": 0, "fallback": 0})
+
+    def _run(self, method: str, real_fn, fallback_fn, fb_args):
+        """Run a real model call; on any failure record it and fall back (or, in
+        strict mode, raise). Empty/invalid model output counts as a failure — a
+        blank reflection is a degradation, not real cognition."""
+        if self.available:
+            try:
+                result = real_fn()
+                self.telemetry["real"] += 1
+                self._by(method)["real"] += 1
+                return result
+            except Exception as exc:
+                reason = f"{method}: {type(exc).__name__}: {exc}"
+                if self.strict:
+                    raise CognitionDegraded(reason) from exc
+        elif self.strict:
+            raise CognitionDegraded(f"{method}: no client/key")
+        else:
+            reason = f"{method}: no client/key"
+        self.telemetry["fallback"] += 1
+        self._by(method)["fallback"] += 1
+        self.telemetry["last_error"] = reason
+        return fallback_fn(*fb_args)
+
     @staticmethod
     def _text(msg) -> str:
         return "".join(b.text for b in msg.content
                        if getattr(b, "type", "") == "text").strip()
 
     def appraise(self, content: str, surprise: float) -> dict:
-        if not self.available:
-            return self.fallback.appraise(content, surprise)
-        try:
+        def real():
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[1],
                 max_tokens=256,
@@ -174,13 +225,10 @@ class AnthropicModelProvider(ModelProvider):
             return {"label": data.get("label", "stimulus"),
                     "reaction": data.get("reaction", ""),
                     "question": question, "keywords": []}
-        except Exception:
-            return self.fallback.appraise(content, surprise)
+        return self._run("appraise", real, self.fallback.appraise, (content, surprise))
 
     def associate(self, stream_summary: str, related: List[str]) -> str:
-        if not self.available:
-            return self.fallback.associate(stream_summary, related)
-        try:
+        def real():
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[2],
                 max_tokens=200,
@@ -189,14 +237,14 @@ class AnthropicModelProvider(ModelProvider):
                            "content": f"Thread: {stream_summary}\nRelated memory: {related}\n"
                                       "State the connection in one line."}],
             )
-            return self._text(msg) or self.fallback.associate(stream_summary, related)
-        except Exception:
-            return self.fallback.associate(stream_summary, related)
+            text = self._text(msg)
+            if not text:
+                raise ValueError("empty association")
+            return text
+        return self._run("associate", real, self.fallback.associate, (stream_summary, related))
 
     def synthesise(self, occasion: str, material: List[str]) -> str:
-        if not self.available:
-            return self.fallback.synthesise(occasion, material)
-        try:
+        def real():
             prompt = f"Occasion: {occasion}\nMaterial:\n- " + "\n- ".join(material or ["(none)"])
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[3],
@@ -206,14 +254,14 @@ class AnthropicModelProvider(ModelProvider):
                 system=_SYNTH_SYSTEM,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return self._text(msg) or self.fallback.synthesise(occasion, material)
-        except Exception:
-            return self.fallback.synthesise(occasion, material)
+            text = self._text(msg)
+            if not text:
+                raise ValueError("empty synthesis")
+            return text
+        return self._run("synthesise", real, self.fallback.synthesise, (occasion, material))
 
     def relate(self, summary_a: str, summary_b: str) -> bool:
-        if not self.available:
-            return self.fallback.relate(summary_a, summary_b)
-        try:
+        def real():
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[1],
                 max_tokens=64,
@@ -227,16 +275,13 @@ class AnthropicModelProvider(ModelProvider):
                     "required": ["related"], "additionalProperties": False}}},
             )
             return bool(json.loads(self._text(msg)).get("related", False))
-        except Exception:
-            return self.fallback.relate(summary_a, summary_b)
+        return self._run("relate", real, self.fallback.relate, (summary_a, summary_b))
 
     def wonder(self, text: str, referent: Optional[str] = None) -> dict:
-        if not self.available:
-            return self.fallback.wonder(text, referent)
-        try:
+        def real():
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[2],
-                max_tokens=200,
+                max_tokens=512,        # the structured {mode,thought,path} JSON; 200 truncated
                 system="A curiosity has arisen. Decide how to follow it. Respond inward "
                        "(a thought to think) or outward (read a file you're curious about) "
                        "or both — whatever fits. Only propose a file path you were actually "
@@ -252,12 +297,45 @@ class AnthropicModelProvider(ModelProvider):
                     "required": ["mode", "thought", "path"], "additionalProperties": False}}},
             )
             data = json.loads(self._text(msg))
+            mode = data.get("mode", "internal")
+            thought = data.get("thought") or None
             path = (data.get("path") or "").strip()
+            # a route must carry what its mode promises, else it is a no-op dressed
+            # as cognition -> treat as degradation (R1 review, data lens P1.3)
+            if mode in ("internal", "both") and not thought:
+                raise ValueError("internal/both route with no thought")
+            if mode in ("external", "both") and not path:
+                raise ValueError("external/both route with no path")
             action = {"action": "fs_read", "path": path} if path else None
-            return {"mode": data.get("mode", "internal"),
-                    "thought": data.get("thought") or None, "action": action}
-        except Exception:
-            return self.fallback.wonder(text, referent)
+            return {"mode": mode, "thought": thought, "action": action}
+        return self._run("wonder", real, self.fallback.wonder, (text, referent))
+
+
+# The whole-run realness floor: a long, genuinely-alive run may suffer a rare
+# transient blip on a cheap, frequent surface (a single relate 5xx); that must not
+# poison the verdict. But the deep insight-bearing tier is gated hard below.
+_REAL_FRACTION_FLOOR = 0.9
+
+
+def cognition_is_real(provider) -> bool:
+    """Is this run's cognition real enough to even ask whether it is alive?
+
+    The zombie verdict depends on this (realisation plan R1): a run that silently
+    degraded to the deterministic stub cannot be called 'alive'. Two conditions,
+    chosen so the gate is neither hollow nor poisoned (R1 review):
+      - the SYNTHESIS tier (the deep, insight-bearing cognition that produces the
+        reflections the zombie test reads) must have run for real and NEVER fallen
+        back — a single silent synthesise fallback means the reflections may be stub;
+      - the run overall must be >=90% real, so wholesale degradation fails even if
+        synthesise happened to succeed, while one cheap-surface blip does not.
+    A pure StubModelProvider has no telemetry -> False (it IS the zombie)."""
+    tel = getattr(provider, "telemetry", None)
+    if not isinstance(tel, dict):
+        return False
+    synth = tel["by_method"].get("synthesise", {"real": 0, "fallback": 0})
+    if synth["real"] == 0 or synth["fallback"] > 0:
+        return False
+    return provider.real_fraction >= _REAL_FRACTION_FLOOR
 
 
 def make_models(name: str = "stub", **kwargs) -> ModelProvider:

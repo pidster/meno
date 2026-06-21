@@ -15,9 +15,26 @@ from .embeddings import (
 )
 from .event import Event, Kind, Status
 from .graph import Graph, Node, ReflectionCue
-from .models import AnthropicModelProvider, ModelProvider, StubModelProvider, make_models
+from .models import (
+    AnthropicModelProvider,
+    CognitionDegraded,
+    ModelProvider,
+    StubModelProvider,
+    cognition_is_real,
+    make_models,
+)
+from .driver import Driver
 from .runtime import Meno
+from .sensorium import ChatSensor, FilesystemSensor, LogSensor, Sensor
 from .streams import Stream, StreamManager
+from .aliveness import (
+    divergence,
+    initiative,
+    novelty,
+    particularity,
+    synthesis,
+    zombie_report,
+)
 
 __all__ = [
     "Meno", "Config", "Event", "Kind", "Status",
@@ -25,7 +42,11 @@ __all__ = [
     "EmbeddingModel", "HashingEmbedding", "SplitEmbedding",
     "SentenceTransformerEmbedding", "make_embedder", "cosine",
     "ModelProvider", "StubModelProvider", "AnthropicModelProvider", "make_models",
-    "Stream", "StreamManager",
+    "cognition_is_real", "CognitionDegraded",
+    "Stream", "StreamManager", "Driver",
+    "Sensor", "FilesystemSensor", "ChatSensor", "LogSensor",
+    "zombie_report", "particularity", "initiative", "synthesis",
+    "novelty", "divergence",
 ]
 
 __version__ = "2.0.0"

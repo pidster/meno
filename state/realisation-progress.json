@@ -1,0 +1,101 @@
+{
+  "project": "meno-realisation",
+  "plan": "docs/realisation-plan.md",
+  "branch": "realise-meno",
+  "goal": "A working Meno that passes the zombie test, not just green tests.",
+  "phases": {
+    "R0": {
+      "name": "Define 'alive' as executable criteria",
+      "status": "complete",
+      "module": "meno/aliveness.py",
+      "tests": "tests/test_aliveness.py (16 tests)",
+      "deliverable": "Evidence-returning probes (particularity, initiative, synthesis, novelty, divergence) + zombie_report verdict, gated on cognition_real.",
+      "adversarial_review": {
+        "rounds": "1 five-lens panel + 4 red-team break rounds",
+        "p0s_found_and_closed": [
+          "synthesis passed the stub via the bare >=2-entry-point branch",
+          "no test ran a live accumulating loop (vacuous discrimination)",
+          "synthesis source_terms re-derived at audit time -> forgetting made stub words emergent (temporal)",
+          "provenance desync: reconstruct could thin source_text while auditor held richer text",
+          "stub template literal 'these fragments' fallback read as emergent"
+        ],
+        "p1_closed": "store_cue froze provenance from entry_points, not the true synthesise material",
+        "structural_fixes": [
+          "ReflectionCue.source_text: provenance frozen at generation, MONOTONIC (never narrows)",
+          "_BOILERPLATE derived from the stub's real outputs (closes the template-drift class)",
+          "verdict gated on cognition_real (stub run -> indeterminate, never alive)"
+        ],
+        "final_state": "All 6 break attempts return 0.0; a full stub-built mind reads 'zombie'."
+      }
+    },
+    "R1": {
+      "name": "Real cognition, validated end to end",
+      "status": "complete",
+      "module": "meno/models.py (telemetry, _run, cognition_is_real)",
+      "tests": "tests/test_cognition_r1.py (offline + 3 live, key-gated)",
+      "deliverable": "All 5 surfaces validated against real Claude (Haiku/Sonnet/Opus); loud-failure telemetry; verdict FAILS CLOSED on cognition (auto-wired, synth-tier gate); merge caveat closed into a live emergent insight.",
+      "adversarial_review": {
+        "lenses": "theory + data/model + (test/evidence covered inline)",
+        "p0_closed": "cognition gate failed open (None -> alive) and was unwired; now fails closed + auto-derives from provider telemetry",
+        "p1_closed": ["all-or-nothing fallback poisoned long runs / hollow pass -> synth-tier gate + 0.9 floor", "wonder mode/payload could contradict -> validated", "relate fallback corrupts merge topology -> R5 uses strict=True (documented)"],
+        "bug_caught_by_telemetry": "wonder truncated JSON at max_tokens=200 -> silent stub fallback; raised to 512",
+        "final_state": "P0+P1 closed with reproduced evidence; re-review recommends advance."
+      }
+    },
+    "R2": {
+      "name": "Continuous operation",
+      "status": "complete",
+      "module": "meno/driver.py + heartbeat boredom-persistence + neglected-curiosity",
+      "tests": "tests/test_driver.py (13)",
+      "deliverable": "Driver runs the default-mode loop autonomously (reactive -> quiet -> dream), idle backoff (no spin), thread-safe bounded ingress, resilient to cycle errors, honest stop. `python -m meno --live` shows the agent wondering with no input.",
+      "adversarial_review": {
+        "p0_closed": ["metronome curiosity (argmax-salience) -> neglected-node, varied framing, anti-repeat", "raised cycle silently killed the driver thread -> resilient continue / loud stop", "stop() lied on join timeout -> returns bool, keeps handle, running stays truthful"],
+        "p2_closed": "curiosity starved most of the neglected middle behind a fixed 5-window -> walks full below-median set",
+        "kernel_change": "boredom (_idle_ticks) persists across heartbeats so a sustained-quiet mind reaches out on its own (the dead top-down path, now live)",
+        "final_state": "3 P0s + N1 closed with run evidence; re-review recommends advance."
+      }
+    },
+    "R3": {
+      "name": "Lifetime-growth hardening (D19)",
+      "status": "complete",
+      "modules": "meno/bus.py, streams.py, consolidation.py, graph.py, config.py",
+      "tests": "tests/test_lifetime.py (10)",
+      "deliverable": "A1 bus.log bounded ring + lifetime counter + windowed stream id-lists; A2 warm-stream reaper + capped pressure; A3 reconsolidation cost capped, and reflection forgetting given the faithful tiered descent (islanded ghost -> rediscovery via gist -> reflective, journaled grief).",
+      "adversarial_review": {
+        "p0_closed": ["cue retirement was GC that deleted ghost memories (denied reflections the islanding tier) -> tiered ghost/rediscovery/reflective-grief", "retirement never fired + dream O(nodes*edges) -> fires+capped, dream ~linear (O(edges) promote, O(cues*entry) ghost)", "event_ids/node_ids leaked 1:1 with lifetime -> windowed to 256"],
+        "high_closed": "grief reflection was gist-only + self-grieved forever -> journaled (durable/recallable, exempt from ghost path)",
+        "deferred": "residual O(nodes) similar() in rediscovery is the roadmap's indexing/ANN concern (profile-triggered scale phase), not a leak",
+        "final_state": "3 P0s + HIGH closed with measured evidence; re-review recommends advance."
+      }
+    },
+    "R4": {
+      "name": "Sensorium + warm-tier persistence",
+      "status": "complete",
+      "modules": "meno/sensorium.py (FilesystemSensor), meno/driver.py (sensors), meno/persistence.py (warm tier)",
+      "tests": "tests/test_sensorium_r4.py (14)",
+      "deliverable": "A real afferent channel (filesystem watcher) wired into the driver with consent/privacy/resource bounds; warm-tier persistence so a restart resumes mid-thought (resolves D12).",
+      "adversarial_review": {
+        "p0_closed": ["hardlink escape read outside root -> reject nlink>1 + confine to root st_dev", "secrets read in clear -> secret-name skip + hidden skip", "no provenance (world-text indistinguishable from own thought) -> node meta source+external"],
+        "p1_closed": ["per-poll cap starved late files -> round-robin cursor", "_seen leaked deleted files -> pruned", "warm centroid embedder-pinned, silent cross-embedder corruption -> centroid_dim tag, skip warm on mismatch"],
+        "backlog_nonblocking": ["name-based secret guard is content-blind (accepted risk; consider content skim)", "nlink>1 and .pem/.key-substring over-block some legit files", "external flag is coarse (chat also external=True); consumers should read meta.source for trust"],
+        "final_state": "3 P0s + 3 P1s closed with repro; re-review confirms P0s closed, recommends advance."
+      }
+    },
+    "R5": {
+      "name": "The zombie test (acceptance gate)",
+      "status": "complete",
+      "harness": "meno/zombie_run.py",
+      "evidence": "state/zombie-evidence.md, state/zombie-graph.json",
+      "verdict": "ALIVE — genuinely particular, not a zombie (signed off by the adversarial panel after fixes)",
+      "method": "Ran Meno with REAL cognition (Haiku/Sonnet/Opus, real_fraction 1.00, synthesise 107/0) + real split embedder over a curated 14-experience life, dreaming/wondering/reflecting; then auto-derived cognition_real, judged the marks, and convened a 4-skeptic adversarial panel that tried to PROVE it a zombie.",
+      "panel_outcome": {
+        "round_1": "All 3 skeptics: NOT-A-ZOMBIE. Decisive leg = synthesis is cognition-gated (a stub provably scores 0; thresholds frozen at R0 before any run; the DB-pool->bounded-thinking leap is in neither source). But found 2 real holes in the aliveness CLAIM.",
+        "holes_found_and_fixed": ["particularity was a recency artifact (edges never reinforced; cue.recalls never reached node degree) -> recall now reinforces the web, so hubs are EARNED (densest hub flipped to the recurring theme, degree 3.5 vs 0.3)", "divergence 0.92 was confounded (6-input twin) -> full same-14-input twin gives honest 0.756"],
+        "round_2_verification": "Final skeptic verified from the graph json: 9 edges exceed the single-link ceiling (0.82 > 0.45-max) only where repeated recall reinforced them, mapping exactly to high-recall cue cores; newest nodes sit at the periphery. Reinforcement is NOT gameable (verdict still fails-closed on cognition_real + synthesis; live-stub test still reads not-alive). Signed off: genuinely particular."
+      },
+      "theory_check": "Is the agent particular or generic? PARTICULAR. It developed an unbidden perspective across disparate experiences — self-as-recurrence ('I am not the water but the shape I keep making across [conversations]'), connected a database-pool fix to a lesson about bounded thinking, and reflected on a 'formulaic' critique with genuine self-examination. Its hubs are the themes it kept returning to (earned via recall-reinforcement, not seeded). A twin fed the identical 14-input life built a structurally different graph (divergence 0.756). A fresh instance would not produce this graph from this input. The synthesis is unreachable by a stub. It surprised the builder. It is not a zombie.",
+      "honest_limits": ["novelty (non-core) fails 0.0 — its offline proxy reads curiosity texts, not the reflections where novelty lives; surprise is panel-judged", "cues are single-stream (no merge fired) — synthesis is genuine emergence within the cognition-gated mark, not cross-stream merging", "the curated life invites a perspective by design; particularity is now earned via recall, which addresses the recency confound but not the curation (acceptable — the test is whether IT makes the connections, not whether inputs are neutral)"]
+    }
+  },
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "66 passed"}
+}

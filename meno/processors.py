@@ -50,7 +50,11 @@ class Appraiser(Processor):
         node = mind.graph.add_node(
             event.content, kind="provisional",
             salience=mind.cfg.provisional_salience,
-            meta={"event": event.id, "stream": event.stream_id})
+            # carry PROVENANCE: where this memory came from. World-sensed content
+            # (source != self/cognition) must be distinguishable from the agent's own
+            # thought, so the self-graph isn't quietly contaminated by ingested text.
+            meta={"event": event.id, "stream": event.stream_id,
+                  "source": event.source, "external": event.kind == Kind.SENSE})
         event.node_id = node.id
         event.status = Status.PROVISIONAL
         event.depth_reached = max(event.depth_reached, 1)
@@ -59,6 +63,9 @@ class Appraiser(Processor):
             if stream.node_ids:                       # Hebbian: chain to the stream's prior node
                 mind.graph.link(stream.node_ids[-1], node.id, weight=mind.cfg.hebbian_increment)
             stream.node_ids.append(node.id)
+            w = mind.cfg.stream_material_window       # window the id list (D19 int-list bound)
+            if len(stream.node_ids) > w:
+                stream.node_ids = stream.node_ids[-w:]
         event.payload["reaction"] = res["reaction"]
         emitted: List[Event] = []
         q = res.get("question")
@@ -153,11 +160,12 @@ class Synthesiser(Processor):
         occasion = stream.summary if stream and stream.summary else event.content[:60]
         node_ids = list(stream.node_ids) if stream else ([event.node_id] if event.node_id else [])
         material = [mind.graph.nodes[n].content for n in node_ids if n in mind.graph.nodes][:6]
-        text = mind.models.synthesise(occasion, material or [event.content])
+        synth_material = material or [event.content]
+        text = mind.models.synthesise(occasion, synth_material)
         # Default is reconstructive — journaling is a separate, DELIBERATE act
         # (decision D10). Surprise is the wrong proxy: a novel percept is ~1.0.
         cue = mind.graph.store_cue(node_ids, occasion, tone=event.surprise,
-                                   conclusion=text, journal=False)
+                                   conclusion=text, journal=False, material=synth_material)
         if stream is not None:
             stream.deferred = False
             stream.pressure = 0.0

@@ -4,3 +4,6 @@ __pycache__/
 .meno_workspace/
 *.egg-info/
 .venv/
+
+# local secrets (meno cognition key) - never commit
+.env

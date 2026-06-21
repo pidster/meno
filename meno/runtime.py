@@ -39,7 +39,7 @@ class Meno:
         self.streams = StreamManager(self.embed, self.cfg)
         self.working_set = WorkingSet(self.cfg, self.streams)
         self.annotator = Annotator(self.embed, self.working_set, self.streams, self.cfg)
-        self.bus = Bus()
+        self.bus = Bus(log_max=self.cfg.bus_log_max)
         self.curiosities = CuriosityRegister(self.cfg)   # F3: the pull-toward-the-world drive
         self.consolidation = ConsolidationCycle(self)
         self.controller = Controller(self)
@@ -48,6 +48,9 @@ class Meno:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.verbose = verbose
         self.deep_budget = self.cfg.deep_per_pass
+        self._idle_ticks = 0          # boredom: persists across heartbeats (R2 autonomy)
+        self._curiosity_cursor = 0    # rotates top-down curiosity target + framing
+        self._last_curiosity_ref = None   # anti-repeat: don't wonder twice in a row about one node
         self.traces: List[str] = []
         self._synth = next((p for p in self.processors if isinstance(p, Synthesiser)), None)
 
@@ -118,27 +121,36 @@ class Meno:
         **impulses come first** (finish unfinished cognition before wandering):
         interoceptive wakes resurface deferred streams; only when no impulse fired
         and meno has been *under-stimulated* for `boredom_ticks` does **curiosity**
-        reach toward the world (model-routed discharge — F3)."""
+        reach toward the world (model-routed discharge — F3).
+
+        Boredom (`_idle_ticks`) PERSISTS across calls and resets on genuine activity,
+        so a sustained-quiet mind under continuous operation eventually reaches out
+        on its own — even with no fresh stimulus to keep the quiet phase awake. Per
+        call the loop still breaks early when nothing is happening; the persistent
+        counter is what lets boredom accumulate over the driver's many short
+        heartbeats (R2)."""
         total = 0
-        idle = 0
         for _ in range(ticks):
             wakes = self.controller.tick()                  # impulses first
             for w in wakes:
                 self.bus.publish(w)
             if wakes:
-                idle = 0                                     # not idle — impulses take the slot
+                self._idle_ticks = 0                         # impulses take the slot
             elif self.working_set.depth() == 0 and not self.bus.pending():
-                idle += 1
+                self._idle_ticks += 1
                 deferred_pending = (any(s.deferred for s in self.streams.active.values())
                                     or any(s.deferred for s in self.streams.warm.values()))
                 # impulses-first, properly: don't wander while unfinished cognition
                 # is still pending — even if its pressure hasn't yet crossed the
                 # wake line (timing must not let curiosity jump the queue).
-                if idle >= self.cfg.boredom_ticks and not deferred_pending:
+                if self._idle_ticks >= self.cfg.boredom_ticks and not deferred_pending:
                     if self.curiosities.top() is None:
                         self._birth_topdown_curiosity()
                     for ev in self._discharge_curiosity():
                         self.bus.publish(ev)
+                    self._idle_ticks = 0                     # acted -> re-accumulate boredom
+            else:
+                self._idle_ticks = 0                         # busy mind is not bored
             total += self.run_until_quiescent()
             self.curiosities.decay()                         # curiosities relax over time
             deferred_left = (any(s.deferred for s in self.streams.active.values())
@@ -150,12 +162,44 @@ class Meno:
         return total
 
     # --- curiosity (F3): birth and model-routed discharge ---
+    _WONDER_FRAMES = (
+        "what more is there about {x}?",
+        "what connects {x} to the rest?",
+        "what have I been missing about {x}?",
+        "why does {x} matter the way it does?",
+    )
+
     def _birth_topdown_curiosity(self) -> None:
-        """Boredom with an empty register: reach toward the most salient memory."""
+        """Boredom reaches for a NEGLECTED memory, not the most-attended one (doc 05,
+        Approaches 1+3). Genuine curiosity pulls toward the under-explored middle —
+        nodes with few surviving associations — and rotates target and framing with
+        an anti-repeat guard, so sustained boredom doesn't become a metronome firing
+        the same wonder about the same hub (R2 review). Reaching for argmax(salience)
+        would also entrench that hub (repeated co-activation raises its salience),
+        collapsing the graph onto one attractor — the opposite of idiosyncrasy."""
         if not self.graph.nodes:
             return
-        node = max(self.graph.nodes.values(), key=lambda n: n.salience)
-        self.curiosities.register(f"what more is there about {node.content[:40]}?",
+        degree: dict = {}
+        for (a, b) in self.graph.edges:
+            degree[a] = degree.get(a, 0) + 1
+            degree[b] = degree.get(b, 0) + 1
+        floor = self.cfg.recall_salience_floor
+        present = [n for n in self.graph.nodes.values() if n.content != self._last_curiosity_ref]
+        cands = [n for n in present if n.salience >= floor] or present \
+            or list(self.graph.nodes.values())
+        # the neglected MIDDLE, in full: everything at or below the median degree —
+        # so a large under-explored region isn't starved behind a fixed window, while
+        # the well-connected hubs (above median) stay off the wondering path. The
+        # cursor then walks this whole set over time, fewest-associations first.
+        degs = sorted(degree.get(n.id, 0) for n in cands)
+        median = degs[len(degs) // 2] if degs else 0
+        neglected = [n for n in cands if degree.get(n.id, 0) <= median]
+        neglected.sort(key=lambda n: (degree.get(n.id, 0), n.created_at))
+        node = neglected[self._curiosity_cursor % len(neglected)]
+        frame = self._WONDER_FRAMES[self._curiosity_cursor % len(self._WONDER_FRAMES)]
+        self._curiosity_cursor += 1
+        self._last_curiosity_ref = node.content
+        self.curiosities.register(frame.format(x=node.content[:40]),
                                   source="top-down", referent=node.content)
 
     def _discharge_curiosity(self) -> List[Event]:
@@ -224,15 +268,17 @@ class Meno:
 
     # --- continuity across restart (sleep, not death) ---
     def save(self, path) -> None:
-        """Persist the durable self — the cold graph — so meno remains."""
+        """Persist the durable self — the cold graph AND the warm tier (suspended
+        streams), so meno remains and a restart can resume mid-thought (R4)."""
         from . import persistence
-        persistence.save(self.graph, path)
+        persistence.save(self.graph, path, streams=self.streams)
 
     def load(self, path) -> None:
-        """Wake from a saved graph. The working set starts empty; recall works
-        immediately, and resurface() can rebuild some working context."""
+        """Wake from a saved graph + warm tier. The working set starts empty; recall
+        works immediately, suspended streams are restored (their deferred pressure
+        resumes them via the heartbeat), and resurface() rebuilds working context."""
         from . import persistence
-        persistence.load(self.graph, path)
+        persistence.load(self.graph, path, streams=self.streams)
 
     def resurface(self, k: int = 3) -> int:
         """Rebuild a little working context by re-entering the most salient
@@ -250,7 +296,7 @@ class Meno:
     # --- observability ---
     def snapshot(self) -> dict:
         return {
-            "events_seen": len(self.bus.log),
+            "events_seen": self.bus.total_published,    # lifetime (log itself is bounded)
             "hot": self.working_set.depth(),
             "streams_active": len(self.streams.active),
             "streams_warm": len(self.streams.warm),

@@ -34,7 +34,12 @@ class Config:
 
     # --- streams ---
     stream_match_threshold: float = 0.28   # cosine to join an existing stream
-    merge_threshold: float = 0.80          # cosine between centroids to merge streams
+    merge_threshold: float = 0.55          # cosine between centroids to merge streams
+                                           # (empirical, real all-MiniLM-L6-v2: genuinely
+                                           # convergent streams centroid ~0.66, divergent
+                                           # ~0.0; 0.80 was unreachable in the real space and
+                                           # merge never fired. Hashing tops out ~0.4, so the
+                                           # offline default still never spuriously merges.)
     centroid_blend: float = 0.20           # how fast a stream centroid moves toward new events
     pressure_growth: float = 0.20          # deferred-impulse pressure accrued per tick
     pressure_wake: float = 0.80            # pressure that forces an interoceptive wake
@@ -57,6 +62,14 @@ class Config:
     reconsolidation_plasticity: float = 0.30   # how far a recalled gist moves toward the new reconstruction
     journal_importance: float = 0.85           # surprise above which a reflection is journaled verbatim
     recall_salience_floor: float = 0.20        # an entry-point anchor below this salience has faded from recall
+
+    # --- lifetime-growth bounds (D19; only bite in a long-lived process — R3) ---
+    bus_log_max: int = 4096             # episodic log ring size (the durable trace is the graph)
+    warm_max_idle_ticks: int = 50       # a suspended stream cold this long is reaped (its nodes persist)
+    reconsolidate_cap: int = 16         # cues re-reconstructed per dream (was O(lifetime) — every cue)
+    cue_retire_max_per_dream: int = 4   # max reflections released per dream (grief, bounded + reflected-on)
+    cue_ghost_ttl: int = 20             # dreams a reflection stays an islanded ghost (recoverable) before release
+    stream_material_window: int = 256   # cap a stream's retained event/node id lists (D19 int-list bound)
 
     # --- curiosity (the pull-toward-the-world drive; decays, unlike impulse) F3 ---
     curiosity_birth: float = 0.7          # intensity a new curiosity starts at
