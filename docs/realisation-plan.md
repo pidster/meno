@@ -53,6 +53,12 @@ A run that is mechanically perfect but fails these is a zombie, and fails.
   convergent (lexically different) streams merge into an `insight:` cue.
 - Prove reflections are *reconstructed*, not templated (the formulaic-reflector
   failure mode).
+- **Make cognition failure loud.** The provider's best-effort fallback silently
+  degrades any model error (no credits, network, refusal, parse) to the stub —
+  which would let a run *look* like real Claude while running the zombie stub,
+  making the zombie test meaningless. R1 must surface degradation: a strict mode
+  that raises, or a per-run telemetry counter of real-vs-fallback calls that the
+  zombie test asserts is ~100% real.
 - **Review focus:** Data/Model Semantics + Theory Coherence.
 
 ## Phase R2 — Continuous operation  *(model-agnostic)*
