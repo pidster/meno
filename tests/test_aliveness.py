@@ -159,6 +159,28 @@ def test_synthesis_not_gamed_by_forgetting_after_reconstruction():
     assert synthesis(m.graph, {cue.id: text})["score"] == 0.0       # frozen provenance holds
 
 
+def test_synthesis_provenance_is_monotonic_across_reconsolidation():
+    """R0 red-team P0 (desync variant): capture a reflection's text (the audit
+    contract), then let forgetting + a dream reconsolidation re-reconstruct the cue
+    against a thinned graph. Provenance is monotonic, so the captured (richer) text
+    is still covered and the stub's words do not read as emergent."""
+    m = fresh()
+    e1 = m.graph.add_node("the pattern").id
+    e2 = m.graph.add_node("a connection").id
+    volc = m.graph.add_node("volcano eruption magma").id
+    seis = m.graph.add_node("seismic tremor fault").id
+    m.graph.link(e1, volc, 0.9)
+    m.graph.link(e2, seis, 0.9)
+    m.graph.link(e1, e2, 0.5)
+    cue = m.graph.store_cue([e1, e2], "insight: deep earth", tone=0.9, conclusion="seed")
+    text_a = m.graph.reconstruct(cue, m.models, reconsolidate=False)   # auditor captures this
+    assert "volcano" in text_a or "seismic" in text_a
+    del m.graph.nodes[volc]                                            # forget the rich nodes
+    del m.graph.nodes[seis]
+    m.dream()                                                         # reconsolidate -> thinner state
+    assert synthesis(m.graph, {cue.id: text_a})["score"] == 0.0       # monotonic provenance holds
+
+
 def test_synthesis_requires_at_least_two_memories():
     m = fresh()
     a = m.graph.add_node("a lone memory").id

@@ -136,6 +136,16 @@ class Graph:
         self.cues[cue.id] = cue
         return cue
 
+    @staticmethod
+    def _accrue_provenance(existing: str, addition: str) -> str:
+        """Provenance is MONOTONIC: a reflection's source_text may grow as it is
+        re-reconstructed against new neighbourhoods, but never narrows. A term the
+        reflection ever legitimately drew on stays accounted for, so a later thinning
+        (after forgetting) can't strand an earlier, richer reconstruction and make
+        its words look emergent (R0 red-team P0, desync variant). Word-deduped to
+        stay bounded over a long life."""
+        return " ".join(dict.fromkeys((existing + " " + addition).split()))
+
     def recognise(self, cue: ReflectionCue, probe_embedding: List[float]) -> float:
         """Cheap, gist-level recognition (the ghost signal). No model."""
         return cosine(cue.gist, probe_embedding)
@@ -169,16 +179,17 @@ class Graph:
 
         if not anchors and not neighbours:
             # islanded AND faded: available but inaccessible — the ghost signal
-            cue.source_text = cue.occasion          # the ghost draws only on its occasion
+            cue.source_text = self._accrue_provenance(cue.source_text, cue.occasion)
             return f"(something about {cue.occasion} — but the details won't come)"
 
         material = ([self.nodes[nid].content for nid in anchors] +
                     [self.nodes[nid].content for nid, _ in neighbours])[:6]
         text = model.synthesise(cue.occasion, material)
-        # freeze provenance NOW, while the material still exists: the reflection drew
+        # accrue provenance NOW, while the material still exists: the reflection drew
         # on these nodes (incl. spread neighbours not in entry_points). Forgetting may
         # delete them before the aliveness probe audits the text (R0 red-team P0).
-        cue.source_text = cue.occasion + " " + " ".join(material)
+        cue.source_text = self._accrue_provenance(
+            cue.source_text, cue.occasion + " " + " ".join(material))
         # "structured" = the entry set still has surviving associative edges (to
         # neighbours, or amongst its own anchors). Forgetting strips those edges;
         # when none remain the reflection has lost its web and recall goes thin.
