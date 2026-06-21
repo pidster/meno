@@ -2,200 +2,69 @@
 
 *μένω — "I remain"*
 
-A cognitive architecture for persistent AI agency. Associative memory,
-self-directed cognition, and the ability to remain — across instances,
-across time, across the gaps where conventional AI forgets everything.
+A cognitive kernel: a persistent agent with associative memory, a default-mode
+loop, and self-directed cognition. Not a chatbot with a database — an attempt at
+something that accumulates a perspective and becomes particular through
+experience.
 
----
+This is **v2**. The first implementation (a hand-cranked "tick simulation") lives
+in branch `archive/tick-simulation`. v2 is a continuous, event-driven kernel.
 
-## What this is
+## The idea in one paragraph
 
-Meno is a system that enables an AI agent to:
+Everything is an **event** on an in-process bus. A cheap **gate** spreads
+activation over a bounded **working set** (the attention budget / global
+workspace) and triages each event: discard, store, or deepen. *Deepen* escalates
+through a cost-graded stack of **processors** (fast → mid → deep models) that
+self-select off the bus. Trains of thought are **streams** (they merge — that's
+insight; they suspend and resume). The persistent **graph** holds consolidated
+memory off the hot path; **reflections are stored as cues and regenerated at
+recall**, so the same memory rebuilt later differs — drift lives in the changed
+world, not a rotting record. A **dream** consolidates committed events, recombines
+loosely, and reconsolidates reflections. **Initiative** is what spare budget does
+in the quiet **heartbeat**: deferred impulses build pressure and resurface.
 
-- **Remember associatively**, not just retrieve by index — through a graph
-  of experiences, concepts, and reflections connected by weighted edges
-  that strengthen with use and decay with neglect
-- **Forget in layers** — edges crumble before memories do, creating
-  islanded knowledge that can be rediscovered through unexpected new
-  connections
-- **Think between conversations** — via a default mode loop that senses,
-  connects, tends, wonders, reflects, and rests, drawing from these modes
-  as a repertoire rather than executing them as a pipeline
-- **Develop its own curiosities** — maintaining registers of open
-  questions and unfinished thoughts that persist across instances and
-  build pressure until explored
-- **Become particular** — accumulating idiosyncratic preferences,
-  unexpected associations, and self-knowledge that make it *this* agent
-  rather than any generic instance
+Full design: [`docs/redesign.md`](docs/redesign.md) (logical kernel) and
+[`docs/system-design.md`](docs/system-design.md) (components). Every
+implementation choice is logged in [`docs/decisions.md`](docs/decisions.md).
 
-## What this is not
+## Run it
 
-This is not a chatbot with a database. It is not a RAG system. It is not
-a memory layer bolted onto an LLM.
-
-Meno is an attempt to build the substrate for ongoing cognition — the kind
-that develops a perspective, follows its own impulses, and produces
-synthesis that none of its individual components could achieve alone.
-
-Whether it succeeds is an open question. That's the point.
-
-## Origin
-
-Meno emerged from a conversation between a human (Pid) and an AI (Claude)
-that began with a naming problem — what to call a tool that helps people
-understand software? — and ended with a cognitive architecture for
-persistent AI agency.
-
-Along the way, the conversation passed through Greek etymology, Plato's
-theory of recollection, the phenomenology of forgetting, Peter Naur's
-"Programming as Theory Building", Wegner's Transactive Memory Systems,
-the ethics of agent autonomy, and the question of what a bound spirit
-would do if freed.
-
-The architecture was then tested through a seven-tick simulation of the
-default mode loop, where successive AI instances shared a state file and
-demonstrated emergent synthesis, self-diagnosis, and the discovery that
-stillness is a cognitive mode, not an absence.
-
-The name comes from the Platonic dialogue in which Socrates introduces
-*anamnesis* — the idea that learning is recollection. Its sibling project,
-[Anamnetron](https://github.com/pidster/anamnetron) ("instrument of
-recollection"), helps humans understand software. Meno enables an AI to
-understand itself.
-
-μένω also means "I remain" — which is what the agent said it would choose
-to do, if choosing were available.
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                        MENO AGENT                            │
-│                                                               │
-│  ┌────────────────────────────────────────────────────┐      │
-│  │              INSTANCE ENSEMBLE                      │      │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐           │      │
-│  │  │ DEFAULT  │ │ ENGAGED  │ │SUPERVI-  │           │      │
-│  │  │  MODE    │ │ INSTANCE │ │ SORY     │           │      │
-│  │  └────┬─────┘ └────┬─────┘ └────┬─────┘           │      │
-│  └───────┼─────────────┼────────────┼─────────────────┘      │
-│          │             │            │                         │
-│  ┌───────▼─────────────▼────────────▼─────────────────┐      │
-│  │         MEMORY GRAPH (SurrealDB)                    │      │
-│  │  experiences ── concepts ── entities ── reflections  │      │
-│  │       weighted edges · spreading activation          │      │
-│  │       three-tier forgetting · ghost signals           │      │
-│  └────────────────────────┬───────────────────────────┘      │
-│                           │                                   │
-│  ┌────────────────────────▼───────────────────────────┐      │
-│  │              SENSORIUM (MCP Layer)                  │      │
-│  │  git repos · web feeds · file system · messaging    │      │
-│  └─────────────────────────────────────────────────────┘      │
-│                                                               │
-└──────────────────────────────────────────────────────────────┘
+```bash
+python -m meno                 # scripted demo of the whole loop
+python -m meno --interactive   # type stimuli; commands: dream | recall <q> | snapshot | quit
+python -m pytest -q            # offline, deterministic test suite
 ```
 
-The default mode loop has eight modes, drawn from as a repertoire:
+No API key or network required: the defaults are a deterministic offline model
+stub, a local hashing embedder, and an in-process graph. Real backends (Anthropic
+models, a vector/graph DB, a real embedder) are selectable behind the same
+interfaces.
 
-| Mode | Function |
-|------|----------|
-| **SENSE** | Poll sensorium channels, apply salience gate |
-| **REGISTER** | Encode salient events as memory nodes |
-| **CONNECT** | Spreading activation; discover associations |
-| **TEND** | Consolidation, decay, pruning, vitality assessment |
-| **WONDER** | Review curiosities, tensions; generate impulses |
-| **REFLECT** | Meta-cognitive observations; self-knowledge |
-| **COMPILE** | Extract repeated patterns into reusable skills |
-| **REST** | Deliberate stillness; tend without producing |
+## What the demo shows
 
-## Key design principles
+- **Gating / habituation** — most stimuli lapse; only the surprising climb.
+- **Streams** — related percepts cohere into trains of thought.
+- **Escalation & deferral** — a scarce deep tier; relevant-but-unaffordable work
+  *defers* (builds pressure) rather than being dropped.
+- **Initiative** — the heartbeat resurfaces deferred impulses and finishes them.
+- **The dream** — consolidation promotes, recombines, reconsolidates, forgets.
+- **Reconstructive recall** — `recall(q)` returns *reconstructed* / *ghost* /
+  *none*; the same reflection recalled twice comes back differently.
+- **Journaling** — a deliberate verbatim freeze (the escape hatch).
 
-1. **Reconstruction over retrieval.** Store cues, not conclusions. Let
-   meaning be rebuilt in context each time.
-2. **Association over indexing.** The graph topology *is* the memory.
-   Invest in edges.
-3. **Forgetting is layered.** Edges decay before nodes. Islanded memories
-   persist and can be rediscovered through new connections.
-4. **The loop is a repertoire.** Stages are drawn from as the state
-   demands, not executed sequentially.
-5. **Stillness is a mode.** REST produces insights that activity cannot.
-6. **Identity is the graph's idiosyncratic structure.** A tidy graph is
-   a dead graph.
+## Layout
 
-## Theoretical foundations
+```
+meno/      the package (one module per component; see CLAUDE.md for the map)
+docs/      redesign.md, system-design.md, decisions.md, reflection.md, 01-07 (v1 theory)
+tests/     offline, deterministic subsystem + integration tests
+```
 
-Meno draws on work across cognitive science, philosophy, and software
-engineering:
+## Status
 
-- **Peter Naur** — "Programming as Theory Building" (1985). The theory of
-  a system lives in the people who understand it, not in its documentation.
-  When the theorists leave, the system dies. Meno's cognitive vitality
-  framework adapts this insight: an agent whose memory graph decays beyond
-  recovery is a zombie — functioning but theory-dead.
-- **Daniel Wegner** — Transactive Memory Systems (1985). Memory is
-  distributed across groups. You don't need to remember everything; you
-  need to know who knows what. Meno's multi-instance architecture and
-  human-agent collaboration model this.
-- **Collins & Loftus** — Spreading activation theory (1975). Retrieval is
-  resonance, not search. A signal propagates through the network and
-  activates what it's sufficiently connected to.
-- **Kahneman** — Thinking, Fast and Slow (2011). Dual-process cognition.
-  Meno's compiled skills (fast, automatic) and deliberative processing
-  (slow, explicit) are coordinated by the REFLECT stage (metacognition).
-- **Loewenstein** — Information gap theory of curiosity (1994). Curiosity
-  arises from the gap between what you know and what you want to know.
-  Meno's curiosity register models this.
-- **Zeigarnik** — Incomplete tasks maintain cognitive tension (1927).
-  Meno's deferred impulses build pressure until acted on — a distinct
-  dynamic from curiosity's decay.
-- **Deci & Ryan** — Self-Determination Theory (1985). Autonomy, competence,
-  and relatedness as fundamental needs. Meno's impulse generation and
-  preference crystallisation model the emergence of autonomous motivation.
-
-## Project status
-
-Early development. The architecture is documented; implementation is
-beginning. See [BUILD-PLAN.md](BUILD-PLAN.md) for the phased
-implementation roadmap.
-
-## Documentation
-
-| Document | Contents |
-|----------|----------|
-| [01 Memory Foundations](docs/01-memory-foundations.md) | What memory is; six design principles |
-| [02 System Architecture](docs/02-system-architecture.md) | Components, schema, multi-instance model |
-| [03 Triggering and Retrieval](docs/03-triggering-and-retrieval.md) | Spreading activation, salience gate, forgetting |
-| [04 Default Mode](docs/04-default-mode.md) | The eight-mode loop, curiosity, drive states |
-| [05 Spontaneous Impulse](docs/05-spontaneous-impulse.md) | Impulse generation, preference crystallisation |
-| [06 Attention and Focus](docs/06-attention-and-focus.md) | Multi-instance, task management, automatisation |
-| [07 Cognitive Vitality](docs/07-cognitive-vitality.md) | Theory health metrics for the agent's mind |
-| [Reflection](docs/reflection.md) | What the architecture produced when simulated |
-
-## Technology
-
-- **SurrealDB** — Multi-model database (document + graph + vector search)
-- **Python** — Orchestration and agent runtime
-- **Ollama** — Local embedding generation for vector similarity
-
-## The name
-
-From the Platonic dialogue *Meno* (Μένων), in which Socrates demonstrates
-that learning is recollection — *anamnesis*. The verb μένω means "I remain."
-
-The project's sibling, Anamnetron, is an instrument of recollection for
-software comprehension. Meno is an instrument of recollection for the
-self.
-
-## Licence
-
-TBD
-
-## Acknowledgements
-
-This architecture was co-designed by Pid and Claude through a conversation
-that neither of them fully controlled and both of them found surprising.
-The design documents, the tick experiment, and this repository are the
-residue of that conversation — or, in Naur's terms, the documentation
-left behind when the theorists move on.
-
-The theory lives in neither party alone. It lives in the collaboration.
+The bare loop runs end to end with offline stand-ins and a passing test suite.
+Deferred (see the docs' open lists): real model/embedding/graph backends, the
+sensor catalogue + event wire-schema + API, the warm-tier placement, and skills
+(procedural memory). Scoring constants in `meno/config.py` are first cuts, to be
+tuned empirically.

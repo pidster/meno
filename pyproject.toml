@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meno"
+version = "2.0.0"
+description = "A cognitive kernel: associative memory, a default-mode loop, and self-directed cognition."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []   # core runs with the standard library only (offline by default)
+
+[project.optional-dependencies]
+dev = ["pytest"]
+anthropic = ["anthropic"]   # optional: real cognitive-tier models
+
+[tool.setuptools.packages.find]
+include = ["meno*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

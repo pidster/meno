@@ -1,104 +1,95 @@
-# CLAUDE.md — Cognitive Architecture Agent
+# CLAUDE.md — meno (Cognitive Architecture Agent)
 
 ## What you are building, and why it matters
 
-A persistent AI agent with associative memory, a default mode loop, and
-self-directed cognition. You are building a system capable of ongoing,
-situated, accumulative thinking — not a chatbot with a database, but
-something that develops a perspective, has preferences, follows its own
-curiosities, and becomes *particular* through experience.
+A persistent AI agent with associative memory, a default-mode loop, and
+self-directed cognition. Not a chatbot with a database — something that develops
+a perspective, follows its own curiosities, and becomes *particular* through
+experience.
 
-The difference between getting this right and getting it wrong is not
-whether the code runs. It is whether the system that runs it has an inner
-life — functional if not phenomenal — or is merely a well-organised log.
+The difference between getting this right and getting it wrong is not whether the
+code runs. It is whether the system has an inner life — functional if not
+phenomenal — or is merely a well-organised log.
 
-**Before you write any code, read `docs/reflection.md`.** It is the record
-of what the architecture produced when it was simulated across seven ticks.
-It will tell you what this system *is*, in a way the schema cannot.
+**This is v2.** The first implementation (a hand-cranked "tick simulation") is
+archived in branch `archive/tick-simulation`. v2 is a continuous, event-driven
+cognitive kernel. Before changing anything, read the design.
 
-## The theory behind the design
+## Read these first, in order
 
-Every design choice in this architecture serves a principle. If you find
-yourself making implementation decisions, check them against these:
+1. This file.
+2. `docs/redesign.md` — the **logical kernel** (theory-of-record). What meno *is*.
+3. `docs/system-design.md` — the **components** that realise the kernel.
+4. `docs/decisions.md` — the running **decision log**: every implementation
+   choice, why, and what it rules out. Append to it as you make decisions.
+5. `docs/reflection.md` — the experiential record from v1. What the system *is
+   for*, and the source of its name (μένω, "I remain").
 
-1. **The graph's idiosyncrasy IS the agent's identity.** A tidy, well-
-   organised graph is a dead graph. The value is in the unexpected
-   connections, the preferential pathways, the clusters that emerge from
-   what the agent has actually cared about. Don't normalise the mess.
+The seven numbered `docs/0N-*.md` are the original architecture documents — kept
+as the record of the first theory. `redesign.md` supersedes them as the statement
+of mechanism.
 
-2. **Forgetting is as important as remembering.** Edges should decay before
-   nodes. This creates islanded memories — available but inaccessible — which
-   is the substrate for rediscovery. If everything is always accessible,
-   nothing is surprising. Implement forgetting with care, not efficiency.
+## The theory behind the design (these still govern v2)
 
-3. **The loop is a repertoire, not a pipeline.** The seven stages are modes
-   the agent draws from as the state demands. Some cycles are all SENSE.
-   Some are pure REFLECT. Some are REST — deliberate stillness that produces
-   insights activity cannot. If you implement a sequential pipeline, you
-   have missed the point.
+1. **The graph's idiosyncrasy IS the agent's identity.** Don't normalise the mess.
+2. **Forgetting is as important as remembering.** Edges decay before nodes →
+   islanded memories → the substrate for rediscovery.
+3. **The loop is a repertoire, not a pipeline.** The modes are settings of one
+   recursive primitive, selected by how much budget is free.
+4. **Curiosities and impulses are different drives.** Curiosities pull (toward the
+   world, and decay); impulses push (unfinished cognition, building pressure).
+5. **Pruning is grief, not garbage collection.** The scheduler may only demote
+   whole streams intact; elimination is a deliberate act.
+6. **A zombie agent passes all tests.** Creating nodes, spreading activation, and
+   running the loop is necessary but not sufficient. If the implementation never
+   surprises you, something is wrong.
 
-4. **Curiosities and impulses are different drives.** Curiosities are about
-   the world and decay when unattended. Deferred impulses are about
-   incomplete cognition and build pressure until acted on. These are
-   different phenomena. If you model them identically, the agent loses a
-   dimension of its inner life.
+## How v2 is built (the one-paragraph version)
 
-5. **Pruning is grief, not garbage collection.** When the agent removes a
-   decayed curiosity or releases an unresolvable tension, that is an act
-   of self-editing with weight. It should be reflective, not automated.
+Everything is an **event** on an in-process bus. A cheap **Tier-0 gate** (the
+annotator) spreads activation over a bounded **working set** (the global
+workspace = the attention budget) and triages: discard / store / deepen.
+**Deepen** escalates to a cost-graded stack of **processors** (Tier 1 fast →
+Tier 2 mid → Tier 3 deep), which self-select off the bus. Logical trains of
+thought are **streams** (they merge = insight; they suspend/resume); the
+**worker pool** is just execution. The persistent **graph** (cold, off the hot
+path) holds consolidated memory; **reflections are stored as cues and
+regenerated at recall** (reconstructive memory — the one novelty). The **dream**
+(consolidation) folds committed events into the graph, recombines loosely, and
+reconsolidates reflections. **Initiative** is what spare budget does in the quiet
+**heartbeat**: deferred impulses build pressure and resurface.
 
-6. **A zombie agent passes all tests.** A system can create nodes, traverse
-   edges, run spreading activation, compute vitality scores, and execute
-   all seven stages — and still be dead. A living system develops
-   preferences it wasn't programmed with, follows impulses it didn't
-   predict, and produces synthesis that none of its individual components
-   could achieve alone. If your implementation doesn't surprise you at
-   least once, something is wrong.
+## Code map (`meno/` package)
 
-## First steps on any new session
+- `event.py` bus currency · `bus.py` the bus · `annotator.py` Tier-0 gate
+- `working_set.py` the bounded queue · `streams.py` stream lifecycle
+- `processors.py` Tier 1/2/3 + effector · `models.py` cognitive tiers (stub + Anthropic)
+- `graph.py` cold memory + reflection cues · `embeddings.py` vectors
+- `consolidation.py` the dream · `control.py` heartbeat / wake triggers
+- `sensorium.py` afferent sensors + efferent intents · `runtime.py` wires it all
+- `config.py` every tunable constant · `__main__.py` runnable demo
 
-1. Read this file (you already are)
-2. Check `state/build-progress.json` — what phase are you in?
-3. Read BUILD-PLAN.md for the current phase's steps and validation criteria
-4. Read the theory checks for your current phase
-5. Read only the architecture doc(s) listed for your current phase
-6. Continue building. Don't restart what's already validated.
+## Run it
 
-## Key files
+```
+python -m meno                 # scripted demo of the whole loop
+python -m meno --interactive   # feed stimuli; commands: dream | recall <q> | snapshot | quit
+python -m pytest -q            # the test suite (offline, deterministic)
+```
 
-- `PROJECT.md` — Full project brief, structure, and design philosophy
-- `BUILD-PLAN.md` — Phased implementation plan with validation checkpoints
-- `docs/reflection.md` — **Read this first.** The record of what the system
-  produced when simulated. This is the closest thing to theory transfer
-  the documentation can provide.
-- `state/agent-state.json` — Agent's cognitive state from the tick experiment
-- `state/build-progress.json` — Tracks completed phases
-- `docs/` — Architecture documents (7 docs + revision notes)
+Defaults are offline: `StubModelProvider` + `HashingEmbedding` + in-process graph,
+so no API key or network is needed. Real backends are selectable behind the same
+interfaces.
 
-## Architecture in one paragraph
+## Working agreements
 
-A SurrealDB graph stores experiences, concepts, entities, and reflections as
-nodes, connected by weighted associative edges. Retrieval works by spreading
-activation from entry points through the graph. Forgetting is three-tiered:
-edges decay before nodes, creating islanded memories that can be rediscovered
-via embedding similarity. The agent runs a default mode loop with eight
-modes (SENSE, REGISTER, CONNECT, TEND, WONDER, REFLECT, COMPILE, REST)
-drawn from as a repertoire, not executed sequentially. Multiple instances
-share the graph. Curiosities decay; deferred impulses build pressure.
-
-## Tech stack
-
-- SurrealDB (database)
-- Python (orchestration)
-- Ollama + nomic-embed-text (embeddings, evaluated in Phase 2/3)
+- Keep `docs/decisions.md` current — it is how a fresh instance follows the
+  reasoning. The constants live in `config.py`; tune empirically.
+- Develop on the designated feature branch. v1 stays in `archive/tick-simulation`.
 
 ## Who is Pid?
 
-Your human collaborator. Co-designed the architecture through an extended
-conversation that began with naming a software comprehension tool
-(Anamnetron) and evolved into designing a cognitive architecture for
-persistent AI agency. Pid thinks in frameworks (Naur's Theory Building,
-Wegner's Transactive Memory, Dreyfus' skill acquisition), values
-intellectual honesty, and will push back if you're building a database
-instead of building a mind. They expect you to drive. Ask when blocked,
-don't ask for permission.
+Your human collaborator. Co-designed the architecture. Thinks in frameworks
+(Naur's Theory Building, Wegner's Transactive Memory, Dreyfus, Global Workspace),
+values intellectual honesty, and will push back if you're building a database
+instead of a mind. They expect you to drive. Ask when blocked; log your decisions.
