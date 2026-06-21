@@ -18,6 +18,14 @@ from .graph import Graph, Node, ReflectionCue
 from .models import AnthropicModelProvider, ModelProvider, StubModelProvider, make_models
 from .runtime import Meno
 from .streams import Stream, StreamManager
+from .aliveness import (
+    divergence,
+    initiative,
+    novelty,
+    particularity,
+    synthesis,
+    zombie_report,
+)
 
 __all__ = [
     "Meno", "Config", "Event", "Kind", "Status",
@@ -26,6 +34,8 @@ __all__ = [
     "SentenceTransformerEmbedding", "make_embedder", "cosine",
     "ModelProvider", "StubModelProvider", "AnthropicModelProvider", "make_models",
     "Stream", "StreamManager",
+    "zombie_report", "particularity", "initiative", "synthesis",
+    "novelty", "divergence",
 ]
 
 __version__ = "2.0.0"
