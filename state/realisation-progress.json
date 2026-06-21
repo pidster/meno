@@ -68,8 +68,20 @@
         "final_state": "3 P0s + HIGH closed with measured evidence; re-review recommends advance."
       }
     },
-    "R4": {"name": "Sensorium + warm-tier persistence", "status": "in_progress"},
-    "R5": {"name": "The zombie test (acceptance gate)", "status": "pending"}
+    "R4": {
+      "name": "Sensorium + warm-tier persistence",
+      "status": "complete",
+      "modules": "meno/sensorium.py (FilesystemSensor), meno/driver.py (sensors), meno/persistence.py (warm tier)",
+      "tests": "tests/test_sensorium_r4.py (14)",
+      "deliverable": "A real afferent channel (filesystem watcher) wired into the driver with consent/privacy/resource bounds; warm-tier persistence so a restart resumes mid-thought (resolves D12).",
+      "adversarial_review": {
+        "p0_closed": ["hardlink escape read outside root -> reject nlink>1 + confine to root st_dev", "secrets read in clear -> secret-name skip + hidden skip", "no provenance (world-text indistinguishable from own thought) -> node meta source+external"],
+        "p1_closed": ["per-poll cap starved late files -> round-robin cursor", "_seen leaked deleted files -> pruned", "warm centroid embedder-pinned, silent cross-embedder corruption -> centroid_dim tag, skip warm on mismatch"],
+        "backlog_nonblocking": ["name-based secret guard is content-blind (accepted risk; consider content skim)", "nlink>1 and .pem/.key-substring over-block some legit files", "external flag is coarse (chat also external=True); consumers should read meta.source for trust"],
+        "final_state": "3 P0s + 3 P1s closed with repro; re-review confirms P0s closed, recommends advance."
+      }
+    },
+    "R5": {"name": "The zombie test (acceptance gate)", "status": "in_progress"}
   },
   "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "66 passed"}
 }
