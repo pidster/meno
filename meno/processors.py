@@ -59,6 +59,9 @@ class Appraiser(Processor):
             if stream.node_ids:                       # Hebbian: chain to the stream's prior node
                 mind.graph.link(stream.node_ids[-1], node.id, weight=mind.cfg.hebbian_increment)
             stream.node_ids.append(node.id)
+            w = mind.cfg.stream_material_window       # window the id list (D19 int-list bound)
+            if len(stream.node_ids) > w:
+                stream.node_ids = stream.node_ids[-w:]
         event.payload["reaction"] = res["reaction"]
         emitted: List[Event] = []
         q = res.get("question")

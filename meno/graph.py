@@ -44,6 +44,7 @@ class ReflectionCue:
     # not against a graph that has since forgotten those nodes (R0 red-team P0).
     source_text: str = ""
     recalls: int = 0
+    ghost_ticks: int = 0              # dreams spent islanded-and-unrecovered (D19/A3 tiered forgetting)
     id: int = 0                       # assigned by Graph.store_cue (per-instance, D15)
     created_at: float = field(default_factory=time.time)
 

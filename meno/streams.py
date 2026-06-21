@@ -70,6 +70,11 @@ class StreamManager:
     def _absorb(self, event: Event) -> None:
         s = self.active[event.stream_id]
         s.event_ids.append(event.id)
+        # window the id list so a long-lived stream's event_ids can't grow without
+        # bound (D19 int-list leak); only recent material is ever read (merge, synth).
+        w = self.cfg.stream_material_window
+        if len(s.event_ids) > w:
+            s.event_ids = s.event_ids[-w:]
         b = self.cfg.centroid_blend
         s.centroid = [(1 - b) * c + b * e for c, e in zip(s.centroid, event.embedding)]
         s.last_active = time.time()
@@ -91,8 +96,9 @@ class StreamManager:
         a, b = self.active.get(a_id), self.active.get(b_id)
         if not a or not b:
             return None
-        a.event_ids.extend(b.event_ids)
-        a.node_ids.extend(b.node_ids)
+        w = self.cfg.stream_material_window
+        a.event_ids = (a.event_ids + b.event_ids)[-w:]
+        a.node_ids = (a.node_ids + b.node_ids)[-w:]
         a.centroid = [(x + y) / 2 for x, y in zip(a.centroid, b.centroid)]
         a.pressure = max(a.pressure, b.pressure)
         a.summary = (a.summary + " + " + b.summary)[:90]

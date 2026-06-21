@@ -84,42 +84,61 @@ def test_reconsolidation_is_bounded_per_dream():
     assert rep["reconsolidated"] == 3                  # capped, not O(lifetime)=12
 
 
-def test_dead_unrecalled_reflection_is_retired_with_grief():
-    m = mind(cue_retire_max_per_dream=4)
-    a = m.graph.add_node("a fleeting anchor").id
-    b = m.graph.add_node("another fleeting anchor").id
-    cue = m.graph.store_cue([a, b], "a thought whose web will vanish", tone=0.5,
-                            conclusion="gone soon", material=["a fleeting anchor"])
-    del m.graph.nodes[a]                               # the web vanishes (forgotten)
-    del m.graph.nodes[b]
-    rep = m.dream()
+def test_ghost_reflection_persists_then_is_released_with_grief_after_ttl():
+    """A reflection whose web vanishes is a GHOST: not deleted on the spot (that
+    would skip the islanding tier the theory prizes), but carried for cue_ghost_ttl
+    dreams, then RELEASED — and the agent reflects on the loss (grief), it isn't
+    silently collected."""
+    m = mind(cue_ghost_ttl=2, cue_retire_max_per_dream=4)
+    a = m.graph.add_node("a fleeting anchor about an old idea").id
+    cue = m.graph.store_cue([a], "a thought whose web will vanish", tone=0.5,
+                            conclusion="gone soon", material=["a fleeting anchor about an old idea"])
+    del m.graph.nodes[a]                               # the web vanishes (no recent nodes to recover it)
+    m.dream()
+    assert cue.id in m.graph.cues and m.graph.cues[cue.id].ghost_ticks == 1   # carried, not deleted
+    rep = m.dream()                                    # ghost_ticks reaches the ttl
     assert cue.id not in m.graph.cues                  # released
     assert rep["retired"] >= 1
-    # GRIEF, not GC: the release is recorded, re-entering the bus
-    assert any("let go of a reflection" in e.content and e.source == "dream"
-               for e in m.bus.log)
+    # GRIEF: a reflection ABOUT the loss now exists (the agent registers the gap)
+    assert any(c.occasion.startswith("released:") for c in m.graph.cues.values())
 
 
-def test_journaled_or_recalled_reflections_are_never_retired():
-    m = mind(cue_retire_max_per_dream=4)
-    # journaled: deliberately permanent
+def test_islanded_ghost_reflection_can_be_rediscovered():
+    """The islanding tier earns its keep: a ghost reflection is recovered when a
+    recent, semantically-similar memory re-recognises its gist — 'by a route that
+    did not exist when it was lost' — rather than being destroyed."""
+    m = mind(cue_ghost_ttl=3, rediscovery_threshold=0.3)
+    a = m.graph.add_node("volcano eruption magma lava deep heat").id
+    cue = m.graph.store_cue([a], "volcanic activity and magma", tone=0.5,
+                            conclusion="volcanoes erupt magma and lava from deep heat",
+                            material=["volcano eruption magma lava deep heat"])
+    del m.graph.nodes[a]                               # islanded -> ghost
+    b = m.graph.add_node("magma and lava from a deep volcanic eruption of heat").id
+    m.dream()
+    assert b in m.graph.cues[cue.id].entry_points      # re-anchored via gist recognition
+    assert m.graph.cues[cue.id].ghost_ticks == 0       # recovered, ghost cleared
+
+
+def test_journaled_or_recalled_reflections_never_become_ghosts():
+    m = mind(cue_ghost_ttl=1, cue_retire_max_per_dream=4)
     j = m.graph.store_cue([], "a deliberately kept reflection", tone=0.9,
                           conclusion="frozen", journal=True)
-    # recalled at least once: someone came back to it
     a = m.graph.add_node("anchor").id
     r = m.graph.store_cue([a], "a recalled reflection", tone=0.5, conclusion="seen")
     r.recalls = 1
-    del m.graph.nodes[a]                               # even with its anchor gone
+    del m.graph.nodes[a]
     m.dream()
-    assert j.id in m.graph.cues and r.id in m.graph.cues   # both kept
+    m.dream()
+    assert j.id in m.graph.cues and r.id in m.graph.cues   # both kept, anchored to the self
 
 
-def test_reflection_with_a_living_anchor_is_not_retired():
-    m = mind(cue_retire_max_per_dream=4)
+def test_reflection_with_a_living_anchor_is_not_a_ghost():
+    m = mind(cue_ghost_ttl=1)
     a = m.graph.add_node("a living anchor").id
     b = m.graph.add_node("its neighbour").id
     m.graph.link(a, b, 0.6)                            # anchor not islanded
     cue = m.graph.store_cue([a, b], "still anchored", tone=0.5, conclusion="here",
                             material=["a living anchor"])
     m.dream()
-    assert cue.id in m.graph.cues                      # a living web is not grief
+    m.dream()
+    assert cue.id in m.graph.cues and m.graph.cues[cue.id].ghost_ticks == 0

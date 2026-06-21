@@ -67,7 +67,9 @@ class Config:
     bus_log_max: int = 4096             # episodic log ring size (the durable trace is the graph)
     warm_max_idle_ticks: int = 50       # a suspended stream cold this long is reaped (its nodes persist)
     reconsolidate_cap: int = 16         # cues re-reconstructed per dream (was O(lifetime) — every cue)
-    cue_retire_max_per_dream: int = 4   # max reflections retired per dream (grief, not GC: bounded + recorded)
+    cue_retire_max_per_dream: int = 4   # max reflections released per dream (grief, bounded + reflected-on)
+    cue_ghost_ttl: int = 20             # dreams a reflection stays an islanded ghost (recoverable) before release
+    stream_material_window: int = 256   # cap a stream's retained event/node id lists (D19 int-list bound)
 
     # --- curiosity (the pull-toward-the-world drive; decays, unlike impulse) F3 ---
     curiosity_birth: float = 0.7          # intensity a new curiosity starts at

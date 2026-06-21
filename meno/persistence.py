@@ -32,7 +32,8 @@ def graph_to_dict(g: Graph) -> dict:
             {"id": c.id, "entry_points": c.entry_points, "occasion": c.occasion,
              "tone": c.tone, "gist": c.gist, "verbatim": c.verbatim,
              "source_text": c.source_text,
-             "recalls": c.recalls, "created_at": c.created_at}
+             "recalls": c.recalls, "ghost_ticks": c.ghost_ticks,
+             "created_at": c.created_at}
             for c in g.cues.values()
         ],
     }
@@ -57,8 +58,8 @@ def dict_to_graph(data: dict, g: Graph) -> Graph:
         cue = ReflectionCue(entry_points=cd["entry_points"], occasion=cd["occasion"],
                             tone=cd["tone"], gist=cd["gist"], verbatim=cd.get("verbatim"),
                             source_text=cd.get("source_text", ""),
-                            recalls=cd.get("recalls", 0), id=cd["id"],
-                            created_at=cd.get("created_at", 0.0))
+                            recalls=cd.get("recalls", 0), ghost_ticks=cd.get("ghost_ticks", 0),
+                            id=cd["id"], created_at=cd.get("created_at", 0.0))
         g.cues[cue.id] = cue
         max_cue = max(max_cue, cue.id)
     # advance THIS graph's id counters past the loaded maxima (per-instance, D15)

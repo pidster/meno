@@ -22,9 +22,15 @@ class ConsolidationCycle:
                   "rediscovered": 0, "reconsolidated": 0, "forgotten": 0, "retired": 0}
 
         # 1+6. promote provisional nodes that earned reactivation (have edges);
-        #      a provisional node is "committed" once it is woven in.
+        #      a provisional node is "committed" once it is woven in. Build the
+        #      "has an edge" set once (O(edges)) rather than scanning neighbours per
+        #      node (O(nodes*edges)) — the dream blocks the live loop (R3 review P1).
+        edged = set()
+        for a, b in g.edges:
+            edged.add(a)
+            edged.add(b)
         for node in list(g.nodes.values()):
-            if node.kind == "provisional" and any(True for _ in g.neighbors(node.id)):
+            if node.kind == "provisional" and node.id in edged:
                 node.kind = "concept"
                 node.salience = min(1.0, node.salience + 0.4)
                 report["promoted"] += 1
@@ -110,26 +116,56 @@ class ConsolidationCycle:
                 del g.nodes[nid]
                 report["forgotten"] += 1
 
-        # 4b. retirement — let go of reflections whose web is gone (D19/A3). GRIEF,
-        #     not GC: only cues NEVER recalled whose every anchor has vanished or
-        #     islanded; bounded per dream; and each release is RECORDED (a trace + a
-        #     storage event re-enters the bus), so forgetting a reflection is a
-        #     deliberate act with weight, not silent collection.
-        retired = 0
+        # 4b. reflection forgetting — the SAME tiered descent nodes get (doc 01 §3),
+        #     not a GC sweep (R3 review). A reflection whose anchors have all islanded
+        #     or vanished is a GHOST: available but inaccessible ("I know I concluded
+        #     something here"). A ghost is first offered REDISCOVERY — a recent,
+        #     semantically-similar memory re-recognises its gist and re-anchors it,
+        #     recovered "by a route that did not exist when it was lost". Only a ghost
+        #     that stays unrecovered and unrecalled for cue_ghost_ttl dreams is finally
+        #     RELEASED — and the agent reflects on the loss (grief), it isn't collected.
+        recent_nodes = [g.nodes[nid] for nid in sorted(g.nodes)[-cfg.dream_recombine_window:]]
+        # which nodes still have an edge (post-decay) — computed once so the ghost
+        # check is O(cues * entry_points), not O(cues * edges) via islanded() (R3 P1).
+        edged_now = set()
+        for a, b in g.edges:
+            edged_now.add(a)
+            edged_now.add(b)
+        grieved = 0
         for cue in list(g.cues.values()):
-            if retired >= cfg.cue_retire_max_per_dream:
-                break
             if cue.verbatim is not None or cue.recalls > 0:
-                continue                                    # journaled or ever-recalled: keep
-            if any(n in g.nodes and not g.islanded(n) for n in cue.entry_points):
-                continue                                    # still has a living anchor
-            del g.cues[cue.id]
-            retired += 1
-            self.mind.trace(f"released reflection {cue.id}: {cue.occasion[:50]!r} — its web had gone")
-            self.mind.bus.publish(Event(
-                content=f"let go of a reflection about {cue.occasion[:40]}",
-                kind=Kind.STORAGE, source="dream"))
-        report["retired"] = retired
+                cue.ghost_ticks = 0                         # journaled or recalled: anchored to the self
+                continue
+            if any(n in g.nodes and n in edged_now for n in cue.entry_points):
+                cue.ghost_ticks = 0                         # still has a living, connected anchor
+                continue
+            # a ghost: try to rediscover it via gist recognition by a recent memory
+            recovered = False
+            for node in recent_nodes:
+                if node.id in cue.entry_points:
+                    continue
+                if g.recognise(cue, node.embedding) >= cfg.rediscovery_threshold:
+                    cue.entry_points = list(cue.entry_points) + [node.id]
+                    cue.ghost_ticks = 0
+                    report["rediscovered"] += 1
+                    self.mind.trace(f"a memory re-surfaced reflection {cue.id}: {cue.occasion[:40]!r}")
+                    recovered = True
+                    break
+            if recovered:
+                continue
+            cue.ghost_ticks += 1
+            if cue.ghost_ticks >= cfg.cue_ghost_ttl and grieved < cfg.cue_retire_max_per_dream:
+                # release (grief): the agent registers the loss as a reflection of its
+                # own — a memory of having let go, not a silent delete with a log line.
+                loss = self.mind.models.synthesise(
+                    f"letting go of a reflection about {cue.occasion[:40]}",
+                    [f"a conclusion once reached about {cue.occasion[:40]}, now beyond recall"])
+                del g.cues[cue.id]
+                g.store_cue([], f"released: {cue.occasion[:40]}", tone=0.3,
+                            conclusion=loss, material=[cue.occasion])
+                grieved += 1
+                report["retired"] += 1
+                self.mind.trace(f"released reflection {cue.id} after {cue.ghost_ticks} silent dreams")
 
         # F6: a new dream lifts the refractory hold, so streams can think again
         for s in list(sm.active.values()) + list(sm.warm.values()):
