@@ -1,7 +1,7 @@
 {
   "project": "meno-rethink",
   "created": "2026-05-23",
-  "last_updated": "2026-05-23",
+  "last_updated": "2026-06-21",
   "source_of_truth": {
     "plan": "docs/rethink/02-build-plan.md",
     "charter": "docs/rethink/00-design-charter.md",
@@ -119,7 +119,7 @@
     },
     "10": {
       "name": "Integrated Cognition Packet",
-      "status": "in_progress",
+      "status": "complete",
       "plan_section": "docs/rethink/02-build-plan.md#phase-10-integrated-cognition-packet",
       "primary_module": "src/cognition.py",
       "smoke_module": "src/cognition_smoke.py",
@@ -148,13 +148,20 @@
         "Targeted-review hardening: store-aware provenance audit rejects full-shaped forged evidence refs and forged drive influence mappings; provisional-only material cannot assert positive particularity."
       ],
       "remaining_gates": [],
-      "next_action": "Commit targeted-review Phase 10 provenance hardening, then mark Phase 10 complete if no new blockers are found."
+      "verification_2026_06_21": [
+        "Full suite green: 102 passed (16 cognition tests).",
+        "All 11 zombie mutant fixtures present and gated: residue_only, projection_free, retrieval_free, attention_ignores_retrieval, posthoc_explainer, salience_only, irrelevant_history_personalizer, shuffled_provenance, scope_leaker, formulaic_reflector, legacy_runtime_importer.",
+        "Import-boundary test confirms cognition does not load legacy SurrealDB runtime modules.",
+        "Service-free smoke path (src/cognition_smoke.py) runs standalone -> accepted / private_reflection.",
+        "Accepted 'rest' fixture present: chooses rest because internal consolidation is more honest than recommendation."
+      ],
+      "next_action": "Phase 10 complete. Rethink build plan (phases 0-10) finished. Next work is agent-driven, not plan-driven; revisit charter before adding commit_journal_events (requires separate adversarial review)."
     }
   },
   "validation": {
     "command": ".venv/bin/python -m pytest",
     "last_result": "102 passed",
-    "last_validated": "2026-05-23"
+    "last_validated": "2026-06-21"
   },
   "notes": [
     "Use this file for rethink phase status.",
