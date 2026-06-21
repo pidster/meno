@@ -268,15 +268,17 @@ class Meno:
 
     # --- continuity across restart (sleep, not death) ---
     def save(self, path) -> None:
-        """Persist the durable self — the cold graph — so meno remains."""
+        """Persist the durable self — the cold graph AND the warm tier (suspended
+        streams), so meno remains and a restart can resume mid-thought (R4)."""
         from . import persistence
-        persistence.save(self.graph, path)
+        persistence.save(self.graph, path, streams=self.streams)
 
     def load(self, path) -> None:
-        """Wake from a saved graph. The working set starts empty; recall works
-        immediately, and resurface() can rebuild some working context."""
+        """Wake from a saved graph + warm tier. The working set starts empty; recall
+        works immediately, suspended streams are restored (their deferred pressure
+        resumes them via the heartbeat), and resurface() rebuilds working context."""
         from . import persistence
-        persistence.load(self.graph, path)
+        persistence.load(self.graph, path, streams=self.streams)
 
     def resurface(self, k: int = 3) -> int:
         """Rebuild a little working context by re-entering the most salient

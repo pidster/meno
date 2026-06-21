@@ -25,6 +25,7 @@ from .models import (
 )
 from .driver import Driver
 from .runtime import Meno
+from .sensorium import ChatSensor, FilesystemSensor, LogSensor, Sensor
 from .streams import Stream, StreamManager
 from .aliveness import (
     divergence,
@@ -43,6 +44,7 @@ __all__ = [
     "ModelProvider", "StubModelProvider", "AnthropicModelProvider", "make_models",
     "cognition_is_real", "CognitionDegraded",
     "Stream", "StreamManager", "Driver",
+    "Sensor", "FilesystemSensor", "ChatSensor", "LogSensor",
     "zombie_report", "particularity", "initiative", "synthesis",
     "novelty", "divergence",
 ]

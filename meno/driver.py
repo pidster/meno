@@ -45,12 +45,14 @@ def _dream_did_something(report: Optional[dict]) -> bool:
 
 class Driver:
     def __init__(self, mind, *, dream_every: int = 8, heartbeat_ticks: int = 8,
-                 idle_backoff: float = 0.02, max_backoff: float = 1.0,
+                 sense_every: int = 1, idle_backoff: float = 0.02, max_backoff: float = 1.0,
                  max_inbox: int = 10000, on_error: str = "continue",
                  max_consecutive_errors: int = 5, sleep=time.sleep) -> None:
         self.mind = mind
         self.dream_every = dream_every
         self.heartbeat_ticks = heartbeat_ticks
+        self.sense_every = sense_every             # poll afferent sensors every N cycles
+        self.sensors: list = []
         self.idle_backoff = idle_backoff
         self.max_backoff = max_backoff
         self.on_error = on_error                   # "continue" (resilient) | "stop" (loud, for strict)
@@ -82,9 +84,26 @@ class Driver:
     def pending_input(self) -> int:
         return self._inbox.qsize()
 
+    # --- afferent sensors (the world reaching in) -----------------------------
+    def add_sensor(self, sensor) -> None:
+        """Attach a live afferent channel. The driver polls it every `sense_every`
+        cycles and feeds whatever it returns through the same bounded ingress."""
+        self.sensors.append(sensor)
+
+    def _poll_sensors(self) -> None:
+        for sensor in self.sensors:
+            try:
+                for text, source, payload in sensor.poll():
+                    self.feed(text, source=source, **payload)
+            except Exception as exc:              # a flaky sensor must not kill the loop
+                self.errors += 1
+                self.last_error = f"sensor {type(sensor).__name__}: {type(exc).__name__}: {exc}"
+
     # --- one autonomous cycle -------------------------------------------------
     def step(self) -> CycleReport:
         self.cycles += 1
+        if self.sensors and self.cycles % self.sense_every == 0:
+            self._poll_sensors()
         ingested = 0
         while True:                               # drain everything queued so far
             try:
