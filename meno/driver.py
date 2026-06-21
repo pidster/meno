@@ -46,26 +46,37 @@ def _dream_did_something(report: Optional[dict]) -> bool:
 class Driver:
     def __init__(self, mind, *, dream_every: int = 8, heartbeat_ticks: int = 8,
                  idle_backoff: float = 0.02, max_backoff: float = 1.0,
-                 sleep=time.sleep) -> None:
+                 max_inbox: int = 10000, on_error: str = "continue",
+                 max_consecutive_errors: int = 5, sleep=time.sleep) -> None:
         self.mind = mind
         self.dream_every = dream_every
         self.heartbeat_ticks = heartbeat_ticks
         self.idle_backoff = idle_backoff
         self.max_backoff = max_backoff
+        self.on_error = on_error                   # "continue" (resilient) | "stop" (loud, for strict)
+        self.max_consecutive_errors = max_consecutive_errors
         self._sleep = sleep                       # injectable for tests
-        self._inbox: "queue.Queue[tuple]" = queue.Queue()
+        self._inbox: "queue.Queue[tuple]" = queue.Queue(maxsize=max_inbox)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.cycles = 0
         self.dreams = 0
         self.idle_cycles = 0
+        self.errors = 0
+        self.dropped_input = 0
+        self.last_error: Optional[str] = None
         self._backoff = 0.0
 
     # --- thread-safe ingress (callable from any thread / sensor) --------------
     def feed(self, text: str, source: str = "sensor", **payload) -> None:
         """Enqueue a stimulus. Safe to call from any thread; the driver thread
-        delivers it to the mind on the next cycle."""
-        self._inbox.put((text, source, payload))
+        delivers it to the mind on the next cycle. The inbox is BOUNDED — a fast
+        sensor outrunning slow cognition drops the newest input (counted in
+        `dropped_input`) rather than growing without limit (R2 review P1)."""
+        try:
+            self._inbox.put_nowait((text, source, payload))
+        except queue.Full:
+            self.dropped_input += 1
 
     @property
     def pending_input(self) -> int:
@@ -99,12 +110,31 @@ class Driver:
     # --- the loop -------------------------------------------------------------
     def run(self, max_cycles: Optional[int] = None, *, stop_when_idle: bool = False) -> int:
         """Drive cycles until stopped / max_cycles / (optionally) the mind goes idle.
-        Returns the number of cycles run. Deterministic given a no-op sleep."""
+        Returns the number of cycles run. Deterministic given a no-op sleep.
+
+        A cycle that raises does NOT silently end the agent's life (R2 review P0):
+        with ``on_error="continue"`` (default) the error is recorded and the loop
+        backs off and carries on — one transient model blip mustn't stop a
+        default-mode loop — until `max_consecutive_errors` in a row, then it gives
+        up loudly (`last_error` set). ``on_error="stop"`` aborts on the first error,
+        for strict accumulation runs that must not proceed through degradation."""
         n = 0
+        consecutive = 0
         while not self._stop.is_set():
             if max_cycles is not None and n >= max_cycles:
                 break
-            rep = self.step()
+            try:
+                rep = self.step()
+                consecutive = 0
+            except Exception as exc:               # a model/kernel error, not a stop
+                self.errors += 1
+                consecutive += 1
+                self.last_error = f"cycle {self.cycles}: {type(exc).__name__}: {exc}"
+                n += 1
+                if self.on_error == "stop" or consecutive >= self.max_consecutive_errors:
+                    break
+                self._sleep(min(self.max_backoff, self.idle_backoff * (2 ** consecutive)))
+                continue
             n += 1
             if rep.idle:
                 if stop_when_idle:
@@ -124,11 +154,21 @@ class Driver:
         self._thread = threading.Thread(target=self.run, name="meno-driver", daemon=True)
         self._thread.start()
 
-    def stop(self, timeout: float = 5.0) -> None:
+    def stop(self, timeout: float = 5.0) -> bool:
+        """Signal the loop and join. Returns True if the thread actually stopped;
+        False if the join timed out (the thread is still finishing its current
+        cycle). On timeout the handle is KEPT and `running` stays truthful — we
+        never claim the kernel is free while a cycle is still mutating it (R2
+        review P0)."""
         self._stop.set()
-        if self._thread:
-            self._thread.join(timeout)
-            self._thread = None
+        t = self._thread
+        if t is None:
+            return True
+        t.join(timeout)
+        if t.is_alive():
+            return False
+        self._thread = None
+        return True
 
     @property
     def running(self) -> bool:
@@ -137,4 +177,5 @@ class Driver:
     def telemetry(self) -> dict:
         return {"cycles": self.cycles, "dreams": self.dreams,
                 "idle_cycles": self.idle_cycles, "pending_input": self.pending_input,
-                "running": self.running}
+                "errors": self.errors, "dropped_input": self.dropped_input,
+                "last_error": self.last_error, "running": self.running}

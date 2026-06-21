@@ -49,6 +49,8 @@ class Meno:
         self.verbose = verbose
         self.deep_budget = self.cfg.deep_per_pass
         self._idle_ticks = 0          # boredom: persists across heartbeats (R2 autonomy)
+        self._curiosity_cursor = 0    # rotates top-down curiosity target + framing
+        self._last_curiosity_ref = None   # anti-repeat: don't wonder twice in a row about one node
         self.traces: List[str] = []
         self._synth = next((p for p in self.processors if isinstance(p, Synthesiser)), None)
 
@@ -160,12 +162,39 @@ class Meno:
         return total
 
     # --- curiosity (F3): birth and model-routed discharge ---
+    _WONDER_FRAMES = (
+        "what more is there about {x}?",
+        "what connects {x} to the rest?",
+        "what have I been missing about {x}?",
+        "why does {x} matter the way it does?",
+    )
+
     def _birth_topdown_curiosity(self) -> None:
-        """Boredom with an empty register: reach toward the most salient memory."""
+        """Boredom reaches for a NEGLECTED memory, not the most-attended one (doc 05,
+        Approaches 1+3). Genuine curiosity pulls toward the under-explored middle —
+        nodes with few surviving associations — and rotates target and framing with
+        an anti-repeat guard, so sustained boredom doesn't become a metronome firing
+        the same wonder about the same hub (R2 review). Reaching for argmax(salience)
+        would also entrench that hub (repeated co-activation raises its salience),
+        collapsing the graph onto one attractor — the opposite of idiosyncrasy."""
         if not self.graph.nodes:
             return
-        node = max(self.graph.nodes.values(), key=lambda n: n.salience)
-        self.curiosities.register(f"what more is there about {node.content[:40]}?",
+        degree: dict = {}
+        for (a, b) in self.graph.edges:
+            degree[a] = degree.get(a, 0) + 1
+            degree[b] = degree.get(b, 0) + 1
+        floor = self.cfg.recall_salience_floor
+        present = [n for n in self.graph.nodes.values() if n.content != self._last_curiosity_ref]
+        cands = [n for n in present if n.salience >= floor] or present \
+            or list(self.graph.nodes.values())
+        # the neglected middle: fewest associations first, oldest among those
+        cands.sort(key=lambda n: (degree.get(n.id, 0), n.created_at))
+        pool = cands[:min(5, len(cands))]
+        node = pool[self._curiosity_cursor % len(pool)]
+        frame = self._WONDER_FRAMES[self._curiosity_cursor % len(self._WONDER_FRAMES)]
+        self._curiosity_cursor += 1
+        self._last_curiosity_ref = node.content
+        self.curiosities.register(frame.format(x=node.content[:40]),
                                   source="top-down", referent=node.content)
 
     def _discharge_curiosity(self) -> List[Event]:
