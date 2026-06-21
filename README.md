@@ -26,7 +26,8 @@ in the quiet **heartbeat**: deferred impulses build pressure and resurface.
 
 Full design: [`docs/redesign.md`](docs/redesign.md) (logical kernel) and
 [`docs/system-design.md`](docs/system-design.md) (components). Every
-implementation choice is logged in [`docs/decisions.md`](docs/decisions.md).
+implementation choice is logged in [`docs/decisions.md`](docs/decisions.md);
+status and what's next live in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Run it
 

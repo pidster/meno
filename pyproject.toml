@@ -13,6 +13,8 @@ dependencies = []   # core runs with the standard library only (offline by defau
 [project.optional-dependencies]
 dev = ["pytest"]
 anthropic = ["anthropic"]   # optional: real cognitive-tier models
+local = ["sentence-transformers"]   # optional: real local cold embedder (D20); pulls in torch
+all = ["pytest", "anthropic", "sentence-transformers"]
 
 [tool.setuptools.packages.find]
 include = ["meno*"]
