@@ -99,8 +99,26 @@ def test_ghost_reflection_persists_then_is_released_with_grief_after_ttl():
     rep = m.dream()                                    # ghost_ticks reaches the ttl
     assert cue.id not in m.graph.cues                  # released
     assert rep["retired"] >= 1
-    # GRIEF: a reflection ABOUT the loss now exists (the agent registers the gap)
-    assert any(c.occasion.startswith("released:") for c in m.graph.cues.values())
+    # GRIEF: a reflection ABOUT the loss now exists, and it is DURABLE — the agent
+    # can read back its memory of having let go (journaled), not a gist-only ghost.
+    grief = [c for c in m.graph.cues.values() if c.occasion.startswith("released:")]
+    assert grief and grief[0].verbatim is not None
+
+
+def test_grief_reflection_does_not_grieve_itself_forever():
+    """The release of a ghost must not itself become a ghost and re-grieve endlessly
+    (grief-about-grief regress). Journaling the grief exempts it from the ghost path."""
+    m = mind(cue_ghost_ttl=1, cue_retire_max_per_dream=4)
+    a = m.graph.add_node("a doomed anchor").id
+    m.graph.store_cue([a], "a thought that will fade", tone=0.5, conclusion="x",
+                      material=["a doomed anchor"])
+    del m.graph.nodes[a]
+    for _ in range(8):                                 # many dreams, no new input
+        m.dream()
+    # exactly one grief reflection, and no "released: released:" regress
+    grief = [c for c in m.graph.cues.values() if c.occasion.startswith("released:")]
+    assert len(grief) == 1
+    assert not any("released: released:" in c.occasion for c in m.graph.cues.values())
 
 
 def test_islanded_ghost_reflection_can_be_rediscovered():

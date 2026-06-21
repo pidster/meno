@@ -145,7 +145,7 @@ class ConsolidationCycle:
                 if node.id in cue.entry_points:
                     continue
                 if g.recognise(cue, node.embedding) >= cfg.rediscovery_threshold:
-                    cue.entry_points = list(cue.entry_points) + [node.id]
+                    cue.entry_points = (list(cue.entry_points) + [node.id])[-cfg.stream_material_window:]
                     cue.ghost_ticks = 0
                     report["rediscovered"] += 1
                     self.mind.trace(f"a memory re-surfaced reflection {cue.id}: {cue.occasion[:40]!r}")
@@ -161,8 +161,12 @@ class ConsolidationCycle:
                     f"letting go of a reflection about {cue.occasion[:40]}",
                     [f"a conclusion once reached about {cue.occasion[:40]}, now beyond recall"])
                 del g.cues[cue.id]
+                # journal the grief: a DURABLE, recallable memory of having let go (so
+                # it's a real reflection the agent can read back, not a gist-only
+                # ghost) — and journaled cues are exempt from the ghost path, so the
+                # act of grieving doesn't itself become an endless grief-about-grief.
                 g.store_cue([], f"released: {cue.occasion[:40]}", tone=0.3,
-                            conclusion=loss, material=[cue.occasion])
+                            conclusion=loss, material=[cue.occasion], journal=True)
                 grieved += 1
                 report["retired"] += 1
                 self.mind.trace(f"released reflection {cue.id} after {cue.ghost_ticks} silent dreams")
