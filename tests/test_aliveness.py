@@ -138,6 +138,27 @@ def test_synthesis_not_gamed_by_occasion_injection_or_partial_scaffolding():
     assert synthesis(p.graph)["score"] == 0.0          # '(partial)' is scaffolding
 
 
+def test_synthesis_not_gamed_by_forgetting_after_reconstruction():
+    """R0 red-team P0: the nodes a reflection drew its words from can be forgotten
+    (deleted/decayed) between reconstruction and the aliveness audit. Provenance is
+    frozen at generation time, so the stub's recombined words stay non-emergent even
+    after their source nodes vanish."""
+    m = fresh()
+    e1 = m.graph.add_node("the pattern").id          # entry points: boilerplate-ish
+    e2 = m.graph.add_node("a connection").id
+    n1 = m.graph.add_node("volcano eruption magma").id   # the real vocabulary, as neighbours
+    n2 = m.graph.add_node("seismic tremor fault").id
+    m.graph.link(e1, n1, 0.9)
+    m.graph.link(e2, n2, 0.9)
+    cue = m.graph.store_cue([e1, e2], "insight: deep earth", tone=0.9, conclusion="seed")
+    text = m.graph.reconstruct(cue, m.models, reconsolidate=False)   # pulls n1,n2 via spread
+    assert "volcano" in text or "seismic" in text                   # it really drew on them
+    del m.graph.nodes[n1]                                            # forgetting deletes them
+    del m.graph.nodes[n2]
+    m.graph.edges.clear()
+    assert synthesis(m.graph, {cue.id: text})["score"] == 0.0       # frozen provenance holds
+
+
 def test_synthesis_requires_at_least_two_memories():
     m = fresh()
     a = m.graph.add_node("a lone memory").id

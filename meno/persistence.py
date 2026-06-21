@@ -31,6 +31,7 @@ def graph_to_dict(g: Graph) -> dict:
         "cues": [
             {"id": c.id, "entry_points": c.entry_points, "occasion": c.occasion,
              "tone": c.tone, "gist": c.gist, "verbatim": c.verbatim,
+             "source_text": c.source_text,
              "recalls": c.recalls, "created_at": c.created_at}
             for c in g.cues.values()
         ],
@@ -55,6 +56,7 @@ def dict_to_graph(data: dict, g: Graph) -> Graph:
     for cd in data.get("cues", []):
         cue = ReflectionCue(entry_points=cd["entry_points"], occasion=cd["occasion"],
                             tone=cd["tone"], gist=cd["gist"], verbatim=cd.get("verbatim"),
+                            source_text=cd.get("source_text", ""),
                             recalls=cd.get("recalls", 0), id=cd["id"],
                             created_at=cd.get("created_at", 0.0))
         g.cues[cue.id] = cue

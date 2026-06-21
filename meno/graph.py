@@ -38,6 +38,11 @@ class ReflectionCue:
     tone: float                       # affective/salience signature
     gist: List[float]                 # lossy embedding of the conclusion (meaning, not words)
     verbatim: Optional[str] = None    # set only if deliberately journaled
+    # the material the conclusion was derived from (occasion + the content the model
+    # was given), frozen at generation time. Provenance for the aliveness synthesis
+    # probe: emergence must be judged against what the reflection actually drew on,
+    # not against a graph that has since forgotten those nodes (R0 red-team P0).
+    source_text: str = ""
     recalls: int = 0
     id: int = 0                       # assigned by Graph.store_cue (per-instance, D15)
     created_at: float = field(default_factory=time.time)
@@ -114,6 +119,10 @@ class Graph:
     def store_cue(self, entry_points: List[int], occasion: str, tone: float,
                   conclusion: str, journal: bool = False) -> ReflectionCue:
         self._cue_seq += 1
+        # at creation the conclusion was derived from the entry points' content
+        # (processors/consolidation pass node_ids as both entry points and material);
+        # freeze that, with the occasion, as the cue's provenance.
+        material = " ".join(self.nodes[n].content for n in entry_points if n in self.nodes)
         cue = ReflectionCue(
             entry_points=list(entry_points),
             occasion=occasion,
@@ -121,6 +130,7 @@ class Graph:
             # gist embeds occasion + conclusion (meaning), so a topical probe can find it
             gist=self.embed.embed_cold(f"{occasion} {conclusion}"),
             verbatim=conclusion if journal else None,
+            source_text=f"{occasion} {material}",
             id=self._cue_seq,
         )
         self.cues[cue.id] = cue
@@ -159,11 +169,16 @@ class Graph:
 
         if not anchors and not neighbours:
             # islanded AND faded: available but inaccessible — the ghost signal
+            cue.source_text = cue.occasion          # the ghost draws only on its occasion
             return f"(something about {cue.occasion} — but the details won't come)"
 
         material = ([self.nodes[nid].content for nid in anchors] +
                     [self.nodes[nid].content for nid, _ in neighbours])[:6]
         text = model.synthesise(cue.occasion, material)
+        # freeze provenance NOW, while the material still exists: the reflection drew
+        # on these nodes (incl. spread neighbours not in entry_points). Forgetting may
+        # delete them before the aliveness probe audits the text (R0 red-team P0).
+        cue.source_text = cue.occasion + " " + " ".join(material)
         # "structured" = the entry set still has surviving associative edges (to
         # neighbours, or amongst its own anchors). Forgetting strips those edges;
         # when none remain the reflection has lost its web and recall goes thin.

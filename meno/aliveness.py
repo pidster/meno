@@ -190,23 +190,18 @@ def synthesis(graph: Graph, reflection_texts: Optional[Dict[int, str]] = None) -
     texts = reflection_texts or {}
     genuine, unverified = [], 0
     for cue in graph.cues.values():
-        present = [n for n in set(cue.entry_points) if n in graph.nodes]
-        if len(present) < 2:                   # synthesis draws on >=2 memories
+        if len(set(cue.entry_points)) < 2:     # synthesis draws on >=2 memories
             continue
         text = texts.get(cue.id, cue.verbatim)
-        if text is None:
-            unverified += 1                    # cross-source, but emergence unproven
+        # source_text is the material the conclusion was derived from, FROZEN at
+        # generation time (graph.store_cue / reconstruct). We judge emergence against
+        # that, never against an audit-time re-spread — forgetting could otherwise
+        # delete the nodes a stub conclusion echoed, making its words look fresh
+        # (R0 red-team P0). A cue with neither text nor frozen provenance is unprovable.
+        if text is None or not cue.source_text:
+            unverified += 1
             continue
-        # everything reconstruct() could echo: occasion label + entry points + the
-        # spreading-activation neighbourhood it pulls material from. The stub can
-        # only recombine these; a genuine insight adds a term none of them carry.
-        source_terms = _content_terms(cue.occasion)
-        reach = set(cue.entry_points) | set(graph.spread(list(cue.entry_points),
-                                                          hops=2, decay=0.5))
-        for nid in reach:
-            if nid in graph.nodes:
-                source_terms |= _content_terms(graph.nodes[nid].content)
-        fresh = _emergent_terms(text, source_terms)
+        fresh = _emergent_terms(text, _content_terms(cue.source_text))
         if fresh:
             genuine.append((cue, sorted(fresh)[:6]))
     score = min(1.0, 0.5 * len(genuine))
