@@ -48,6 +48,7 @@ class Meno:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.verbose = verbose
         self.deep_budget = self.cfg.deep_per_pass
+        self._idle_ticks = 0          # boredom: persists across heartbeats (R2 autonomy)
         self.traces: List[str] = []
         self._synth = next((p for p in self.processors if isinstance(p, Synthesiser)), None)
 
@@ -118,27 +119,36 @@ class Meno:
         **impulses come first** (finish unfinished cognition before wandering):
         interoceptive wakes resurface deferred streams; only when no impulse fired
         and meno has been *under-stimulated* for `boredom_ticks` does **curiosity**
-        reach toward the world (model-routed discharge — F3)."""
+        reach toward the world (model-routed discharge — F3).
+
+        Boredom (`_idle_ticks`) PERSISTS across calls and resets on genuine activity,
+        so a sustained-quiet mind under continuous operation eventually reaches out
+        on its own — even with no fresh stimulus to keep the quiet phase awake. Per
+        call the loop still breaks early when nothing is happening; the persistent
+        counter is what lets boredom accumulate over the driver's many short
+        heartbeats (R2)."""
         total = 0
-        idle = 0
         for _ in range(ticks):
             wakes = self.controller.tick()                  # impulses first
             for w in wakes:
                 self.bus.publish(w)
             if wakes:
-                idle = 0                                     # not idle — impulses take the slot
+                self._idle_ticks = 0                         # impulses take the slot
             elif self.working_set.depth() == 0 and not self.bus.pending():
-                idle += 1
+                self._idle_ticks += 1
                 deferred_pending = (any(s.deferred for s in self.streams.active.values())
                                     or any(s.deferred for s in self.streams.warm.values()))
                 # impulses-first, properly: don't wander while unfinished cognition
                 # is still pending — even if its pressure hasn't yet crossed the
                 # wake line (timing must not let curiosity jump the queue).
-                if idle >= self.cfg.boredom_ticks and not deferred_pending:
+                if self._idle_ticks >= self.cfg.boredom_ticks and not deferred_pending:
                     if self.curiosities.top() is None:
                         self._birth_topdown_curiosity()
                     for ev in self._discharge_curiosity():
                         self.bus.publish(ev)
+                    self._idle_ticks = 0                     # acted -> re-accumulate boredom
+            else:
+                self._idle_ticks = 0                         # busy mind is not bored
             total += self.run_until_quiescent()
             self.curiosities.decay()                         # curiosities relax over time
             deferred_left = (any(s.deferred for s in self.streams.active.values())

@@ -23,6 +23,7 @@ from .models import (
     cognition_is_real,
     make_models,
 )
+from .driver import Driver
 from .runtime import Meno
 from .streams import Stream, StreamManager
 from .aliveness import (
@@ -41,7 +42,7 @@ __all__ = [
     "SentenceTransformerEmbedding", "make_embedder", "cosine",
     "ModelProvider", "StubModelProvider", "AnthropicModelProvider", "make_models",
     "cognition_is_real", "CognitionDegraded",
-    "Stream", "StreamManager",
+    "Stream", "StreamManager", "Driver",
     "zombie_report", "particularity", "initiative", "synthesis",
     "novelty", "divergence",
 ]
