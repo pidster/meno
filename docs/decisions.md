@@ -430,3 +430,22 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   self-managed reference shelf is never read as identity. K2 is reframed accordingly:
   lookup is the agent *curating* its shelf (resolve + decide-to-retain), not an
   external-only fetch.
+
+### D26 — Slack afferent redaction is blunt and best-effort
+- **Decision.** The I1 Slack adapter redacts obvious secrets and PII (slack/openai/aws/
+  github tokens, JWTs, private-key blocks, `password=…`, emails, US SSNs) from a
+  message BEFORE it becomes a percept — and before truncation, so a secret cannot
+  survive by straddling the size cap. Redaction is deliberately blunt (a regex pass,
+  over-redacts rather than under), and is **best-effort, not a guarantee**.
+- **Why.** A Slack channel carries text anyone in it can paste; an un-redacted secret
+  that becomes a percept is encoded as a near-permanent graph node and consolidated by
+  the dream. So content redaction is the one content guard on world-text entering the
+  substrate, and it must see the whole message (hence redact-before-truncate). But no
+  regex catches every secret/PII shape, and aggressive entropy-based redaction would
+  gut normal chat. So the residual risk is bounded operationally: the operator chooses
+  which channels to list, and **must not list channels carrying regulated PII** — the
+  adapter is consent-scoped (listed AND joined) precisely so this is a deliberate choice.
+- **Rules out / bounds.** NOT a compliance control. NOT a substitute for channel
+  hygiene. The bot's own posts are skipped (subtype/bot_user_id) as the afferent half
+  of I2's self-echo guard, but the authoritative self-echo guard is I2's
+  `source="self:slack"` tag. A bot_user_id should be auto-derived (auth.test) in I2.

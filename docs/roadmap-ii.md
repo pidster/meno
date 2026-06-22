@@ -535,12 +535,11 @@ lookup + provenance + egress + supplantation tests green.
 
 ## Open decisions (for Pid)
 
-- **First integration channel:** Slack or Discord — and **sense-only before any
-  send** (I1 before I2 is fixed; which channel first is open).
 - **First network authority (K3):** dictionary/definitions API vs web vs MCP.
   *Recommend: an MCP authority, reusing the I2 egress gate.*
 
-*Resolved:* depth-scaling (abridged+pointer reflexive, full deep) — decided.
+*Resolved:* first integration channel — **Slack** (Pid), sense-only (I1) before any
+send (I2). Depth-scaling (abridged+pointer reflexive, full deep) — decided.
 Self-model home — **D24**: canonical in the code constant (the type, baked in the
 image); the Library holds a re-derivable copy for lookup, never overriding it.
 Config loader / Python floor — **D22** (3.11 + `tomllib`). Self-model scope —

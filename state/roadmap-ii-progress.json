@@ -125,6 +125,33 @@
         "I2 efferent: override deliver() to gate BEFORE any network call — return DeliveryResult refused(scope/rate/disabled) or pending(confirm-first); audit each send to journal/traces; emit outbound intents with egress=True; self-echo guard (tag own posts so the afferent poll drops them)"
       ]
     }
+    },
+    "I1": {
+      "name": "Afferent channel — Slack (sense-only)",
+      "status": "complete",
+      "decision_resolved": "first integration channel = Slack (Pid), sense-only before any send",
+      "modules": ["meno_adapters/slack.py (SlackAdapter, afferent only)", "meno_adapters/__init__.py"],
+      "tests": "tests/test_slack_afferent.py (17)",
+      "deliverable": "Percepts flow from listed-AND-joined Slack channels into the loop as SENSE, bounded/consented like R4's FilesystemSensor: consent fails CLOSED; secrets+PII redacted before truncation; the bot's own posts skipped; new-only via a numeric ts cursor; membership TTL-cached. Slack SDK isolated in meno_adapters (kernel stays pure); inert without a token. NO send path (I1 is sense-only; posting is I2).",
+      "decision": "D26 (redaction best-effort)",
+      "adversarial_review": {
+        "lenses": "safety/consent/privacy + runtime/kernel-fit+tests (2-agent panel)",
+        "verdict": "PASS, no P0 — consent is fail-closed (listed AND joined; _joined throws -> read nothing), genuinely no outward path, kernel purity holds",
+        "p1_closed": [
+          "redaction ran AFTER truncation (a straddling secret leaked) -> redact BEFORE truncate",
+          "redaction missed whole classes (AWS/private-key/JWT/github/PII) -> extended regex + private-key DOTALL pass; PII (email/SSN) is in the spec; D26 logs best-effort",
+          "ts string comparison was a latent ordering bug (width-crossing '1000'<'999') -> numeric float comparison, string kept for the API cursor",
+          "_joined() hit the Slack API every poll (rate limits + blocks the mind thread on 429 retry) -> TTL-cached + paginated + last-known on transient failure"
+        ],
+        "p2_closed": ["response shim simplified to .get() so the real-client path is exercised", "adapter-internal error counter (observability)", "egress-absence static test (no postMessage/write may sneak in pre-I2)", "fake client filters oldest numerically (faithful)"],
+        "final_state": "4 P1 + P2s closed; offline suite 176 passed / 4 skipped. Live Slack path is token-gated (deferred)."
+      },
+      "carry_forward_to_I2": [
+        "self-echo guard: tag outbound posts source='self:slack'; auto-derive bot_user_id via auth.test; the afferent skip (subtype/bot_user_id) is the second line",
+        "I2 effector overrides deliver() to gate BEFORE chat.postMessage: disabled-by-default, scope (post_channels), rate, confirm-first (return DeliveryResult pending), audit to journal/traces",
+        "real-client fidelity: conversations_history pagination is bounded by limit; message shape variety (blocks/attachments) only text is read"
+      ]
+    }
   },
-  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "159 passed, 4 skipped"}
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "176 passed, 4 skipped"}
 }
