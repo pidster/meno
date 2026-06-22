@@ -8,6 +8,7 @@ from. World-changing effects live only in the cognitive-tier Effector.
 """
 from __future__ import annotations
 
+import queue
 from pathlib import Path
 from typing import List
 
@@ -276,4 +277,31 @@ class Effector(Processor):
         return [out]
 
 
-DEFAULT_PROCESSORS = [Appraiser(), Associator(), Synthesiser(), Effector()]
+class OutboundRelay(Processor):
+    """The efferent hand-off (I0a). An INTENT explicitly marked `egress=True` is
+    *outbound* — destined for an integration adapter (a channel, a network authority),
+    set by whatever emits it (I2's effector). Rather than run it on the mind thread
+    (where a network call would block all of cognition), the relay enqueues it to the
+    bounded `outbox` and returns immediately; a Driver worker drains the outbox
+    OFF-thread. The marker is closed-world ON PURPOSE: a local action (fs_read, lookup,
+    a future tool) is NOT egress, so it is never mis-relayed-and-dropped — only an
+    intent that declares itself outward is handed off."""
+    name = "outbound_relay"
+    tier = 2
+
+    def triggers(self, event: Event, mind) -> bool:
+        return (event.kind == Kind.INTENT
+                and self.name not in event.seen_by
+                and bool(event.payload.get("egress"))
+                and getattr(mind, "outbox", None) is not None)
+
+    def run(self, event: Event, mind) -> List[Event]:
+        event.seen_by.add(self.name)
+        try:                                  # bounded: drop newest if the outbox is full
+            mind.outbox.put_nowait(dict(event.payload))
+        except queue.Full:
+            mind.outbox_drops += 1            # observed, never silent (R2 dropped-input precedent)
+        return []                             # the adapter feeds the result back, async
+
+
+DEFAULT_PROCESSORS = [Appraiser(), Associator(), Synthesiser(), Effector(), OutboundRelay()]

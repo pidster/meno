@@ -97,6 +97,34 @@
         "looks_factual is a stub heuristic; real discrimination is the model's call (live-gated)"
       ]
     }
+    },
+    "I0a": {
+      "name": "Integration substrate (adapter seam; no network)",
+      "status": "complete",
+      "modules": ["meno_adapters/ (NEW package: base.Adapter + DeliveryResult, loopback.LoopbackAdapter)", "meno/driver.py (add_adapter; guarded poll for sensors+adapters; off-thread outbound worker; honest stop; run() drains outbox)", "meno/processors.py (OutboundRelay — closed-world egress marker)", "meno/runtime.py (outbox, outbox_drops, feed kind=)", "meno/config.py (outbox_max)"],
+      "tests": "tests/test_integration_substrate.py (13)",
+      "deliverable": "A clean seam between the world and the stdlib kernel: afferent percepts arrive via a single guarded poll path (sensors + adapters, R4-style) as SENSE; outbound INTENTs marked egress are handed to a bounded outbox that a Driver worker drains OFF the mind thread (a slow network call never blocks cognition), feeding the result back as FEEDBACK. Network/async live ONLY in meno_adapters; the kernel stays stdlib (allowlist-enforced).",
+      "adversarial_review": {
+        "lenses": "concurrency/runtime + theory/seam-design+tests (2-agent panel)",
+        "p0_closed": [
+          "deliver()->str gave I2's gating (refuse/pending/audit) nowhere to live -> structured DeliveryResult{status,detail,reason}; the driver branches (refused feeds back with reason; pending doesn't feed back / doesn't block the worker)",
+          "TWO afferent mechanisms (poll sensors vs push adapters) and I1 was told to model on R4 poll but plug the push seam -> unified on a single guarded poll path; start() kept for push subscriptions but guarded; SENSE-vs-FEEDBACK documented"
+        ],
+        "p1_closed": [
+          "stop() lied (swallowed the outbound-join timeout, returned True while a blocked deliver held the worker) -> symmetric honest join (False if either thread still alive)",
+          "run()-only mode never drained the outbox (outbound piled up silently) -> step() drains inline when no bg worker",
+          "OutboundRelay 'everything not local is outbound' would mis-relay+drop future local intents + duplicated _LOCAL across files -> closed-world explicit egress marker",
+          "kernel-purity test was an incomplete denylist + non-recursive -> allowlist (stdlib + meno + cognition/embedding extras) + rglob",
+          "off-thread test read bus.log cross-thread (race, not free-threading-safe) -> proves non-blocking via driver.cycles advancing during the gated deliver; reads mind state only after stop() join"
+        ],
+        "p2_closed": ["outbox/unhandled drops counted (outbox_drops, dropped_outbound)", "no-adapter + deliver-failure feed back a miss (an effector is never blind)", "flaky-poll-survives + start-raises-survives + unhandled-drop + refused + pending tests added"],
+        "final_state": "2 P0 + 5 P1 + P2s closed; offline suite 159 passed / 4 skipped."
+      },
+      "carry_forward_to_I1_I2": [
+        "I1 afferent: subclass Adapter.poll() with R4 FilesystemSensor bounds (joined channels, rate/size caps, redaction, provenance source='slack'); world replies re-enter as SENSE",
+        "I2 efferent: override deliver() to gate BEFORE any network call — return DeliveryResult refused(scope/rate/disabled) or pending(confirm-first); audit each send to journal/traces; emit outbound intents with egress=True; self-echo guard (tag own posts so the afferent poll drops them)"
+      ]
+    }
   },
-  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "146 passed, 4 skipped"}
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "159 passed, 4 skipped"}
 }

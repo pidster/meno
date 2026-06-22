@@ -28,6 +28,8 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
+from .event import Kind
+
 
 @dataclass
 class CycleReport:
@@ -53,6 +55,8 @@ class Driver:
         self.heartbeat_ticks = heartbeat_ticks
         self.sense_every = sense_every             # poll afferent sensors every N cycles
         self.sensors: list = []
+        self.adapters: list = []                   # integration adapters (afferent + efferent)
+        self._outbound_thread: Optional[threading.Thread] = None
         self.idle_backoff = idle_backoff
         self.max_backoff = max_backoff
         self.on_error = on_error                   # "continue" (resilient) | "stop" (loud, for strict)
@@ -66,17 +70,20 @@ class Driver:
         self.idle_cycles = 0
         self.errors = 0
         self.dropped_input = 0
+        self.dropped_outbound = 0                  # outbound intents no adapter handled
         self.last_error: Optional[str] = None
         self._backoff = 0.0
 
     # --- thread-safe ingress (callable from any thread / sensor) --------------
-    def feed(self, text: str, source: str = "sensor", **payload) -> None:
+    def feed(self, text: str, source: str = "sensor", kind: Kind = Kind.SENSE, **payload) -> None:
         """Enqueue a stimulus. Safe to call from any thread; the driver thread
         delivers it to the mind on the next cycle. The inbox is BOUNDED — a fast
         sensor outrunning slow cognition drops the newest input (counted in
-        `dropped_input`) rather than growing without limit (R2 review P1)."""
+        `dropped_input`) rather than growing without limit (R2 review P1). `kind`
+        lets an adapter worker re-enter a result as FEEDBACK (proprioception) rather
+        than a fresh SENSE."""
         try:
-            self._inbox.put_nowait((text, source, payload))
+            self._inbox.put_nowait((text, source, kind, payload))
         except queue.Full:
             self.dropped_input += 1
 
@@ -91,29 +98,101 @@ class Driver:
         self.sensors.append(sensor)
 
     def _poll_sensors(self) -> None:
-        for sensor in self.sensors:
+        # One guarded afferent path for both sensors (R4) and poll-based adapters (I0a):
+        # a flaky channel is recorded and skipped, never fatal to the loop.
+        for src in self.sensors + self.adapters:
+            poll = getattr(src, "poll", None)
+            if poll is None:
+                continue
             try:
-                for text, source, payload in sensor.poll():
+                for text, source, payload in poll():
                     self.feed(text, source=source, **payload)
-            except Exception as exc:              # a flaky sensor must not kill the loop
+            except Exception as exc:              # a flaky channel must not kill the loop
                 self.errors += 1
-                self.last_error = f"sensor {type(sensor).__name__}: {type(exc).__name__}: {exc}"
+                self.last_error = f"poll {type(src).__name__}: {type(exc).__name__}: {exc}"
+
+    # --- integration adapters (afferent + efferent, the reach layer) -----------
+    def add_adapter(self, adapter) -> None:
+        """Attach an integration adapter. Its afferent side is started with the loop
+        (it feeds percepts through the thread-safe ingress on its own schedule); its
+        efferent side delivers outbound intents the mind hands to the outbox — run by
+        a dedicated worker thread, OFF the mind thread, so a slow network call never
+        blocks cognition (I0a). Network/async live in the adapter, never the kernel."""
+        self.adapters.append(adapter)
+
+    def _deliver_outbound(self, payload: dict) -> bool:
+        """Dispatch one outbound intent to the adapter that handles it. Runs on the
+        OUTBOUND worker thread (or, in tests, via `drain_outbox_once`) — never on the
+        mind thread. The structured result decides the proprioception: a delivered or
+        refused action feeds back as FEEDBACK (a refusal carries its reason, so the
+        mind feels 'I was blocked' distinctly from 'I acted'); a `pending` (confirm-
+        first) action is NOT fed back and does NOT block the worker. An action no
+        adapter handles, or one that raises, feeds back a miss — an effector is never
+        blind. Returns True if an adapter handled it."""
+        action = payload.get("action")
+        for ad in self.adapters:
+            if ad.handles(action):
+                try:
+                    result = ad.deliver(payload)          # the slow part, off the mind thread
+                    if getattr(result, "feeds_back", True):
+                        fb = {"action": None, "outbound": action}
+                        if getattr(result, "status", "delivered") == "refused":
+                            fb["refused"] = getattr(result, "reason", "")
+                        self.feed(getattr(result, "detail", str(result)),
+                                  source=getattr(ad, "name", "adapter"), kind=Kind.FEEDBACK, **fb)
+                except Exception as exc:                  # an effector must not be blind/fatal
+                    self.errors += 1
+                    self.last_error = f"adapter {getattr(ad, 'name', '?')}: {type(exc).__name__}: {exc}"
+                    self.feed(f"(action {action!r} failed: {type(exc).__name__})",
+                              source=getattr(ad, "name", "adapter"), kind=Kind.FEEDBACK, action=None)
+                return True
+        # no adapter handled it: don't let the act vanish silently — feed back a miss
+        self.dropped_outbound += 1
+        self.feed(f"(no adapter for action {action!r})", source="driver",
+                  kind=Kind.FEEDBACK, action=None)
+        return False
+
+    def drain_outbox_once(self, timeout: float = 0.0) -> bool:
+        """Deliver at most one queued outbound intent (deterministic test seam)."""
+        try:
+            payload = self.mind.outbox.get(timeout=timeout) if timeout else self.mind.outbox.get_nowait()
+        except queue.Empty:
+            return False
+        return self._deliver_outbound(payload)
+
+    def _outbound_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                payload = self.mind.outbox.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            self._deliver_outbound(payload)
+
+    @property
+    def _outbound_worker_running(self) -> bool:
+        return bool(self._outbound_thread and self._outbound_thread.is_alive())
 
     # --- one autonomous cycle -------------------------------------------------
     def step(self) -> CycleReport:
         self.cycles += 1
-        if self.sensors and self.cycles % self.sense_every == 0:
+        if (self.sensors or self.adapters) and self.cycles % self.sense_every == 0:
             self._poll_sensors()
         ingested = 0
         while True:                               # drain everything queued so far
             try:
-                text, source, payload = self._inbox.get_nowait()
+                text, source, kind, payload = self._inbox.get_nowait()
             except queue.Empty:
                 break
-            self.mind.feed(text, source=source, **payload)
+            self.mind.feed(text, source=source, kind=kind, **payload)
             ingested += 1
         reactive = self.mind.run_until_quiescent()
         quiet = self.mind.heartbeat(ticks=self.heartbeat_ticks)
+        # No background worker (deterministic run() mode)? Drain the outbox inline so a
+        # run()-only deployment can still act outward — synchronous here BY DESIGN
+        # (one thread, reproducible); the off-thread worker is the start() path.
+        if self.adapters and not self._outbound_worker_running:
+            while self.drain_outbox_once():
+                pass
         dreamed = None
         if self.dream_every and self.cycles % self.dream_every == 0:
             dreamed = self.mind.dream()
@@ -170,6 +249,17 @@ class Driver:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
+        for ad in self.adapters:                  # afferent: push adapters open a subscription
+            try:                                  # a channel's start() must not kill the driver
+                if hasattr(ad, "start"):
+                    ad.start(self)
+            except Exception as exc:
+                self.errors += 1
+                self.last_error = f"adapter start {getattr(ad, 'name', '?')}: {type(exc).__name__}: {exc}"
+        if self.adapters and not (self._outbound_thread and self._outbound_thread.is_alive()):
+            self._outbound_thread = threading.Thread(
+                target=self._outbound_loop, name="meno-outbound", daemon=True)
+            self._outbound_thread.start()
         self._thread = threading.Thread(target=self.run, name="meno-driver", daemon=True)
         self._thread.start()
 
@@ -180,14 +270,32 @@ class Driver:
         never claim the kernel is free while a cycle is still mutating it (R2
         review P0)."""
         self._stop.set()
+        for ad in self.adapters:                  # stop afferent producers
+            if hasattr(ad, "stop"):
+                try:
+                    ad.stop()
+                except Exception:
+                    pass
+        # Honest, symmetric join: report clean ONLY if BOTH the mind thread and the
+        # outbound worker actually stopped. A `deliver` blocked in slow I/O when stop()
+        # is called keeps the worker alive past the timeout — we say so (False) rather
+        # than claim the kernel is free while a socket is still held (R2 review P0).
+        clean = True
+        ot = self._outbound_thread
+        if ot is not None:
+            ot.join(timeout)
+            if ot.is_alive():
+                clean = False
+            else:
+                self._outbound_thread = None
         t = self._thread
-        if t is None:
-            return True
-        t.join(timeout)
-        if t.is_alive():
-            return False
-        self._thread = None
-        return True
+        if t is not None:
+            t.join(timeout)
+            if t.is_alive():
+                clean = False
+            else:
+                self._thread = None
+        return clean
 
     @property
     def running(self) -> bool:
@@ -197,4 +305,5 @@ class Driver:
         return {"cycles": self.cycles, "dreams": self.dreams,
                 "idle_cycles": self.idle_cycles, "pending_input": self.pending_input,
                 "errors": self.errors, "dropped_input": self.dropped_input,
+                "dropped_outbound": self.dropped_outbound,
                 "last_error": self.last_error, "running": self.running}

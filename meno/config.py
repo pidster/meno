@@ -83,6 +83,9 @@ class Config:
     # is reconstructed AND corroborated by lookup. Set False only to demonstrate the
     # guard is load-bearing (the supplantation ratio then spikes — it is falsifiable).
     substrate_first_lookup: bool = True
+    # I0a: bounded outbox for outbound intents handed off to integration adapters
+    # (so a slow network call never blocks the mind thread). Drops newest when full.
+    outbox_max: int = 1024
 
     @property
     def load_norm_base(self) -> int:

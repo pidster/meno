@@ -7,6 +7,7 @@ kernel only requires *bounded* concurrency, which the worker-budget models.
 """
 from __future__ import annotations
 
+import queue
 from pathlib import Path
 from typing import List, Optional
 
@@ -57,6 +58,11 @@ class Meno:
         # substrate COULD serve (reconstructable), how many we still looked up
         # (supplanted) vs preferred memory. The don't-become-a-lookup-machine guard.
         self.lookup_tel = {"lookups": 0, "reconstructable_opportunities": 0, "supplanted": 0}
+        # I0a: outbound intents the kernel hands OFF the mind thread to integration
+        # adapters (a Driver worker drains this); the mind enqueues and moves on, so a
+        # slow outward action never blocks cognition. Bounded; empty unless adapters run.
+        self.outbox: "queue.Queue[dict]" = queue.Queue(maxsize=self.cfg.outbox_max)
+        self.outbox_drops = 0                  # outbound intents dropped at a full outbox
         self._idle_ticks = 0          # boredom: persists across heartbeats (R2 autonomy)
         self._curiosity_cursor = 0    # rotates top-down curiosity target + framing
         self._last_curiosity_ref = None   # anti-repeat: don't wonder twice in a row about one node
@@ -70,8 +76,8 @@ class Meno:
             print(f"  · {msg}")
 
     # --- input ---
-    def feed(self, text: str, source: str = "chat", **payload) -> Event:
-        ev = Event(content=text, kind=Kind.SENSE, source=source, payload=payload)
+    def feed(self, text: str, source: str = "chat", kind: Kind = Kind.SENSE, **payload) -> Event:
+        ev = Event(content=text, kind=kind, source=source, payload=payload)
         self.bus.publish(ev)
         return ev
 
