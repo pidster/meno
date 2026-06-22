@@ -20,6 +20,8 @@ import os
 import re
 from typing import List, Optional
 
+from .self_model import self_model
+
 _STOP = {"the", "a", "an", "is", "are", "of", "to", "and", "in", "on", "it",
          "this", "that", "i", "you", "for", "with", "what", "why", "how"}
 
@@ -125,6 +127,42 @@ _SYNTH_SYSTEM = (
     "pattern across it — a perspective, not a summary. First person is welcome. "
     "Respond with only the reflection, no preamble.")
 
+_RELATE_SYSTEM = ("Decide whether two trains of thought are fundamentally about "
+                  "the same matter (and should merge).")
+
+_WONDER_SYSTEM = ("A curiosity has arisen. Decide how to follow it. Respond inward "
+                  "(a thought to think) or outward (read a file you're curious about) "
+                  "or both — whatever fits. Only propose a file path you were actually "
+                  "given a referent for.")
+
+# The role lines above are *surface-specific* and short. Phase S (roadmap-ii.md)
+# prepends the shared self-model — what a Meno is and how it operates — as a
+# cache-controllable block before each. Deep tiers (associate, synthesise, wonder)
+# carry the full self-model; reflexive tiers (appraise, relate) carry the brief one.
+_DEPTH = {"appraise": False, "relate": False,
+          "associate": True, "synthesise": True, "wonder": True}
+
+
+def _system_blocks(role_line: str, deep: bool) -> list:
+    """System prompt as content blocks: the self-model first, the surface's role line
+    after. A plain `system=` string cannot carry `cache_control`, so the block list
+    is what lets the shared self-model prefix be prompt-cached (S).
+
+    Caching is MODEL-SCOPED and has a per-model minimum-cacheable-prefix floor, so the
+    realised benefit is narrower than 'one cache across all deep surfaces':
+      - associate + wonder run on Sonnet (2048-token floor) and the full self-model
+        (~3.4k tokens) clears it — they share ONE Sonnet cache entry. This is the win.
+      - synthesise runs on Opus (4096-token floor); the self-model is *below* it, so
+        its breakpoint is currently a silent no-op (it caches nothing until the text
+        clears 4096 on Opus — confirmed at the S-exit live smoke, never by padding).
+      - reflexive tiers carry the ~180-token brief, far below Haiku's 4096 floor, so a
+        breakpoint there could only ever no-op — we omit it rather than imply intent.
+    The breakpoint is therefore attached only on the deep path."""
+    block = {"type": "text", "text": self_model(deep)}
+    if deep:
+        block["cache_control"] = {"type": "ephemeral"}
+    return [block, {"type": "text", "text": role_line}]
+
 
 class CognitionDegraded(RuntimeError):
     """Raised (in strict mode) when a real model call fails and would otherwise
@@ -215,7 +253,7 @@ class AnthropicModelProvider(ModelProvider):
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[1],
                 max_tokens=256,
-                system=_APPRAISE_SYSTEM,
+                system=_system_blocks(_APPRAISE_SYSTEM, _DEPTH["appraise"]),
                 messages=[{"role": "user",
                            "content": f"Percept (surprise={surprise:.2f}): {content}"}],
                 output_config={"format": {"type": "json_schema", "schema": _APPRAISE_SCHEMA}},
@@ -232,7 +270,7 @@ class AnthropicModelProvider(ModelProvider):
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[2],
                 max_tokens=200,
-                system=_ASSOC_SYSTEM,
+                system=_system_blocks(_ASSOC_SYSTEM, _DEPTH["associate"]),
                 messages=[{"role": "user",
                            "content": f"Thread: {stream_summary}\nRelated memory: {related}\n"
                                       "State the connection in one line."}],
@@ -251,7 +289,7 @@ class AnthropicModelProvider(ModelProvider):
                 max_tokens=1500,                       # room for adaptive thinking + a short reflection
                 thinking={"type": "adaptive"},         # Opus 4.8: adaptive only (no budget_tokens)
                 output_config={"effort": self.effort},  # low | medium | high | max
-                system=_SYNTH_SYSTEM,
+                system=_system_blocks(_SYNTH_SYSTEM, _DEPTH["synthesise"]),
                 messages=[{"role": "user", "content": prompt}],
             )
             text = self._text(msg)
@@ -265,8 +303,7 @@ class AnthropicModelProvider(ModelProvider):
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[1],
                 max_tokens=64,
-                system="Decide whether two trains of thought are fundamentally about "
-                       "the same matter (and should merge).",
+                system=_system_blocks(_RELATE_SYSTEM, _DEPTH["relate"]),
                 messages=[{"role": "user",
                            "content": f"A: {summary_a}\nB: {summary_b}"}],
                 output_config={"format": {"type": "json_schema", "schema": {
@@ -282,10 +319,7 @@ class AnthropicModelProvider(ModelProvider):
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[2],
                 max_tokens=512,        # the structured {mode,thought,path} JSON; 200 truncated
-                system="A curiosity has arisen. Decide how to follow it. Respond inward "
-                       "(a thought to think) or outward (read a file you're curious about) "
-                       "or both — whatever fits. Only propose a file path you were actually "
-                       "given a referent for.",
+                system=_system_blocks(_WONDER_SYSTEM, _DEPTH["wonder"]),
                 messages=[{"role": "user",
                            "content": f"Curiosity: {text}\nReferent: {referent or '(none)'}"}],
                 output_config={"format": {"type": "json_schema", "schema": {

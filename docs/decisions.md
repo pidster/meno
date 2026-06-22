@@ -328,3 +328,45 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   pin 3.11+. The stdlib-only-kernel invariant is *preserved* (tomllib is stdlib),
   not weakened. This is a prerequisite for I0b (`meno init` + the config loader +
   the home-bound daemon); see `docs/roadmap-ii.md` I0.
+
+### D23 — Phase S: a mechanics-only self-model, per-tier and cache-controlled
+- **Decision.** Every cognitive surface carries a shared type-description of what a
+  Meno is and how it operates (`meno/self_model.py`: `MENO_SELF` full,
+  `MENO_SELF_BRIEF` abridged), read through one accessor (`self_model(deep)`) so K1
+  can relocate the backing store to `library/self-model.md` without touching call
+  sites. Deep tiers (associate, synthesise, wonder) get the full text; reflexive
+  tiers (appraise, relate) get the brief + the escalation pointer. `models.py`
+  passes `system=` as a content-block list so the self-model is a `cache_control`
+  prefix (D-prior: plain strings can't carry it).
+- **Three disciplines, each test-enforced.** (1) *Mechanics, not meaning* — the text
+  plants no conclusion/value/affect/disposition (`IDENTITY_DENYLIST` substring
+  tripwire + the S review lens as the binding prescriptive-mood check). (2) *Type,
+  not identity* — shared verbatim by every instance; particularity stays in the
+  graph. (3) *True to the implementation, this phase* — every named capability maps
+  to a real kernel symbol (`SELF_MODEL_CLAIMS`, with directional claims checked
+  against kernel *values*, not just name-existence), and nothing from a later phase
+  is claimed (`EARNED_NOT_GIVEN`: the transactive stance/lookup/Library are absent
+  until K2 — earned, not given).
+- **Caching reality (honest bounds).** Caches are model-scoped with a per-model
+  min-cacheable floor. The mechanics-only text is ~3.4k tokens: it clears Sonnet
+  (2048) so associate+wonder share one cache entry, but is **below Opus's 4096**, so
+  synthesise does not cache yet. The Opus floor is reached only by genuine added
+  mechanism, never padding — until then it stays deferred. The breakpoint is
+  attached on the deep path only (the ~180-token brief is sub-floor on Haiku; a
+  breakpoint there could only no-op). Live confirmation (`cache_read>0`, real
+  `count_tokens`) is the S-exit smoke, gated on a funded key.
+- **Standing guard gains a second axis.** `divergence()` is structural (graph) and
+  blind to a prompt/config change; `aliveness.output_divergence()` adds the
+  prompt/config axis — two different-graph minds over the same percepts must still
+  produce divergent *output*. Offline it only proves the mechanism (substrate drives
+  voice; the stub ignores `system=`); the real guard (does the shared self-model
+  homogenise voice under real cognition?) is the panel-judged litmus + a key-gated
+  live test. A `verdict != "alive"` test confirms the self-model did not animate the
+  stub.
+- **Rules out / bounds.** No instance identity or earned disposition in the prompt
+  (type and mechanics only). The self-model is NOT loaded dynamically per call (the
+  surfaces are stateless single calls) — full-vs-brief is a static per-tier constant;
+  true load-on-demand is the Agent-Skills pattern, not this. Reviewed via the 5-lens
+  gate (theory + test/evidence + kernel-fit); one P0 (the offline anti-convergence
+  test was mislabelled as proving prompt-homogenisation) and the P1s were fixed
+  before close.

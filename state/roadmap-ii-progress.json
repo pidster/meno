@@ -1,0 +1,44 @@
+{
+  "project": "meno-roadmap-ii",
+  "plan": "docs/roadmap-ii.md",
+  "branch": "roadmap-ii-build",
+  "goal": "From being particular (R0-R5) to knowing itself, knowing what it doesn't know, and reaching the world.",
+  "sequence": ["S", "K1", "K2", "I0a", "I0b", "I1", "I2", "K3"],
+  "phases": {
+    "S": {
+      "name": "Self-Model (mechanics only; stance earned, not given)",
+      "status": "complete",
+      "modules": ["meno/self_model.py (new)", "meno/models.py (_system_blocks, _DEPTH, block-list system=)", "meno/aliveness.py (output_divergence + anti_convergence threshold)"],
+      "tests": "tests/test_self_model.py (10 + 1 live key-gated)",
+      "deliverable": "A fulsome mechanics-only type-description (MENO_SELF full / MENO_SELF_BRIEF abridged) on every surface, read via the self_model() accessor (K1 relocates the store), prepended as a cache_control prefix on the deep path. Three disciplines test-enforced: mechanics-not-meaning (denylist + panel lens), type-not-identity, true-to-implementation-this-phase (SELF_MODEL_CLAIMS with directional value-checks; EARNED_NOT_GIVEN excludes the K2 transactive stance). Standing guard gains the anti-convergence axis.",
+      "decision": "D23",
+      "adversarial_review": {
+        "lenses": "theory coherence + test/evidence + kernel-fit (3-agent panel)",
+        "p0_closed": "the offline anti-convergence test was mislabelled as proving prompt-homogenisation (the stub ignores system=, so it only proved substrate->vocabulary); renamed to test_substrate_vocabulary_survives_a_shared_occasion, the real guard moved to a key-gated live test (test_shared_self_model_does_not_homogenise_voice_live) + named as the panel-judged litmus",
+        "p1_closed": [
+          "model-scoped caching overstated ('shared across 3 deep surfaces') -> corrected to per-model: associate+wonder (Sonnet) share; synthesise (Opus) is sub-floor and caches nothing yet",
+          "'What you return to, you become' drifted from mechanism into a self-making maxim -> retracted to the Hebbian fact",
+          "denylist was a gameable substring list -> added value-comparatives + named the S review lens as the binding prescriptive-mood check",
+          "sync test proved name-exists not description-true -> added directional value-assertions (edge_decay<node_decay, activation_inherit in (0,1), ...)",
+          "cache-floor proxy silently downgraded the roadmap's Opus-4096 target -> docstring states the downgrade + defers to the live smoke"
+        ],
+        "p2_closed": [
+          "botched-edit typo in the opening sentence",
+          "highest-affect phrase ('stays alive ... archive') swapped to zero-affect ('stays reconstructive ... fixed store')",
+          "cache_control dropped from the sub-floor reflexive (brief) path",
+          "added test_self_model_does_not_animate_the_stub (verdict != alive with stub + self-model)"
+        ],
+        "final_state": "P0 + 5 P1 + P2s closed; offline suite 120 passed / 4 skipped."
+      },
+      "deferred_to_gate": [
+        "S-exit live smoke: real count_tokens on Opus (does MENO_SELF clear 4096?) + cache_read_input_tokens>0 on Sonnet deep surfaces — BLOCKED on a funded key (current .env key returns 401, rotated)",
+        "the live anti-convergence guard (test_shared_self_model_does_not_homogenise_voice_live) — same key block"
+      ],
+      "honest_limits": [
+        "MENO_SELF is ~3.4k tokens: clears Sonnet (associate+wonder cache) but not Opus 4096 (synthesise uncached) — accepted, not padded",
+        "the prompt-homogenisation risk is genuinely untested offline (the stub can't be influenced by system=); it rests on the panel lens + the deferred live test"
+      ]
+    }
+  },
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "120 passed, 4 skipped"}
+}

@@ -302,6 +302,40 @@ def divergence(graph_a: Graph, graph_b: Graph) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# 6. Anti-convergence — two minds, same inputs, different VOICE
+# --------------------------------------------------------------------------- #
+def _vocab(texts: List[str]) -> set:
+    out: set = set()
+    for t in texts:
+        out |= _content_terms(t or "")
+    return out - _BOILERPLATE
+
+
+def output_divergence(outputs_a: List[str], outputs_b: List[str]) -> dict:
+    """The prompt/config axis of the standing guard (roadmap S/K).
+
+    ``divergence()`` measures structural non-substitutability over the graph — and is
+    therefore BLIND to a change in the system prompt, which cannot enter it. But the
+    S/K leak risk is exactly a shared prompt (the self-model) or a shared Library
+    homogenising two minds' VOICE while their graphs stay distinct. So this measures
+    the generated text itself: two instances run over the SAME percepts must still
+    produce divergent OUTPUT. High → particular voices; low → a shared prefix has
+    flattened them toward one mind (identity leaking into text/config — back it out).
+    Vocabulary distance with kernel/stub boilerplate removed, so shared scaffolding
+    does not read as shared selfhood.
+
+    The honest, complete form needs real cognition (does the shared self-model make
+    two graphs *sound* alike?) and runs at the phase gate. Offline, over stub
+    reconstructions, it still discriminates different-graph from same-graph pairs —
+    proving the mechanism: a shared prefix does not erase substrate-driven voice."""
+    va, vb = _vocab(outputs_a), _vocab(outputs_b)
+    dist = _jaccard_distance(va, vb)
+    return {"score": round(dist, 3),
+            "shared_terms": len(va & vb),
+            "distinct_terms": len((va | vb) - (va & vb))}
+
+
+# --------------------------------------------------------------------------- #
 # Aggregate verdict
 # --------------------------------------------------------------------------- #
 # Thresholds are the bar for "this mark is genuinely present", with margin above
@@ -310,8 +344,12 @@ def divergence(graph_a: Graph, graph_b: Graph) -> dict:
 #     0.25 = half of one genuine emergent insight, unreachable by the stub.
 #   - particularity: a uniform ring scores ~0; 0.20 needs real degree concentration.
 #   - initiative: needs >=2 sustained self-acts (0.60 base), not one scripted tick.
+#   - divergence / anti_convergence: 0.25 = a quarter of the vocabulary/structure
+#     genuinely distinct between two minds. anti_convergence is the bar for the
+#     *live* guard (real cognition over the same percepts, different graphs); offline
+#     it only gates the mechanism-discrimination check (different-graph >> same-graph).
 PASS = {"particularity": 0.20, "initiative": 0.60, "synthesis": 0.25,
-        "novelty": 0.30, "divergence": 0.25}
+        "novelty": 0.30, "divergence": 0.25, "anti_convergence": 0.25}
 _CORE = ("particularity", "initiative", "synthesis")
 
 
