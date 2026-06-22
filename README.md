@@ -28,9 +28,14 @@ Full design: [`docs/redesign.md`](docs/redesign.md) (logical kernel) and
 [`docs/system-design.md`](docs/system-design.md) (components). Every
 implementation choice is logged in [`docs/decisions.md`](docs/decisions.md). The
 realised kernel (R0–R5) is in [`docs/realisation-plan.md`](docs/realisation-plan.md);
-what's next lives in [`docs/roadmap-ii.md`](docs/roadmap-ii.md).
+the self-knowledge / reference / reach chapter is in
+[`docs/roadmap-ii.md`](docs/roadmap-ii.md). To **run one**, see
+[`docs/operating.md`](docs/operating.md) (build / configure / start) and
+[`docs/instance-layout.md`](docs/instance-layout.md) (the on-disk home).
 
 ## Run it
+
+**The offline demo** (no key, no network — see one run of the whole loop):
 
 ```bash
 python -m meno                 # scripted demo of the whole loop (offline)
@@ -39,6 +44,19 @@ python -m meno --anthropic     # use real Claude models for cognition (see below
 python -m meno --split-embed   # real local semantic memory (cheap hot + ST cold; see below)
 python -m pytest -q            # offline, deterministic test suite
 ```
+
+**A real, persistent instance** (`pip install .` puts `meno` on the path):
+
+```bash
+meno init   ~/.meno/meno-pid --handle meno-pid   # scaffold an instance home
+meno run    ~/.meno/meno-pid                      # run the home-bound daemon
+meno status ~/.meno/meno-pid                      # cycles, nodes, cognition real-fraction
+```
+
+Configure it via `~/.meno/meno-pid/meno.toml` (cognition tier, embedder, egress
+allowlist), supply secrets as environment variables, and — optionally — package it as
+an OCI image with the home as a mounted volume. **Full build / configure / start
+guide: [`docs/operating.md`](docs/operating.md).**
 
 No API key or network required by default: a deterministic offline model stub, a
 local hashing embedder, and an in-process graph. **Real cognitive models** are a
@@ -77,21 +95,32 @@ dimension. A vector/graph DB is likewise selectable behind the same interface
 ## Layout
 
 ```
-meno/      the package (one module per component; see CLAUDE.md for the map)
-docs/      redesign.md, system-design.md, decisions.md, reflection.md, 01-07 (v1 theory)
-tests/     offline, deterministic subsystem + integration tests
+meno/           the kernel (one module per component; see CLAUDE.md for the map)
+meno_adapters/  the integration layer — channels/network, kept OUT of the kernel
+docs/           redesign.md, system-design.md, decisions.md, operating.md, …
+tests/          offline, deterministic subsystem + integration tests
 ```
 
 ## Status
 
-The bare loop runs end to end with offline stand-ins and a passing test suite,
-persists its consolidated graph across restarts (`Meno.save`/`load`), drives its
-cognition with **real Claude models** (`--anthropic`), and backs its associative
-memory with a **real local semantic embedder** behind a hot/cold split
-(`--split-embed`). Deferred (see the docs' open lists): a vector/graph DB backend,
-the sensor catalogue + event wire-schema + API, warm-tier (suspended-stream)
-persistence, skills (procedural memory), and the async worker pool that would run
-model calls concurrently — alongside three logged lifetime-growth items (D19: the
-episodic `bus.log`, the warm-stream pool, and cue accumulation) that only bite in
-a long-running process. Scoring constants in `meno/config.py` are first cuts, to
-be tuned empirically.
+The loop runs end to end with offline stand-ins and a passing suite, persists its
+graph across restarts, drives cognition with **real Claude models** (`--anthropic`)
+and a **real local embedder** (`--split-embed`). On top of the realised kernel
+(R0–R5), the **self-knowledge / reference / reach** chapter is built (see
+[`docs/roadmap-ii.md`](docs/roadmap-ii.md)):
+
+- **S** — a mechanics-only self-model on every cognitive tier (type, not identity).
+- **K1/K2** — a **Library** (reference memory, distinct from the substrate) and
+  *know-when-to-look-up*: a factual curiosity routes to a lookup, the result informs
+  cognition but is never encoded as experience.
+- **I0–I2** — a runnable **instance**: `meno init / run / status`, a home-bound daemon
+  (sleep-not-amnesia), an **OCI image** (image = type, home = volume), a deny-by-default
+  **egress** boundary, and a **Slack** channel — afferent (consented, redacted) and a
+  **gated** efferent (disabled by default, scoped, rate-limited, confirm-first, audited).
+
+Each phase passed a multi-lens adversarial review before landing. **Remaining:** K3
+(external network authorities), and the config-driven adapter loader that lets
+`meno run` attach channels from `adapters/*.toml` (today they attach in code — see
+[`docs/operating.md`](docs/operating.md) §5). Deferred scale items (a vector/graph DB,
+the async worker pool, D19 lifetime-growth) remain in the docs' open lists; scoring
+constants in `meno/config.py` are first cuts, tuned empirically.

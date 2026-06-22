@@ -71,7 +71,11 @@ reconsolidates reflections. **Initiative** is what spare budget does in the quie
 - `graph.py` cold memory + reflection cues · `embeddings.py` vectors
 - `consolidation.py` the dream · `control.py` heartbeat / wake triggers
 - `sensorium.py` afferent sensors + efferent intents · `runtime.py` wires it all
-- `config.py` every tunable constant · `__main__.py` runnable demo
+- `self_model.py` the mechanics-only type description (S) · `library.py` reference memory (K1)
+- `home.py` instance home / config loader / egress (I0b) · `cli.py` the `meno` command
+- `aliveness.py` the zombie-test marks · `config.py` every tunable constant · `__main__.py` demo
+- `meno_adapters/` (sibling package, NOT the kernel): `base.py` the Adapter seam +
+  `DeliveryResult` · `loopback.py` · `slack.py` Slack afferent + gated efferent (I1/I2)
 
 ## Run it
 
@@ -82,6 +86,10 @@ python -m meno --anthropic     # real Claude models (needs `pip install anthropi
 python -m meno --split-embed   # real local embeddings (needs `pip install sentence-transformers`)
 python -m pytest -q            # the test suite (offline, deterministic)
 ```
+
+A **persistent instance** (build/configure/start) is operated via the `meno` command
+(`meno init|run|status`) — see `docs/operating.md`. The kernel stays stdlib-only;
+network/channels live in `meno_adapters/` (enforced by a kernel-purity test).
 
 Defaults are offline: `StubModelProvider` + `HashingEmbedding` + in-process graph,
 so no API key or network is needed. Real cognitive models (Haiku 4.5 / Sonnet 4.6
