@@ -181,6 +181,31 @@
         "outbound intents that post carry egress=True; the daemon (start() mode) runs the off-thread worker so a post never blocks cognition"
       ]
     }
+    },
+    "I2": {
+      "name": "Gated Slack effector (outward action) — the highest-stakes phase",
+      "status": "complete",
+      "modules": ["meno_adapters/slack.py (efferent: handles/deliver/confirm_send/_send/_audit/_gate)", "meno_adapters/base.py (DeliveryResult)", "meno/driver.py (egress handed to adapters)", "meno/aliveness.py (self_echo_fraction + zombie_report integration)"],
+      "tests": "tests/test_slack_efferent.py (18)",
+      "deliverable": "Meno can POST to Slack, but only through a gate that fails safe at every layer: disabled-by-default, post_channels scope (distinct from the read list), rate limit, egress, confirm-first (the mind CANNOT self-approve; an out-of-band operator step approves, re-applying the full gate). Every decision (delivered/refused/pending) is audited. Own posts are skipped on re-read and a self_echo_fraction mark flags echo-inflated particularity so the verdict can't credit a self-talking agent as alive.",
+      "adversarial_review": {
+        "lenses": "safety/gating + runtime/self-echo/tests (2-agent panel)",
+        "verdict": "PASS, no P0 — no path to an unintended live post; enabled=False un-bypassable; the mind cannot self-approve; egress independent defense-in-depth",
+        "self_caught": "the mind could self-approve confirm-first via a payload `confirmed` flag -> ignored; only confirm_send (operator, no mind path) approves",
+        "p1_closed": [
+          "confirm_send was a BACK DOOR around the gate (re-validated nothing — scope/rate/disabled/egress drift between author and approve) -> the full gate is re-applied at confirm",
+          "egress was structurally absent from the confirm path -> the Driver hands the adapter the egress policy; _gate checks it on BOTH send paths",
+          "audit recorded successes only -> records every decision (delivered/refused/pending) with an outcome — a refused out-of-scope attempt is the highest-value security event",
+          "self_echo mark false-positive (short ack substring-matched external) -> min-length guard; false-negative (redact/truncate divergence) -> prefix match; documented best-effort backstop to the sensor skip",
+          "_pending grew unbounded (mind-driven) -> bounded (max_pending; refuse pending-overflow)"
+        ],
+        "p2_closed": ["off-thread post now tested under threading (slow post blocks the worker, not cognition)", "refused-feedback + audit-on-refusal tested", "audit reworded append-only (not crypto-immutable); single-writer concurrency invariant documented"],
+        "p2_open": ["bot_user_id-None should warn when efferent enabled (self-echo skip degrades to subtype-only)", "live self:slack tagging at re-read would make the deterministic mark branch fire (currently content-backstop only)"],
+        "final_state": "no P0; self-caught self-approval hole + 5 P1 + P2s closed; offline suite 210 passed / 5 skipped."
+      },
+      "i_exit_gate": "DEFERRED — the full live meno.zombie_run with own_outputs=adapter.sent_texts (self-echo) + real Slack posting need a funded key + a Slack token. Offline: the gate's every-layer-refuses + self-echo mark + off-thread property are all tested.",
+      "live_safety_posture": "Nothing posts live until BOTH a SLACK_BOT_TOKEN is present AND an operator sets enabled=True with post_channels; confirm-first then still requires per-post approval. Default = silence."
+    }
   },
-  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "192 passed, 5 skipped"}
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "210 passed, 5 skipped"}
 }

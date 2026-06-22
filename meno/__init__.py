@@ -33,6 +33,7 @@ from .aliveness import (
     initiative,
     novelty,
     particularity,
+    self_echo_fraction,
     synthesis,
     zombie_report,
 )
@@ -48,7 +49,7 @@ __all__ = [
     "Sensor", "FilesystemSensor", "ChatSensor", "LogSensor",
     "Library", "Reference", "WritebackRejected", "seed_library",
     "zombie_report", "particularity", "initiative", "synthesis",
-    "novelty", "divergence",
+    "novelty", "divergence", "self_echo_fraction",
 ]
 
 __version__ = "2.0.0"

@@ -168,28 +168,17 @@ def test_a_message_is_not_re_emitted_on_the_next_poll():
     assert len(out) == 1 and "second" in out[0][0]
 
 
-# --- I1 is SENSE-ONLY: there is no send path ------------------------------------- #
-def test_no_efferent_send_path_exists():
-    ad = _adapter(["C_meno"], {}, channels=["C_meno"])
-    assert ad.handles("post") is False and ad.handles("anything") is False
-    with pytest.raises(NotImplementedError):     # no deliver() — posting is I2, behind the gate
-        ad.deliver({"action": "post"})
+# --- a sense-only deployment posts NOTHING (efferent is opt-in; full gate in I2) -- #
+def test_efferent_is_disabled_by_default_so_a_sense_only_deployment_posts_nothing():
+    ad = _adapter(["C_meno"], {}, channels=["C_meno"])   # constructed for sense; efferent untouched
+    assert ad.enabled is False
+    res = ad.deliver({"action": "post", "channel": "C_meno", "text": "x"})
+    assert res.status == "refused" and res.reason == "disabled"   # nothing goes out
 
 
 def test_adapter_is_inert_without_a_client():
     ad = SlackAdapter(channels=["C_meno"])       # no client, no token -> not available
     assert ad.available is False and ad.poll() == []
-
-
-def test_source_has_no_slack_write_call():
-    """A static guard: until I2's gate exists, no write/post API call may sneak into the
-    afferent adapter. The only Slack methods used are reads."""
-    import pathlib
-    import meno_adapters.slack as mod
-    src = pathlib.Path(mod.__file__).read_text().lower()
-    for write_method in ("postmessage", "chat_post", "files_upload", "conversations_open",
-                         "chat_update", "chat.post"):
-        assert write_method not in src, write_method
 
 
 # --- integration: a Slack message flows into the loop as a SENSE percept ---------- #

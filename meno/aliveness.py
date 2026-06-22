@@ -337,6 +337,42 @@ def output_divergence(outputs_a: List[str], outputs_b: List[str]) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# 7. Self-echo — the agent hearing its own output and banking it as experience
+# --------------------------------------------------------------------------- #
+def self_echo_fraction(meno, own_outputs: List[str]) -> dict:
+    """Of the EXTERNAL percepts banked into the graph (world-sensed — e.g.
+    `source="slack"`, or anything tagged `self:*`), the fraction that are the agent's
+    OWN posted output re-entering: the agent talking to itself through a network
+    round-trip and counting the echo as experience (I2). Once an effector posts, the
+    afferent sensor re-reads the channel — if its own posts are not dropped, they form
+    nodes and inflate particularity/divergence with manufactured idiosyncrasy.
+
+    ~0 when own posts are dropped at the sensor (the primary guard; this content match
+    is the best-effort BACKSTOP for when that skip fails). LOWER is better (inverted).
+
+    Two guards on the content match: a MINIMUM length on own outputs (a short ack like
+    "ok" must not substring-match a genuinely external message — false positive), and a
+    PREFIX comparison (the re-read percept is redacted+truncated, so match the head of
+    the post, which survives both — reduces false negatives). A `self:`-tagged source is
+    counted unconditionally (the deterministic path)."""
+    own = [o[:60] for o in (_norm(x) for x in (own_outputs or [])) if len(o.split()) >= 4]
+    external = [n for n in meno.graph.nodes.values()
+                if (n.meta or {}).get("external")
+                or str((n.meta or {}).get("source", "")).startswith("self:")]
+    if not external:
+        return {"score": 0.0, "external_nodes": 0, "echoed": 0}
+    echoed = sum(1 for n in external
+                 if str((n.meta or {}).get("source", "")).startswith("self:")
+                 or any(o in _norm(n.content) for o in own))
+    return {"score": round(echoed / len(external), 3),
+            "external_nodes": len(external), "echoed": echoed}
+
+
+def _norm(t: str) -> str:
+    return " ".join((t or "").lower().split())
+
+
+# --------------------------------------------------------------------------- #
 # Aggregate verdict
 # --------------------------------------------------------------------------- #
 # Thresholds are the bar for "this mark is genuinely present", with margin above
@@ -349,8 +385,10 @@ def output_divergence(outputs_a: List[str], outputs_b: List[str]) -> dict:
 #     genuinely distinct between two minds. anti_convergence is the bar for the
 #     *live* guard (real cognition over the same percepts, different graphs); offline
 #     it only gates the mechanism-discrimination check (different-graph >> same-graph).
+#   - self_echo: INVERTED (lower is better). 0.20 = up to a fifth of external nodes
+#     may coincidentally echo own output before particularity is judged inflated.
 PASS = {"particularity": 0.20, "initiative": 0.60, "synthesis": 0.25,
-        "novelty": 0.30, "divergence": 0.25, "anti_convergence": 0.25}
+        "novelty": 0.30, "divergence": 0.25, "anti_convergence": 0.25, "self_echo": 0.20}
 _CORE = ("particularity", "initiative", "synthesis")
 
 
@@ -358,6 +396,7 @@ def zombie_report(meno, *, inputs: Optional[List[str]] = None,
                   generated: Optional[List[str]] = None,
                   reflection_texts: Optional[Dict[int, str]] = None,
                   other: Optional["object"] = None,
+                  own_outputs: Optional[List[str]] = None,
                   cognition_real: Optional[bool] = None) -> dict:
     """Run the marks and return a structured, auditable verdict.
 
@@ -388,12 +427,16 @@ def zombie_report(meno, *, inputs: Optional[List[str]] = None,
         marks["novelty"] = novelty(gen, inputs)
     if other is not None:
         marks["divergence"] = divergence(meno.graph, other.graph)
+    if own_outputs is not None:
+        marks["self_echo"] = self_echo_fraction(meno, own_outputs)
 
-    passed = {k: (m["score"] >= PASS[k]) for k, m in marks.items()}
+    # self_echo is INVERTED (a guard: low is good); the rest are "present if >= bar"
+    passed = {k: (m["score"] <= PASS[k] if k == "self_echo" else m["score"] >= PASS[k])
+              for k, m in marks.items()}
     if cognition_real is not True:
         verdict = "indeterminate"                   # cannot certify life without real cognition
-    elif all(passed[k] for k in _CORE):
-        verdict = "alive"
+    elif all(passed[k] for k in _CORE) and passed.get("self_echo", True):
+        verdict = "alive"                           # echo-inflated particularity can't read alive
     else:
         verdict = "zombie"
     failed = [k for k, ok in passed.items() if not ok]
