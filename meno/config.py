@@ -77,6 +77,12 @@ class Config:
     curiosity_discharge_threshold: float = 0.45  # intensity above which a curiosity can act
     curiosity_register_cap: int = 16      # bounded register
     boredom_ticks: int = 3                # consecutive idle heartbeat ticks before reaching out
+    # K2: substrate-first lookup. When True (default), a factual curiosity the
+    # substrate can genuinely reconstruct (>= the reconstructed band) is reconstructed
+    # instead of looked up — lookup augments memory, never supplants it. A faint ghost
+    # is reconstructed AND corroborated by lookup. Set False only to demonstrate the
+    # guard is load-bearing (the supplantation ratio then spikes — it is falsifiable).
+    substrate_first_lookup: bool = True
 
     @property
     def load_norm_base(self) -> int:

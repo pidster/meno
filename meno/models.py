@@ -26,6 +26,20 @@ _STOP = {"the", "a", "an", "is", "are", "of", "to", "and", "in", "on", "it",
          "this", "that", "i", "you", "for", "with", "what", "why", "how"}
 
 
+_FACTUAL_FRAMES = ("what is", "what are", "what does", "define ", "definition of",
+                   "meaning of", "synonym for", "who is", "when did", "where is")
+
+
+def looks_factual(text: str) -> bool:
+    """A cheap heuristic: does a curiosity ask for a *fact* (look-up-able) rather than
+    invite reflection? Distinguishes 'what is the definition of entropy' (lookup) from
+    'how do i feel about forgetting' (reconstruct from the substrate). Used by the
+    stub's wonder routing so the offline suite can exercise lookup; the real model
+    makes the same call in prose."""
+    low = (text or "").strip().lower()
+    return any(low.startswith(f) or f in low for f in _FACTUAL_FRAMES)
+
+
 def _keywords(text: str, n: int = 4) -> List[str]:
     seen, out = set(), []
     for tok in re.findall(r"[a-zA-Z0-9]+", text.lower()):
@@ -95,6 +109,11 @@ class StubModelProvider(ModelProvider):
 
     def wonder(self, text: str, referent: Optional[str] = None) -> dict:
         ref = str(referent or "")
+        if looks_factual(text):
+            # a factual curiosity -> look it up in the Library (K2). The runtime still
+            # owns substrate-first: it only emits this intent when memory can't serve.
+            return {"mode": "external", "thought": None,
+                    "action": {"action": "lookup", "key": text}}
         if "/" in ref or ref.endswith((".txt", ".md", ".py", ".json", ".log")):
             # a world referent -> reach outward (the Effector will read it)
             return {"mode": "external", "thought": None,
@@ -131,9 +150,11 @@ _RELATE_SYSTEM = ("Decide whether two trains of thought are fundamentally about 
                   "the same matter (and should merge).")
 
 _WONDER_SYSTEM = ("A curiosity has arisen. Decide how to follow it. Respond inward "
-                  "(a thought to think) or outward (read a file you're curious about) "
-                  "or both — whatever fits. Only propose a file path you were actually "
-                  "given a referent for.")
+                  "(a thought to think), or outward — either look a fact up in your "
+                  "library (action 'lookup', target = the term/key) or read a file you "
+                  "were given a referent for (action 'fs_read', target = the path) — or "
+                  "both. Use 'lookup' for factual questions; think inward for matters of "
+                  "perspective. Only propose a file path you were actually given.")
 
 # The role lines above are *surface-specific* and short. Phase S (roadmap-ii.md)
 # prepends the shared self-model — what a Meno is and how it operates — as a
@@ -318,7 +339,7 @@ class AnthropicModelProvider(ModelProvider):
         def real():
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[2],
-                max_tokens=512,        # the structured {mode,thought,path} JSON; 200 truncated
+                max_tokens=512,        # the structured {mode,thought,action,target} JSON; 200 truncated
                 system=_system_blocks(_WONDER_SYSTEM, _DEPTH["wonder"]),
                 messages=[{"role": "user",
                            "content": f"Curiosity: {text}\nReferent: {referent or '(none)'}"}],
@@ -327,20 +348,27 @@ class AnthropicModelProvider(ModelProvider):
                     "properties": {
                         "mode": {"type": "string", "enum": ["internal", "external", "both"]},
                         "thought": {"type": "string"},
-                        "path": {"type": "string"}},
-                    "required": ["mode", "thought", "path"], "additionalProperties": False}}},
+                        "action": {"type": "string", "enum": ["none", "lookup", "fs_read"]},
+                        "target": {"type": "string"}},
+                    "required": ["mode", "thought", "action", "target"],
+                    "additionalProperties": False}}},
             )
             data = json.loads(self._text(msg))
             mode = data.get("mode", "internal")
             thought = data.get("thought") or None
-            path = (data.get("path") or "").strip()
+            act_kind = data.get("action", "none")
+            target = (data.get("target") or "").strip()
             # a route must carry what its mode promises, else it is a no-op dressed
             # as cognition -> treat as degradation (R1 review, data lens P1.3)
             if mode in ("internal", "both") and not thought:
                 raise ValueError("internal/both route with no thought")
-            if mode in ("external", "both") and not path:
-                raise ValueError("external/both route with no path")
-            action = {"action": "fs_read", "path": path} if path else None
+            if mode in ("external", "both") and (act_kind == "none" or not target):
+                raise ValueError("external/both route with no action+target")
+            action = None
+            if act_kind == "lookup" and target:
+                action = {"action": "lookup", "key": target}
+            elif act_kind == "fs_read" and target:
+                action = {"action": "fs_read", "path": target}
             return {"mode": mode, "thought": thought, "action": action}
         return self._run("wonder", real, self.fallback.wonder, (text, referent))
 

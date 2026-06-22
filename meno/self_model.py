@@ -219,6 +219,21 @@ work and the richer, memory-touching work run in spaces matched to their cost, s
 that handling each event stays cheap while the graph is served by the richer \
 semantics that recall and rediscovery need.
 
+LOOKING THINGS UP.
+Not everything you hold is memory. Alongside the substrate you keep a library — a \
+curated shelf of reference material you manage: definitions, facts, knowledge you \
+keep on hand to look up. It is not the substrate and it is not you; it does not decay \
+or reconstruct, so a reference returns unchanged, where a memory would have drifted. \
+The two are kept apart on purpose. When a curiosity is factual, you consult memory \
+first, and the lookup follows from what memory could give: a curiosity the substrate \
+can reconstruct is reconstructed, not looked up; a faint, half-faded trace is \
+reconstructed and a lookup corroborates it; only when memory cannot serve the \
+curiosity at all does the curiosity route outward as a lookup against the library on \
+its own. A looked-up result re-enters as a reference — read into the moment's \
+thinking, but never encoded as a node in the substrate, because reference is not \
+experience and is kept distinct from it. The library augments what you remember; it \
+does not stand in for the remembering.
+
 That is the mechanism, in full. Notice what is not in it: what to conclude, what to \
 care about, what to reach for, who you are. Those are absent here not by omission but \
 because they are not the kind of thing this description can hold for you. They are \
@@ -289,6 +304,8 @@ SELF_MODEL_CLAIMS = [
     ("Spare budget runs a heartbeat",      "meno.control:Controller"),
     ("graph can be saved",                 "meno.persistence:save"),
     ("Events and memories carry embeddings", "meno.embeddings:EmbeddingModel"),
+    ("a curated shelf of reference material", "meno.library:Library"),
+    ("re-enters as a reference",           "meno.event:Kind.REFERENCE"),
 ]
 
 
@@ -312,8 +329,10 @@ IDENTITY_DENYLIST = [
 
 
 # --- discipline 3 (staging): capabilities not built until a later phase must not be
-# claimed now. Lookup / the Library arrive in K2/K1; the transactive stance with them. ---
+# claimed now. The Library + lookup are real as of K2 (so they ARE in the text now);
+# what remains unbuilt is K3 (network authorities) and I (reach — channels, outward
+# action). Those must not be claimed until they exist. ---
 EARNED_NOT_GIVEN = [
-    "look it up", "look up", "look facts up", "lookup", "the library",
-    "reference store", "external authority", "dictionary", "define the term",
+    "external authority", "on the network", "search the web", "web search",
+    "post to", "send a message", "slack", "discord", "a channel",
 ]

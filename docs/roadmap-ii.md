@@ -249,23 +249,26 @@ action vocabulary from `fs_read` to `{define, lookup, search}`; add the transact
   *default* path. Fix: a new **`Kind.REFERENCE`** excluded from `ENCODE` (preferred)
   *or* a `source=="reference"` encode-skip in `Appraiser`. A reference may *inform*
   cognition (be read in the working set) without being *encoded* as experience.
-- **Action vocabulary.** `wonder()` returns `{mode, thought, path}` today and
-  hardcodes `{action: "fs_read", path}` (models.py:309). Generalise to an action
-  object `{kind: fs_read|lookup|define, ...}`; generalise the validation
-  (currently "external route needs a path") to "needs a key or a path per kind".
-  Extend `Effector.triggers` (hardcoded `fs_read/fs_write`, processors.py:190) so a
-  `lookup` intent is dispatched, not silently dropped.
+- **Action vocabulary.** *As-built:* the real `wonder()` returns
+  `{mode, thought, action, target}` where `action ∈ {none, lookup, fs_read}` and
+  `target` is the key (lookup) or path (fs_read); it builds the dispatch dict
+  `{action: "lookup", key}` / `{action: "fs_read", path}`. Validation: an
+  external/both route needs `action != none` and a `target`. `Effector.triggers`
+  extended to `fs_read/fs_write/lookup/define` so a lookup intent is dispatched, not
+  dropped (`define` is dispatch-capable; the model emits `lookup`).
 - **Stub routing.** The offline stub routes `wonder` by sniffing for `/`
   (models.py:96); top-down curiosities never look like paths, so `lookup` never
   fires offline. Add a "looks-factual" heuristic to the stub so the offline suite
   can exercise K2.
-- **Don't-become-a-lookup-machine — measured as supplantation, not volume.** A
-  per-cycle *cap* bounds volume, not supplantation. The real guard: of the cues
-  that *could* be reconstructed from the substrate (`recall()` reports
-  `reconstructed`/`ghost`, models.py:244), what fraction were routed to lookup
-  instead? `assert lookup_when_reconstructable_fraction < threshold`. Lookup
-  corroborates a faded memory; it does not skip reconstruction. (A volume cap may
-  still exist as a coarse backstop, but the supplantation ratio is the outcome.)
+- **Don't-become-a-lookup-machine — measured as supplantation, not volume.** *As-
+  built:* substrate-first routing in `_discharge_curiosity`. A factual curiosity
+  consults memory first (`recall()` band): a **reconstructed** result (≥0.33) is
+  reconstructed, not looked up (suppressed); a **ghost** (0.18–0.33) is reconstructed
+  AND corroborated by lookup (mode `both`); only `none` looks up alone. The
+  `supplantation_ratio` = of curiosities a genuine reconstruction could serve, the
+  fraction looked up anyway — ~0 with the guard on, and **falsifiable** (toggle
+  `cfg.substrate_first_lookup` off → it spikes to 1, so the metric isn't a tautology).
+  Ghost-corroboration is not counted as supplantation (memory was reconstructed too).
 - **Transactive stance enters here, as mechanics.** Append to `_MENO_SELF`: "a
   `lookup` route resolves a factual curiosity against the Library and re-enters the
   result tagged `reference`" — describing the capability, never prescribing distrust.
@@ -283,10 +286,14 @@ action vocabulary from `fs_read` to `{define, lookup, search}`; add the transact
 **Outcomes (assertable).**
 - *Discrimination (the keystone).* Fixture — `experiential="how do i feel about
   forgetting"`, `factual="what is the definition of entropy"`. After the factual
-  percept: `assert any(e.payload['action']['kind'] in ('lookup','define') for e in
-  bus.log)` and graph reconstruction is not the primary path. After the
-  experiential percept: `assert not any(... lookup ...)` and the path is substrate
-  reconstruction.
+  curiosity: an INTENT with `payload['action'] == 'lookup'` is emitted (the action is
+  a string, dispatched by the Effector) and graph reconstruction is not the primary
+  path. After the experiential curiosity: no lookup INTENT — the path is an internal
+  thought / substrate reconstruction. (`define` is dispatch-capable but the model
+  emits `lookup`; `search` is deferred to the backlog — needs the cold embedder.)
+  *As-built (shipped):* the discrimination is exercised offline via the stub's
+  `looks_factual` heuristic (the routing seam); the real-cognition judgment is the
+  K-exit live gate.
 - *Provenance.* The re-entered percept has `kind == Kind.REFERENCE` (or
   `payload['source']=='reference'`) and `external is True`; a second lookup of the
   same key is a Library hit (`assert library_get_call_count == 1` across two

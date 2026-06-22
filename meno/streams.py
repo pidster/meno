@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 
 from .config import Config
 from .embeddings import EmbeddingModel, cosine
-from .event import Event
+from .event import Event, Kind
 
 
 @dataclass
@@ -59,9 +59,13 @@ class StreamManager:
             event.stream_id = best_id
             self._absorb(event)
             return best_id
-        # born: a new line of thought
+        # born: a new line of thought. A REFERENCE (a looked-up fact) must not become
+        # the summary — the summary is the train of thought's identity, and reference
+        # is not experience; a reflection later occasioned by this stream must not be
+        # labelled by a looked-up fact (K2 contamination guard).
         self._stream_seq += 1
-        s = Stream(centroid=list(event.embedding), summary=event.content[:60], id=self._stream_seq)
+        summary = "" if event.kind == Kind.REFERENCE else event.content[:60]
+        s = Stream(centroid=list(event.embedding), summary=summary, id=self._stream_seq)
         self.active[s.id] = s
         event.stream_id = s.id
         self._absorb(event)
@@ -75,10 +79,15 @@ class StreamManager:
         w = self.cfg.stream_material_window
         if len(s.event_ids) > w:
             s.event_ids = s.event_ids[-w:]
-        b = self.cfg.centroid_blend
-        s.centroid = [(1 - b) * c + b * e for c, e in zip(s.centroid, event.embedding)]
+        # A REFERENCE nudges nothing stream-persistent: not the summary (above), and
+        # not the centroid either — a looked-up fact must not re-shape what a train of
+        # thought is *about* (which steers future routing/merge). It informs the moment
+        # and is gone (K2 contamination guard, airtight).
+        if event.kind != Kind.REFERENCE:
+            b = self.cfg.centroid_blend
+            s.centroid = [(1 - b) * c + b * e for c, e in zip(s.centroid, event.embedding)]
         s.last_active = time.time()
-        if not s.summary:
+        if not s.summary and event.kind != Kind.REFERENCE:
             s.summary = event.content[:60]
 
     # --- merge: convergence = insight ---

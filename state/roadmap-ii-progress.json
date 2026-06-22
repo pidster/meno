@@ -69,6 +69,34 @@
         "watch unbounded non-decaying growth if K2 writes a fact back on every lookup (curation implies pruning too)"
       ]
     }
+    },
+    "K2": {
+      "name": "Know-when-to-look-up (lookup as the agent curating its shelf)",
+      "status": "complete",
+      "modules": ["meno/event.py (Kind.REFERENCE)", "meno/processors.py (Appraiser APPRAISE!=ENCODE split; Effector._lookup + library_key_candidates)", "meno/models.py (looks_factual; wonder action vocab lookup/define)", "meno/runtime.py (substrate-first _discharge_curiosity; supplantation_ratio)", "meno/streams.py (REFERENCE touches no summary/centroid)", "meno/self_model.py (LOOKING THINGS UP paragraph)", "meno/config.py (substrate_first_lookup)"],
+      "tests": "tests/test_lookup_k2.py (15)",
+      "deliverable": "A factual curiosity routes to a Library lookup; the Effector resolves it and re-enters the result as Kind.REFERENCE — appraised (informs the moment) but NEVER encoded as a graph node (substrate-contamination guard). Substrate-first: a reconstructable curiosity is reconstructed not looked up; a ghost is reconstructed AND corroborated; only memory-insufficient looks up alone. The transactive paragraph enters _MENO_SELF as mechanics (D25), with lookup/Library freed from EARNED_NOT_GIVEN (now built).",
+      "decision": "D25 (self-managed curation)",
+      "adversarial_review": {
+        "lenses": "contamination/data-semantics + theory/supplantation + kernel-fit/tests (3-agent panel)",
+        "contamination_verdict": "PASS, no leak across 7 traced vectors — the encode-skip holds; I also caught + fixed a stream-summary contamination vector during the slice, and hardened centroid blend to skip REFERENCE",
+        "p0_closed": "the supplantation guard was a TAUTOLOGY (the override nulled action before the telemetry read it, so supplanted was structurally 0 / ratio hardcoded 0) -> rebuilt band-aware with a FALSIFIABLE metric (toggle cfg.substrate_first_lookup off -> ratio spikes to 1; test proves it) measured at the actual emit",
+        "p1_closed": [
+          "reconstructable forbade lookup ENTIRELY incl. at the ghost floor (contradicted 'lookup corroborates a faded memory') -> bands: reconstructed (>=0.33) suppresses, ghost (0.18-0.33) corroborates (mode both), none looks up alone",
+          "the override emitted a placeholder instead of reconstructing -> now actually calls recall() (memory comes first is now true, not asserted)",
+          "self-model over-claimed 'chosen to retain' (the write-back/curation loop is K3, unbuilt) + 'Memory comes first' edged toward stance -> reworded to pure mechanics",
+          "missing tests: second-lookup-is-a-hit (idempotency), mixed-run supplantation, falsifiability -> all added"
+        ],
+        "p2_closed": ["centroid blend skipped for REFERENCE (airtight boundary)", "aliveness 'internal' bucket excludes REFERENCE", "stale {mode,thought,path} comment", "roadmap K2 outcome prose reconciled to the shipped string-action shape + define dispatch-only + search deferred"],
+        "final_state": "P0 + 4 P1 + P2s closed; offline suite 146 passed / 4 skipped."
+      },
+      "k_exit_gate": "the full live meno.zombie_run (real cognition) is DEFERRED — no funded key (401). Offline standing guard holds: stub reads not-alive (test_self_model_does_not_animate_the_stub + test_aliveness), twins still diverge with lookups active (test_lookup_does_not_flatten_particularity).",
+      "carry_forward_to_K3": [
+        "the curate/decide-to-retain half: K3 network results get written back to the Library (source='lookup:...'/'authority:...') — K2 only reads",
+        "memoisation/dedup so a repeated lookup doesn't re-hit a network authority (locally every lookup is already a Library hit)",
+        "looks_factual is a stub heuristic; real discrimination is the model's call (live-gated)"
+      ]
+    }
   },
-  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "131 passed, 4 skipped"}
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "146 passed, 4 skipped"}
 }

@@ -177,7 +177,8 @@ def initiative(meno) -> dict:
     self_events = [e for e in meno.bus.log if e.source in _SELF_SOURCES]
     fed = [e for e in meno.bus.log if e.kind.value == "sense"]
     internal = [e for e in meno.bus.log
-                if e.kind.value != "sense" and e.source not in _SELF_SOURCES]
+                if e.kind.value not in ("sense", "reference")   # a looked-up fact isn't the mind thinking
+                and e.source not in _SELF_SOURCES]
     curiosities = list(getattr(meno.curiosities, "items", []))
     bottom_up = sum(1 for c in curiosities if getattr(c, "source", "") == "bottom-up")
     total = len(self_events) + len(fed)

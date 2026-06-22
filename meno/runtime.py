@@ -53,6 +53,10 @@ class Meno:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.verbose = verbose
         self.deep_budget = self.cfg.deep_per_pass
+        # K2 supplantation telemetry: lookups fired; of the factual curiosities the
+        # substrate COULD serve (reconstructable), how many we still looked up
+        # (supplanted) vs preferred memory. The don't-become-a-lookup-machine guard.
+        self.lookup_tel = {"lookups": 0, "reconstructable_opportunities": 0, "supplanted": 0}
         self._idle_ticks = 0          # boredom: persists across heartbeats (R2 autonomy)
         self._curiosity_cursor = 0    # rotates top-down curiosity target + framing
         self._last_curiosity_ref = None   # anti-repeat: don't wonder twice in a row about one node
@@ -207,23 +211,67 @@ class Meno:
         self.curiosities.register(frame.format(x=node.content[:40]),
                                   source="top-down", referent=node.content)
 
+    @property
+    def supplantation_ratio(self) -> float:
+        """Of the factual curiosities the substrate could GENUINELY serve (a real
+        reconstruction was available), the fraction we looked up anyway instead of
+        reconstructing. The don't-become-a-lookup-machine guard (K2): lookup must
+        augment memory, never supplant it. ~0 with substrate-first on; a falsifiable
+        metric — turn `cfg.substrate_first_lookup` off and it spikes to ~1, proving the
+        guard is load-bearing and not a tautology. (A faint ghost corroborated by
+        lookup is NOT supplantation: memory was reconstructed too.) These are lifetime
+        counters — the guard is a standing one, not windowed."""
+        opp = self.lookup_tel["reconstructable_opportunities"]
+        return self.lookup_tel["supplanted"] / opp if opp else 0.0
+
     def _discharge_curiosity(self) -> List[Event]:
-        """Let the model route the top curiosity across the internal/external
-        matrix: an inward thought, an outward action (the Effector self-fires),
-        both, or neither-yet."""
+        """Let the model route the top curiosity across the internal/external matrix:
+        an inward thought, an outward action (the Effector self-fires), both, or
+        neither-yet. SUBSTRATE-FIRST (K2): consult memory before looking a fact up.
+        A curiosity the substrate can genuinely reconstruct (the reconstructed band) is
+        reconstructed, not looked up; a faint ghost is reconstructed AND corroborated
+        by a lookup; only when memory is insufficient does the lookup stand alone —
+        lookup augments the self, it never supplants it."""
         cur = self.curiosities.top()
         if cur is None or cur.intensity < self.cfg.curiosity_discharge_threshold:
             return []
         route = self.models.wonder(cur.text, cur.referent)
-        emitted: List[Event] = []
         mode = route.get("mode", "internal")
+        action = route.get("action")
+        wanted_lookup = bool(action) and action.get("action") in ("lookup", "define")
+
+        # substrate-first: a factual lookup consults memory first. recall() returns the
+        # band: 'reconstructed' (>=0.33, memory serves it) / 'ghost' (faint trace) /
+        # 'none'. We compute the band regardless of the policy flag so the metric stays
+        # falsifiable; we only ACT on it (suppress / corroborate) when the flag is on.
+        strong = False
+        if wanted_lookup:
+            recon = self.recall(cur.text)                    # actually reconstructs (>=0.33)
+            strong = recon["mode"] == "reconstructed"
+            ghost = recon["mode"] == "ghost"
+            if strong:
+                self.lookup_tel["reconstructable_opportunities"] += 1
+            if self.cfg.substrate_first_lookup:
+                if strong:                                   # memory serves it: reconstruct, don't look up
+                    mode, action = "internal", None
+                    route["thought"] = recon["text"]
+                elif ghost:                                  # faint trace: reconstruct AND corroborate
+                    mode = "both"
+                    route["thought"] = recon["text"]
+
+        emitted: List[Event] = []
         if mode in ("internal", "both") and route.get("thought"):
             ev = Event(content=route["thought"], kind=Kind.SELF, source="curiosity")
             ev.payload["role"] = "wonder"
             emitted.append(ev)
-        if mode in ("external", "both") and route.get("action"):
-            act = dict(route["action"])
-            ev = Event(content=f"intent: {act.get('action')} {act.get('path', '')}",
+        if mode in ("external", "both") and action:
+            act = dict(action)
+            if act.get("action") in ("lookup", "define"):
+                self.lookup_tel["lookups"] += 1
+                if strong:    # looked up despite a genuine reconstruction -> supplantation
+                    self.lookup_tel["supplanted"] += 1
+            target = act.get("path") or act.get("key") or act.get("term") or ""
+            ev = Event(content=f"intent: {act.get('action')} {target}",
                        kind=Kind.INTENT, source="curiosity", payload=act)
             emitted.append(ev)
         cur.intensity *= 0.3                                  # discharged — relaxes

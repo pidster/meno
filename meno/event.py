@@ -22,6 +22,9 @@ class Kind(str, Enum):
     STORAGE = "storage"    # a write occurred (storage-as-trigger)
     INTENT = "intent"      # an action intent destined for an effector
     FEEDBACK = "feedback"  # efferent proprioception: result of an action
+    REFERENCE = "reference"  # a looked-up fact from the Library: informs cognition,
+                             # but is NEVER encoded as a graph node (K2 — reference is
+                             # not experience; it must not contaminate the substrate)
 
 
 class Status(str, Enum):

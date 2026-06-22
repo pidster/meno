@@ -31,41 +31,50 @@ class Appraiser(Processor):
     name = "appraiser"
     tier = 1
 
-    # Only real percepts are encoded — afferent senses and effector feedback.
-    # Derived cognition (SELF/STORAGE) flows and may climb, but is not each
-    # turned into a node (that was the node-explosion bug). See decision D8.
+    # The appraiser APPRAISES (reacts to) afferent senses, effector feedback, AND
+    # looked-up references — so a reference informs the moment's cognition. But it
+    # only ENCODES (turns into a graph node) senses and feedback. A REFERENCE is read
+    # and NOT encoded (K2): reference is not experience, so it must never become a
+    # node in the identity substrate. Derived cognition (SELF/STORAGE) flows and may
+    # climb, but is not each turned into a node either (the node-explosion bug, D8).
+    APPRAISE = (Kind.SENSE, Kind.FEEDBACK, Kind.REFERENCE)
     ENCODE = (Kind.SENSE, Kind.FEEDBACK)
 
     def triggers(self, event: Event, mind) -> bool:
-        return self.name not in event.seen_by and event.kind in self.ENCODE
+        return self.name not in event.seen_by and event.kind in self.APPRAISE
 
     def run(self, event: Event, mind) -> List[Event]:
         event.seen_by.add(self.name)
         res = mind.models.appraise(event.content, event.surprise)
-        # encode as a provisional node (forgetting has a front end: weak, decays).
-        # The node lives in the GRAPH, so it must carry a COLD vector — not the
-        # event's hot one (which is only for surprise/routing). add_node embeds
-        # cold from content when no embedding is supplied (D20). With a single
-        # embedder the two spaces coincide, so this is a no-op there.
-        node = mind.graph.add_node(
-            event.content, kind="provisional",
-            salience=mind.cfg.provisional_salience,
-            # carry PROVENANCE: where this memory came from. World-sensed content
-            # (source != self/cognition) must be distinguishable from the agent's own
-            # thought, so the self-graph isn't quietly contaminated by ingested text.
-            meta={"event": event.id, "stream": event.stream_id,
-                  "source": event.source, "external": event.kind == Kind.SENSE})
-        event.node_id = node.id
-        event.status = Status.PROVISIONAL
+        if event.kind in self.ENCODE:
+            # encode as a provisional node (forgetting has a front end: weak, decays).
+            # The node lives in the GRAPH, so it must carry a COLD vector — not the
+            # event's hot one (which is only for surprise/routing). add_node embeds
+            # cold from content when no embedding is supplied (D20). With a single
+            # embedder the two spaces coincide, so this is a no-op there.
+            node = mind.graph.add_node(
+                event.content, kind="provisional",
+                salience=mind.cfg.provisional_salience,
+                # carry PROVENANCE: where this memory came from. World-sensed content
+                # (source != self/cognition) must be distinguishable from the agent's own
+                # thought, so the self-graph isn't quietly contaminated by ingested text.
+                meta={"event": event.id, "stream": event.stream_id,
+                      "source": event.source, "external": event.kind == Kind.SENSE})
+            event.node_id = node.id
+            event.status = Status.PROVISIONAL
+            stream = mind.streams.get(event.stream_id)
+            if stream is not None:
+                if stream.node_ids:                   # Hebbian: chain to the stream's prior node
+                    mind.graph.link(stream.node_ids[-1], node.id, weight=mind.cfg.hebbian_increment)
+                stream.node_ids.append(node.id)
+                w = mind.cfg.stream_material_window   # window the id list (D19 int-list bound)
+                if len(stream.node_ids) > w:
+                    stream.node_ids = stream.node_ids[-w:]
+        # A reference is appraised but left UNENCODED: no node, so the Associator
+        # (which needs event.node_id) won't weave it into the graph and synthesise
+        # won't draw it as material — it informs this moment, then is gone unless the
+        # self deliberately curates it into the Library (D25).
         event.depth_reached = max(event.depth_reached, 1)
-        stream = mind.streams.get(event.stream_id)
-        if stream is not None:
-            if stream.node_ids:                       # Hebbian: chain to the stream's prior node
-                mind.graph.link(stream.node_ids[-1], node.id, weight=mind.cfg.hebbian_increment)
-            stream.node_ids.append(node.id)
-            w = mind.cfg.stream_material_window       # window the id list (D19 int-list bound)
-            if len(stream.node_ids) > w:
-                stream.node_ids = stream.node_ids[-w:]
         event.payload["reaction"] = res["reaction"]
         emitted: List[Event] = []
         q = res.get("question")
@@ -180,18 +189,54 @@ class Synthesiser(Processor):
         return [storage]
 
 
+def library_key_candidates(query: str) -> List[str]:
+    """Normalise a curiosity/term into candidate exact Library keys. This is the
+    curiosity-text -> key bridge (K2's likeliest failure point): the Library is
+    exact-key, so a natural-language curiosity ('what is the definition of entropy')
+    must be reduced to a key the shelf actually holds ('def:entropy'). Tries the raw
+    string and a namespaced/stemmed term, most-specific first."""
+    raw = (query or "").strip()
+    low = raw.lower()
+    cands = [raw, low]
+    # strip a leading question frame, keep the salient term
+    term = low
+    for frame in ("what is the definition of ", "what is the meaning of ",
+                  "what is a ", "what is ", "what does ", "define ", "definition of ",
+                  "the definition of ", "meaning of ", "a synonym for ", "synonym for "):
+        if term.startswith(frame):
+            term = term[len(frame):]
+            break
+    term = term.strip().strip("?.!").strip()
+    if term:
+        cands += [f"def:{term}", f"syn:{term}", term]
+    # de-dup, preserve order
+    seen, out = set(), []
+    for c in cands:
+        if c and c not in seen:
+            seen.add(c); out.append(c)
+    return out
+
+
 class Effector(Processor):
-    """Cognitive-tier action on the world, with proprioceptive feedback. Only
-    fires on explicit INTENT events — never reflexively (safety rule)."""
+    """Cognitive-tier action, with proprioceptive feedback. Only fires on explicit
+    INTENT events — never reflexively (safety rule). Filesystem actions act on the
+    world and feed back as FEEDBACK (encoded as experience); a `lookup` resolves a
+    fact against the self's Library and re-enters it as a REFERENCE (read, NOT
+    encoded — K2: reference is not experience)."""
     name = "effector"
     tier = 2
+    _FS = ("fs_read", "fs_write")
+    _LOOKUP = ("lookup", "define")
 
     def triggers(self, event: Event, mind) -> bool:
-        return event.kind == Kind.INTENT and event.payload.get("action") in ("fs_read", "fs_write")
+        return (event.kind == Kind.INTENT
+                and event.payload.get("action") in self._FS + self._LOOKUP)
 
     def run(self, event: Event, mind) -> List[Event]:
         event.seen_by.add(self.name)
         action = event.payload["action"]
+        if action in self._LOOKUP:
+            return self._lookup(action, event, mind)
         rel = Path(event.payload.get("path", "")).name or "scratch.txt"
         target = mind.workspace / rel
         try:
@@ -206,6 +251,29 @@ class Effector(Processor):
                          kind=Kind.FEEDBACK)
         fb.payload["role"] = "feedback"
         return [fb]
+
+    def _lookup(self, action: str, event: Event, mind) -> List[Event]:
+        """Resolve a fact against the self's Library (exact-key, K1) and re-enter it
+        as a REFERENCE. The result informs cognition but is never encoded as a node
+        (the Appraiser appraises REFERENCE without encoding it) — so a looked-up fact
+        cannot contaminate the identity substrate (K2). K3 will fall through to a
+        network authority on a miss; here a miss is just an honest miss."""
+        query = event.payload.get("key") or event.payload.get("term") or event.payload.get("query", "")
+        ref = None
+        for key in library_key_candidates(query):
+            ref = mind.library.get(key)
+            if ref is not None:
+                break
+        if ref is not None:
+            body, src = ref.body, f"reference:{ref.key}"
+        else:
+            body, src = f"(no reference for {query!r})", "reference:miss"
+        out = event.child(body, inherit=mind.cfg.activation_inherit,
+                          kind=Kind.REFERENCE, source="reference")
+        out.payload.update({"role": "reference", "action": None,
+                            "key": ref.key if ref else None, "hit": ref is not None,
+                            "provenance": src, "external": True})
+        return [out]
 
 
 DEFAULT_PROCESSORS = [Appraiser(), Associator(), Synthesiser(), Effector()]
