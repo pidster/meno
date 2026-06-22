@@ -50,10 +50,11 @@
         "lenses": "data/model semantics + boundary; theory coherence + kernel-fit (2-agent panel)",
         "verdict": "PASS, no P0 — boundary enforced (not merely claimed): the Library is wired only into runtime construction + save/load; nothing in graph/annotator/processors/consolidation reaches it",
         "p1_closed": [
-          "write-back guard was a source 'self' denylist (bypassable by source='cognition'/'curiosity'/'meno') -> inverted to an external-source ALLOWLIST",
+          "write-back guard was a source 'self' denylist -> first inverted to an external-source allowlist, then CORRECTED by D25 (see below) to kind-bounded: the allowlist enforced the wrong model (external-only)",
           "get returned a mutable Reference (immutability was convention) -> @dataclass(frozen=True)",
           "roadmap/instance-layout still said 'self-model served from the Library' (contradicts D24) -> docs corrected, D24 logged"
         ],
+        "post_review_correction": "D25 (Pid): the Library is the self's SELF-MANAGED, curated reference material — not external-only. The substrate is the self; the Library is a tool the self curates. The write-back boundary is by content KIND (reference vs experience/reflection), not authorship — self-curation is legitimate. Reverted the external-source allowlist to kind-bounded + provenance-required. Reframed docstrings, roadmap, and the episodic≠semantic principle.",
         "p2_closed": [
           "non-atomic save could tear index.json -> temp + os.replace",
           "persisted self-model copy could drift from the constant across an image upgrade (K2 landmine) -> re-derived from MENO_SELF on load"
@@ -61,10 +62,11 @@
         "final_state": "P1s + P2s closed; offline suite 131 passed / 4 skipped."
       },
       "carry_forward_to_K2": [
-        "the lookup effector that calls Library.put must pass the originating Kind and reject Kind.SELF structurally (the allowlist covers the source side; Kind is the caller's responsibility)",
+        "lookup is the agent CURATING its shelf (resolve + decide-to-retain), not an external-only fetch (D25); write-back records provenance (source='lookup:...'/'curation:agent')",
+        "caller discipline (not a put() check): the lookup effector files looked-up RESULTS as reference; reflections route to the substrate as Kind.SELF nodes, never into the Library",
         "curiosity-text -> Library key normalization (e.g. 'what is entropy' -> 'def:entropy') is K2 work and the most likely K2 failure point",
         "if Reference gains looked_up_at/confidence (K2/K3), bump save version and make load() tolerant (.get with defaults) for a v1->v2 migration",
-        "watch unbounded non-decaying growth if K2 writes a fact back on every lookup"
+        "watch unbounded non-decaying growth if K2 writes a fact back on every lookup (curation implies pruning too)"
       ]
     }
   },

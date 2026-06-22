@@ -63,35 +63,39 @@ def test_library_entries_are_never_in_the_graph_or_recallable():
     assert hit.get("text", "") not in lib_bodies
 
 
-# --- write-back is guarded: reference only, never experience -------------------- #
-def test_writeback_rejects_reflections_and_self_authored_content():
+# --- the boundary is content KIND, not authorship: reference yes, experience no -- #
+def test_writeback_rejects_experience_kinds_and_incomplete_entries():
     lib = seed_library()
-    with pytest.raises(WritebackRejected):                 # wrong kind (a reflection)
+    with pytest.raises(WritebackRejected):                 # a reflection is the substrate, not reference
         lib.put(Reference(key="r1", body="I feel the sea is like memory",
                           source="cognition", kind="reflection"))
-    with pytest.raises(WritebackRejected):                 # self-authored provenance
-        lib.put(Reference(key="r2", body="entropy is disorder",
-                          source="self", kind="fact"))
+    with pytest.raises(WritebackRejected):                 # experience/perspective likewise
+        lib.put(Reference(key="r2", body="my sense of the tide",
+                          source="curiosity", kind="experience"))
     with pytest.raises(WritebackRejected):                 # empty body
         lib.put(Reference(key="r3", body="", source="seed:dictionary", kind="definition"))
+    with pytest.raises(WritebackRejected):                 # missing provenance
+        lib.put(Reference(key="r4", body="a fact", source="", kind="fact"))
 
 
-def test_writeback_rejects_innocent_looking_self_authored_sources():
-    """The guard is an external-source ALLOWLIST, not a 'self' denylist: a K2 caller
-    cannot launder agent-authored content by labelling its source 'cognition' /
-    'curiosity' / 'meno' (the real Kind.SELF event sources) with kind='fact'."""
+def test_self_can_curate_its_own_reference_shelf():
+    """The Library is the self's self-managed shelf (D25): the agent curating a
+    reference it looked up or chose to keep is legitimate. The boundary is content
+    KIND (reference, not experience), NOT authorship — so a self-sourced *reference*
+    is accepted; only experience/reflection kinds are turned away."""
     lib = seed_library()
-    for src in ("cognition", "curiosity", "meno", "reflexion", "self-model"):
-        with pytest.raises(WritebackRejected):
-            lib.put(Reference(key="x", body="an agent-authored sentence",
-                              source=src, kind="fact"))
+    ref = lib.put(Reference(key="fact:tide", body="tides follow the moon",
+                            source="curation:agent", kind="fact"))   # agent curates a fact
+    assert lib.get("fact:tide") is ref
+    lib.put(Reference(key="def:salience", body="the weight an event carries for attention",
+                      source="self", kind="definition"))             # plain 'self' provenance is fine
+    assert "def:salience" in lib
 
 
-def test_writeback_accepts_external_reference_knowledge():
+def test_writeback_accepts_looked_up_and_operator_references():
     lib = seed_library()
-    ref = lib.put(Reference(key="def:entropy", body="a measure of disorder",
-                            source="dictionary:api", kind="definition"))
-    assert lib.get("def:entropy") is ref
+    lib.put(Reference(key="def:entropy", body="a measure of disorder",
+                      source="dictionary:api", kind="definition"))   # a lookup result
     assert "def:entropy" in lib
 
 

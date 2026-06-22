@@ -24,8 +24,10 @@ slice each), not like chapters.
   prescription. The denylist tests for **prescriptive mood** (should / prefer /
   distrust / matters-more / I-feel), not just affect vocabulary.
 - **Episodic ≠ semantic.** The substrate is for experience (idiosyncratic,
-  reconstructive, forgetful). Reference knowledge is external (stable, indexed,
-  queryable). Don't confuse them; don't let lookup supplant the self.
+  reconstructive, forgetful) — it is the self. Reference knowledge is the self's
+  *self-managed, curated shelf* (stable, indexed, queryable; D25) — a tool the self
+  manages, not the self, and not external-only. Don't confuse them (experience stays
+  in the substrate, reference in the Library); don't let lookup supplant the self.
 - **The gate.** Every phase: a runnable working slice + failing-then-passing
   fidelity tests + a 5-lens adversarial review before advancing. No advancing over
   an open P0. The `adversarial-design-review` skill is the review frame.
@@ -186,10 +188,15 @@ only** (no fuzzy `search` — that needs the cold embedder and is deferred; see 
 - A different memory **type**, different dynamics: no edge decay, no islanding, no
   reconstruction. A Library entry recalled twice is byte-identical (the substrate's
   opposite).
-- **Boundary enforced, not asserted.** The Library is never an entry point for
-  spreading activation and its entries never appear in `graph.cues`; write-back is
-  restricted to `kind ∈ {definition, fact, reference}` with external provenance —
-  an agent-authored reflection (`Kind.SELF`-derived) is rejected from the Library.
+- **The self's self-managed shelf (D25).** The Library is not the self (the substrate
+  is) and not external-only — it is reference material the self *curates*. So the
+  boundary is by **content kind, not authorship**: write-back accepts the reference
+  kinds (`definition`/`fact`/`reference`) from any provenance, including the agent's
+  own curation, and rejects only experience/reflection/perspective (those are the
+  substrate). **Boundary enforced, not asserted:** the Library is never an entry point
+  for spreading activation, its entries never appear in `graph.cues`, and the aliveness
+  marks read the graph not the Library — so curating the shelf can never manufacture a
+  self.
 - Holds a **lookup-able copy** of the full `_MENO_SELF` so the agent can look up its
   own self-model (K2). Its canonical home stays the **code constant** — the
   self-model is the *type* (D21: image = type), so it is baked in the image, never

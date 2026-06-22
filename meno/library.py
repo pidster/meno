@@ -1,18 +1,28 @@
-"""The Library — reference memory, the anti-substrate (Roadmap K1).
+"""The Library — the self's self-managed, curated reference material (Roadmap K1).
 
-Wegner's transactive split, made structural: the **graph** is *episodic* memory —
-idiosyncratic, reconstructive, forgetful, the thing that makes an instance
-particular. The **Library** is *semantic* reference — keyed, stable, non-decaying,
-non-reconstructive. They are opposite in every dynamic, and deliberately disjoint:
+The Library is **not the self**. The *substrate* (the graph) is the self: episodic,
+idiosyncratic, forgetful, reconstructive — the identity. The Library is a tool the
+self **manages**: its own curated shelf of reference material — definitions, facts,
+knowledge it looks up and chooses to keep. Stable where the substrate drifts, so a
+reference returns byte-identical; but a shelf the self curates, not the self.
+
+Wegner's transactive split, made structural — episodic (the graph) vs semantic
+(here):
 
   - A graph edge left unused decays; a node can island; a reflection is rebuilt
     differently each recall. A Library entry does NONE of this — `get(key)` returns
     byte-identical text every time, forever.
   - The Library is never an entry point for spreading activation and its entries
-    never appear in `graph.cues`. Reference cannot leak into the identity substrate,
-    and the substrate's drift cannot corrupt reference. (`recall()` reads only
-    `graph.cues`, so it can never return a Library entry — enforced by construction
-    and asserted in tests.)
+    never appear in `graph.cues`. It is never read AS identity — the aliveness marks
+    (particularity, divergence) read the graph, never the Library — so curating the
+    shelf cannot manufacture a self. And `recall()` reads only `graph.cues`, so a
+    Library entry can never surface as a memory. The two stores are disjoint.
+  - The boundary is by **content kind, not authorship**: experience / reflection /
+    perspective belong in the substrate (they are identity, and must stay free to be
+    forgotten and reconstructed); reference material belongs here. The self may
+    freely curate reference — that is the point — but cannot file experience as
+    reference (`put` rejects non-reference kinds). Who wrote a reference is recorded
+    as provenance, never used to reject self-curation (D25).
   - Lookup is **exact-key only** here (K1). Fuzzy `search` needs the cold embedder,
     which would pin the Library to that model (D20) — deferred to the backlog so the
     Library stays embedder-free.
@@ -31,19 +41,14 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# The kinds of thing the Library may hold. A reference is external knowledge; it is
-# NOT the agent's experience or perspective (those are the graph's). Write-back is
-# restricted to these so an agent-authored reflection can never be filed as fact.
+# The kinds of thing the Library may hold: reference material. Experience, reflection,
+# and perspective are NOT here — they are the substrate (the self). This kind allowlist
+# is the structural episodic≠semantic boundary: the self may curate reference freely,
+# but cannot file a reflection as a fact (it is rejected by kind). What it cannot stop
+# — reflective *content* mislabelled `kind="fact"` — is caller discipline (the K2
+# lookup effector files looked-up results, never the agent's perspective), not a check
+# `put` can make by inspecting a string.
 ALLOWED_KINDS = ("definition", "fact", "reference")
-
-# Write-back is restricted to EXTERNAL provenance by an ALLOWLIST, not a denylist.
-# A denylist (reject source=="self") is always one synonym behind — the K2 lookup
-# caller could hand an innocent-looking `source="cognition"`/`"curiosity"`/`"meno"`
-# and launder a self-authored reflection into "fact". Instead a reference's source
-# MUST name a sanctioned external namespace; anything self-/agent-authored has none
-# and is rejected. This is the episodic≠semantic boundary as a runtime check.
-_EXTERNAL_SOURCE_PREFIXES = ("seed:", "dictionary:", "lookup:", "reference:",
-                             "external:", "authority:", "meno:type")
 
 
 @dataclass(frozen=True)
@@ -54,13 +59,14 @@ class Reference:
     a caller cannot mutate `body` in place and corrupt the store."""
     key: str
     body: str
-    source: str          # provenance: a sanctioned external namespace (see allowlist)
+    source: str          # provenance: where it came from (lookup / seed / curation)
     kind: str            # one of ALLOWED_KINDS
 
 
 class WritebackRejected(ValueError):
-    """A `put` that would file non-reference content (wrong kind, or self-authored
-    provenance) into the Library. The boundary is enforced, not merely asserted."""
+    """A `put` that would file non-reference content into the Library — a non-reference
+    kind (experience/reflection/perspective belong in the substrate), or an entry
+    missing a key/body/provenance. The boundary is enforced, not merely asserted."""
 
 
 class Library:
@@ -88,20 +94,21 @@ class Library:
 
     # --- writes (guarded) ---
     def put(self, ref: Reference) -> Reference:
-        """Add or replace a reference. Rejects anything that isn't external reference
-        knowledge: an unknown kind, an empty key/body, or self-authored provenance.
-        This is the episodic≠semantic boundary as a runtime check (K1)."""
+        """Curate a reference (add or replace). The self manages its own shelf, so a
+        self-curated reference is welcome — what is rejected is non-reference content:
+        a non-reference kind (experience/reflection belong in the substrate), or a
+        missing key/body/provenance. This is the episodic≠semantic boundary as a
+        runtime check (K1, D25)."""
         if ref.kind not in ALLOWED_KINDS:
             raise WritebackRejected(
-                f"kind {ref.kind!r} not in {ALLOWED_KINDS} — reflections/experience "
-                "belong in the graph, not the Library")
+                f"kind {ref.kind!r} not in {ALLOWED_KINDS} — experience, reflection, "
+                "and perspective are the substrate (the self), not curated reference")
         if not ref.key or not ref.body:
             raise WritebackRejected("a reference needs a non-empty key and body")
-        if not ref.source or not ref.source.strip().lower().startswith(_EXTERNAL_SOURCE_PREFIXES):
+        if not ref.source:
             raise WritebackRejected(
-                f"source {ref.source!r} is not a sanctioned external namespace "
-                f"{_EXTERNAL_SOURCE_PREFIXES} — reference must be external, not "
-                "self-authored")
+                "a curated reference must record its provenance (source) — where it "
+                "came from (a lookup, an operator seed, the agent's own curation)")
         self._refs[ref.key] = ref
         return ref
 

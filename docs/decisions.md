@@ -394,8 +394,39 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   the stale copy — so the copy is always refreshed from the constant at load.
 - **Rules out / bounds.** No per-instance self-model customisation (that would be
   customising the type). The Library is NOT the self-model's backing store. `library/
-  self-model.md` (instance-layout) is a copy/export, not the source. K1 review also
-  hardened the Library boundary this entails: write-back is an external-source
-  *allowlist* (not a "self" denylist a K2 caller could evade with `source="cognition"`),
-  `Reference` is frozen (byte-identical is structural, not convention), and the
-  Library saves atomically (temp + `os.replace`).
+  self-model.md` (instance-layout) is a copy/export, not the source. K1 also hardened
+  the Library this entails: `Reference` is frozen (byte-identical is structural, not
+  convention), and the Library saves atomically (temp + `os.replace`). *(The
+  write-back guard's shape was revised by D25 — see there.)*
+
+### D25 — The Library is the self's self-managed, curated reference material
+- **Decision.** The Library is **not** external-only reference the self merely
+  consults; it is the self's **own curated shelf**, which the self **manages** (looks
+  things up, decides what to keep, prunes). The write-back boundary is therefore by
+  **content kind, not authorship**: `put` accepts the reference kinds
+  (`definition`/`fact`/`reference`) from any provenance — including the agent's own
+  curation — and rejects only non-reference kinds (experience/reflection/perspective,
+  which are the substrate) and entries missing a key/body/provenance. Provenance
+  (`source`) is *recorded* (lookup / operator seed / agent curation), never used to
+  reject self-curation. Supersedes K1's first cut, where a review had inverted the
+  guard to an external-source *allowlist* that rejected self-authored writes — that
+  closed a real bypass but under the wrong model, making the Library external-only and
+  forbidding the self-management that is its purpose.
+- **Why (Pid).** "The Library is not the self — the substrate provides this. The
+  Library is the self's self-managed, curated reference material." The substrate (the
+  graph) is identity: idiosyncratic, forgetful, reconstructive. The Library is a
+  *tool the identity curates*, stable where the substrate drifts. The real invariant
+  is not "keep the self out of the Library" but "keep *experience* out of the Library
+  and *reference* out of the substrate": experience/reflection stay in the substrate
+  so they remain free to be forgotten and reconstructed (forgetting is load-bearing);
+  reference is stable and looked-up. Authorship is orthogonal — the agent curating a
+  fact it looked up is the whole point of a transactive memory.
+- **Rules out / bounds.** The episodic≠semantic boundary is enforced by **kind**, not
+  source. What `put` cannot catch — reflective *content* mislabelled `kind="fact"` —
+  is **caller discipline**: the K2 lookup effector files looked-up *results*, never
+  the agent's perspective; reflections route to the substrate as `Kind.SELF` nodes,
+  not into the Library. Curating the shelf cannot manufacture a self: the aliveness
+  marks (particularity, divergence) read the **graph**, never the Library, so a
+  self-managed reference shelf is never read as identity. K2 is reframed accordingly:
+  lookup is the agent *curating* its shelf (resolve + decide-to-retain), not an
+  external-only fetch.
