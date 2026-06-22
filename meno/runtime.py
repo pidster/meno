@@ -18,6 +18,7 @@ from .control import Controller
 from .embeddings import EmbeddingModel, HashingEmbedding, cosine
 from .event import Event, Kind, Status
 from .graph import Graph
+from .library import Library, Reference, seed_library
 from .models import ModelProvider, StubModelProvider
 from .curiosity import CuriosityRegister
 from .processors import DEFAULT_PROCESSORS, Synthesiser
@@ -36,6 +37,10 @@ class Meno:
         self.embed = embed or HashingEmbedding()
         self.models = models or StubModelProvider()
         self.graph = Graph(self.embed, self.cfg)
+        # Reference memory — the anti-substrate (K1). Disjoint from the graph: never
+        # an entry point for spreading activation, never in graph.cues. Seeded with a
+        # lookup-able copy of the self-model + a tiny dictionary/thesaurus.
+        self.library = seed_library()
         self.streams = StreamManager(self.embed, self.cfg)
         self.working_set = WorkingSet(self.cfg, self.streams)
         self.annotator = Annotator(self.embed, self.working_set, self.streams, self.cfg)
@@ -267,18 +272,36 @@ class Meno:
         return {"journaled": True, "cue": best.id, "text": text}
 
     # --- continuity across restart (sleep, not death) ---
+    @property
+    def library_path(self) -> Path:
+        """The Library's own home, beside the substrate (instance-layout): the
+        reference shelf persists separately from the identity-bearing graph."""
+        return self.workspace / "library" / "index.json"
+
     def save(self, path) -> None:
         """Persist the durable self — the cold graph AND the warm tier (suspended
-        streams), so meno remains and a restart can resume mid-thought (R4)."""
+        streams), so meno remains and a restart can resume mid-thought (R4). The
+        Library (reference, not identity) is saved to its own home under the
+        workspace, kept out of the substrate file (K1; episodic≠semantic on disk)."""
         from . import persistence
         persistence.save(self.graph, path, streams=self.streams)
+        self.library.save(self.library_path)
 
     def load(self, path) -> None:
         """Wake from a saved graph + warm tier. The working set starts empty; recall
         works immediately, suspended streams are restored (their deferred pressure
-        resumes them via the heartbeat), and resurface() rebuilds working context."""
+        resumes them via the heartbeat), and resurface() rebuilds working context.
+        The Library is restored from its own home if present (else the seed stands)."""
         from . import persistence
         persistence.load(self.graph, path, streams=self.streams)
+        if self.library_path.exists():
+            self.library = Library.load(self.library_path)
+            # The self-model is the TYPE (D24), baked in the image — never trust a
+            # persisted copy that may predate an image upgrade. Always re-derive it
+            # from the canonical constant so a looked-up "self-model" can't go stale.
+            from .self_model import MENO_SELF
+            self.library.put(Reference(key="self-model", body=MENO_SELF,
+                                       source="meno:type", kind="reference"))
 
     def resurface(self, k: int = 3) -> int:
         """Rebuild a little working context by re-entering the most salient

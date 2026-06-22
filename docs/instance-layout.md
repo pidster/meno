@@ -98,9 +98,11 @@ this instance *this* instance — losing it is amnesia; losing anything else is 
 Reference knowledge, a **different memory type** from the substrate: keyed,
 stable, non-decaying, non-reconstructive — and **exact-key** in K1 (fuzzy `search`
 needs the cold embedder and is deferred to the backlog, to keep the Library
-embedder-free). `self-model.md` is the full `_MENO_SELF`; S loads it through one
-accessor from the start, and K1 swaps the backing store to this document without
-touching call sites. `index.json` maps keys → entries for lookup. The substrate is
+embedder-free). `self-model.md` is a **lookup-able copy** of the full `_MENO_SELF`;
+its canonical home is the code constant (the *type*, baked in the image — D21/D24),
+so `self_model()` reads the constant and the Library copy is seeded from it and
+re-derived on load, never overriding it. `index.json` maps keys → entries for lookup.
+The substrate is
 for experience; the library is for facts the agent looks up rather than trusts to a
 possibly-islanded memory. A looked-up fact re-enters as a **`Kind.REFERENCE`**
 percept (K2) — read into cognition but *never encoded as a graph node*, so
@@ -130,8 +132,8 @@ Note the distinction: the model **surfaces** get the full or brief `_MENO_SELF` 
 a *static per-tier constant* (the calls are stateless — there is no mid-call load;
 reflexive tiers escalate rather than load — roadmap S). True load-on-demand is the
 *Agent Skills* pattern above — a skill body the agent pulls in only when its
-description matches the task. The full self-model document lives in `library/` as
-the canonical source the S accessor reads, not as something fetched per call.
+description matches the task. The self-model's canonical source is the code constant
+(D24); the `library/` copy is for *lookup* (K2), not what the S accessor reads.
 
 ### `adapters/` — sensorium + effectors (Roadmap I)
 Per-adapter config declaring **afferent** (sense) and **efferent** (act) capability

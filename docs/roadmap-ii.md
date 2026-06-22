@@ -190,13 +190,17 @@ only** (no fuzzy `search` — that needs the cold embedder and is deferred; see 
   spreading activation and its entries never appear in `graph.cues`; write-back is
   restricted to `kind ∈ {definition, fact, reference}` with external provenance —
   an agent-authored reflection (`Kind.SELF`-derived) is rejected from the Library.
-- Long-term home of the full `_MENO_SELF` document (`library/self-model.md`); S's
-  inline constant is loaded through one accessor from the start so K1 can swap the
-  backing store without touching call sites.
+- Holds a **lookup-able copy** of the full `_MENO_SELF` so the agent can look up its
+  own self-model (K2). Its canonical home stays the **code constant** — the
+  self-model is the *type* (D21: image = type), so it is baked in the image, never
+  served from the mutable instance home; the Library copy is seeded from the constant
+  and never overrides it (**D24**). On load the copy is re-derived from the constant
+  so it can't go stale across an image upgrade.
 
 **Outline.**
-1. `meno/library.py`: the keyed store + save/load + seed.
-2. Relocate `_MENO_SELF` behind an accessor; back it with the Library document.
+1. `meno/library.py`: the keyed store + save/load + seed (incl. the self-model copy).
+2. Seed the Library from the `MENO_SELF` constant; `self_model()` keeps reading the
+   constant (the type). The accessor stays the single read-seam.
 3. Boundary tests (below).
 
 **Outcomes (assertable).**
@@ -210,7 +214,8 @@ only** (no fuzzy `search` — that needs the cold embedder and is deferred; see 
 - *Standing guard (offline).* Both divergence axes hold with the Library present.
 
 **Entry.** After S (self-model accessor exists). **Exit.** Library store +
-boundary tests green; self-model served from the Library; offline guard holds.
+boundary tests green; the Library holds a re-derivable copy of the self-model (the
+constant stays canonical, D24); offline guard holds.
 
 **Review focus.** Data/Model Semantics (the Library's distinct dynamics; no
 reference leakage into the identity substrate) + Theory Coherence (episodic≠semantic).
@@ -522,7 +527,8 @@ lookup + provenance + egress + supplantation tests green.
   *Recommend: an MCP authority, reusing the I2 egress gate.*
 
 *Resolved:* depth-scaling (abridged+pointer reflexive, full deep) — decided.
-Self-model home — Library entry from K1, behind an accessor (was inline-vs-Library).
+Self-model home — **D24**: canonical in the code constant (the type, baked in the
+image); the Library holds a re-derivable copy for lookup, never overriding it.
 Config loader / Python floor — **D22** (3.11 + `tomllib`). Self-model scope —
 **mechanics only; the transactive stance is earned, added as mechanics in K2.**
 

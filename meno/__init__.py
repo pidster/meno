@@ -15,6 +15,7 @@ from .embeddings import (
 )
 from .event import Event, Kind, Status
 from .graph import Graph, Node, ReflectionCue
+from .library import Library, Reference, WritebackRejected, seed_library
 from .models import (
     AnthropicModelProvider,
     CognitionDegraded,
@@ -45,6 +46,7 @@ __all__ = [
     "cognition_is_real", "CognitionDegraded",
     "Stream", "StreamManager", "Driver",
     "Sensor", "FilesystemSensor", "ChatSensor", "LogSensor",
+    "Library", "Reference", "WritebackRejected", "seed_library",
     "zombie_report", "particularity", "initiative", "synthesis",
     "novelty", "divergence",
 ]

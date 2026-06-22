@@ -370,3 +370,32 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   gate (theory + test/evidence + kernel-fit); one P0 (the offline anti-convergence
   test was mislabelled as proving prompt-homogenisation) and the P1s were fixed
   before close.
+
+### D24 — The self-model's canonical home is the code constant; the Library holds a copy
+- **Decision.** The self-model document's single source of truth is the code constant
+  `self_model.MENO_SELF` (baked into the image — the *type*, D21). `self_model()`
+  reads the constant. K1's Library holds a **lookup-able copy** (`key="self-model"`,
+  `kind="reference"`, `source="meno:type"`) seeded *from* the constant, and the copy
+  is **re-derived from the constant on load** so it can never outlive the image that
+  produced it. The Library copy never overrides the constant. Supersedes the roadmap's
+  earlier tentative "relocate the self-model to the Library in K1 / served from the
+  Library"; D23's accessor rationale ("so K1 can swap the backing store") is therefore
+  superseded — the accessor remains a useful single read-seam, but the relocation it
+  anticipated is rejected.
+- **Why.** type≠identity (D21) is decisive: the self-model is the *type*. If the
+  canonical self-model lived in the mutable, per-instance Library (`<home>/library/`,
+  the volume = identity), an operator could make two instances of *one image* differ
+  in **kind** by editing one instance's `index.json` — exactly the type/identity
+  confusion D21 forbids ("only `substrate/` carries identity"). The constant-in-image
+  is the only home consistent with that. The Library copy exists solely so the agent
+  can *look up* its own self-model in K2 (transactive memory), not to define it.
+  Re-deriving on load closes the drift a K1 review flagged: an image upgrade changes
+  the constant while a persisted Library still holds the old body, and K2 would read
+  the stale copy — so the copy is always refreshed from the constant at load.
+- **Rules out / bounds.** No per-instance self-model customisation (that would be
+  customising the type). The Library is NOT the self-model's backing store. `library/
+  self-model.md` (instance-layout) is a copy/export, not the source. K1 review also
+  hardened the Library boundary this entails: write-back is an external-source
+  *allowlist* (not a "self" denylist a K2 caller could evade with `source="cognition"`),
+  `Reference` is frozen (byte-identical is structural, not convention), and the
+  Library saves atomically (temp + `os.replace`).

@@ -38,7 +38,35 @@
         "MENO_SELF is ~3.4k tokens: clears Sonnet (associate+wonder cache) but not Opus 4096 (synthesise uncached) — accepted, not padded",
         "the prompt-homogenisation risk is genuinely untested offline (the stub can't be influenced by system=); it rests on the panel lens + the deferred live test"
       ]
+    },
+    "K1": {
+      "name": "The Library (reference memory type)",
+      "status": "complete",
+      "modules": ["meno/library.py (new: Reference frozen, Library, WritebackRejected, seed_library)", "meno/runtime.py (self.library seeded; library_path; save/load; self-model re-derived on load)", "meno/__init__.py (exports)"],
+      "tests": "tests/test_library.py (11)",
+      "deliverable": "A keyed, stable, non-decaying, non-reconstructive reference store — the anti-substrate (Wegner's episodic/semantic split made structural). Disjoint from the graph by construction: never a spreading-activation entry point, never in graph.cues, recall() can't surface it. Exact-key only (fuzzy search deferred — needs the cold embedder, D20). Seeded with a self-model copy + small dictionary/thesaurus; persists to <home>/library/index.json separate from the substrate.",
+      "decision": "D24 (self-model canonical in code constant; Library holds a re-derived copy)",
+      "adversarial_review": {
+        "lenses": "data/model semantics + boundary; theory coherence + kernel-fit (2-agent panel)",
+        "verdict": "PASS, no P0 — boundary enforced (not merely claimed): the Library is wired only into runtime construction + save/load; nothing in graph/annotator/processors/consolidation reaches it",
+        "p1_closed": [
+          "write-back guard was a source 'self' denylist (bypassable by source='cognition'/'curiosity'/'meno') -> inverted to an external-source ALLOWLIST",
+          "get returned a mutable Reference (immutability was convention) -> @dataclass(frozen=True)",
+          "roadmap/instance-layout still said 'self-model served from the Library' (contradicts D24) -> docs corrected, D24 logged"
+        ],
+        "p2_closed": [
+          "non-atomic save could tear index.json -> temp + os.replace",
+          "persisted self-model copy could drift from the constant across an image upgrade (K2 landmine) -> re-derived from MENO_SELF on load"
+        ],
+        "final_state": "P1s + P2s closed; offline suite 131 passed / 4 skipped."
+      },
+      "carry_forward_to_K2": [
+        "the lookup effector that calls Library.put must pass the originating Kind and reject Kind.SELF structurally (the allowlist covers the source side; Kind is the caller's responsibility)",
+        "curiosity-text -> Library key normalization (e.g. 'what is entropy' -> 'def:entropy') is K2 work and the most likely K2 failure point",
+        "if Reference gains looked_up_at/confidence (K2/K3), bump save version and make load() tolerant (.get with defaults) for a v1->v2 migration",
+        "watch unbounded non-decaying growth if K2 writes a fact back on every lookup"
+      ]
     }
   },
-  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "120 passed, 4 skipped"}
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "131 passed, 4 skipped"}
 }
