@@ -49,8 +49,9 @@ class Driver:
     def __init__(self, mind, *, dream_every: int = 8, heartbeat_ticks: int = 8,
                  sense_every: int = 1, idle_backoff: float = 0.02, max_backoff: float = 1.0,
                  max_inbox: int = 10000, on_error: str = "continue",
-                 max_consecutive_errors: int = 5, sleep=time.sleep) -> None:
+                 max_consecutive_errors: int = 5, sleep=time.sleep, egress=None) -> None:
         self.mind = mind
+        self.egress = egress                       # D21 egress allowlist; gates outbound to a host
         self.dream_every = dream_every
         self.heartbeat_ticks = heartbeat_ticks
         self.sense_every = sense_every             # poll afferent sensors every N cycles
@@ -71,6 +72,7 @@ class Driver:
         self.errors = 0
         self.dropped_input = 0
         self.dropped_outbound = 0                  # outbound intents no adapter handled
+        self.egress_denied = 0                     # outbound intents refused by the egress allowlist
         self.last_error: Optional[str] = None
         self._backoff = 0.0
 
@@ -132,6 +134,22 @@ class Driver:
         action = payload.get("action")
         for ad in self.adapters:
             if ad.handles(action):
+                # D21 egress boundary, enforced on the ADAPTER'S declared reach (not a
+                # mind-authored payload field): an adapter that reaches a non-allowlisted
+                # host is refused BEFORE deliver() runs — the boundary precedes the send.
+                # Any per-call host the intent names is checked too.
+                if self.egress is not None:
+                    hosts = tuple(getattr(ad, "hosts", ())) + (
+                        (payload["host"],) if payload.get("host") else ())
+                    try:
+                        for h in hosts:
+                            self.egress.check(h)
+                    except Exception as exc:
+                        self.egress_denied += 1
+                        self.last_error = f"egress: {exc}"
+                        self.feed(f"(egress denied: {exc})", source="driver",
+                                  kind=Kind.FEEDBACK, action=None, refused="egress")
+                        return False
                 try:
                     result = ad.deliver(payload)          # the slow part, off the mind thread
                     if getattr(result, "feeds_back", True):
@@ -306,4 +324,5 @@ class Driver:
                 "idle_cycles": self.idle_cycles, "pending_input": self.pending_input,
                 "errors": self.errors, "dropped_input": self.dropped_input,
                 "dropped_outbound": self.dropped_outbound,
+                "egress_denied": self.egress_denied,
                 "last_error": self.last_error, "running": self.running}

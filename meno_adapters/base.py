@@ -48,6 +48,11 @@ class DeliveryResult:
 
 class Adapter:
     name = "adapter"
+    # The hosts this adapter actually reaches on the network — declared, so the egress
+    # boundary checks the adapter's REAL reach, not a field the generative mind
+    # volunteers. An adapter with network reach lists its hosts (e.g. SlackAdapter:
+    # ("slack.com", "*.slack.com")); a local/loopback adapter declares none.
+    hosts: tuple = ()
 
     # --- afferent (sense) ---
     def poll(self) -> List[Percept]:

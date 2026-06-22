@@ -14,10 +14,14 @@ dependencies = []   # core runs with the standard library only (offline by defau
 dev = ["pytest"]
 anthropic = ["anthropic"]   # optional: real cognitive-tier models
 local = ["sentence-transformers"]   # optional: real local cold embedder (D20); pulls in torch
-all = ["pytest", "anthropic", "sentence-transformers"]
+slack = ["slack_sdk"]   # optional: the Slack integration adapter (I1/I2)
+all = ["pytest", "anthropic", "sentence-transformers", "slack_sdk"]
+
+[project.scripts]
+meno = "meno.cli:main"   # I0b: the instance entrypoint (init / run / status)
 
 [tool.setuptools.packages.find]
-include = ["meno*"]
+include = ["meno*"]   # meno + meno_adapters
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

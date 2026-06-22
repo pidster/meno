@@ -152,6 +152,35 @@
         "real-client fidelity: conversations_history pagination is bounded by limit; message shape variety (blocks/attachments) only text is read"
       ]
     }
+    },
+    "I0b": {
+      "name": "Daemon, meno init, config loader, OCI image (D21/D22)",
+      "status": "complete",
+      "ordering_note": "Pid chose I0b BEFORE I2 so the egress boundary exists before any send capability",
+      "modules": ["meno/home.py (init_home, load_config, EgressPolicy, Instance+lock, build_instance)", "meno/cli.py (meno init/run/status; the daemon)", "meno/driver.py (egress on adapter-declared hosts)", "meno_adapters/base.py (Adapter.hosts)", "Containerfile + .dockerignore", "pyproject [project.scripts]"],
+      "tests": "tests/test_instance_home.py (17 + 1 deferred image smoke)",
+      "deliverable": "A home-bound instance: `meno init` scaffolds the D21 home (create-only, never clobbers curated state); `meno.toml` read via stdlib tomllib (D22) with LOUD errors on typos/bad types; a daemon that persists the substrate (sleep-not-amnesia, D12), writes run/status.json, holds an advisory lock; an OCI image (image=type, home=volume, non-root, no baked identity). The egress allowlist (D21) is ENFORCED on the outbound path before any adapter runs.",
+      "decision": "D27 (daemon modes), uses D21/D22",
+      "adversarial_review": {
+        "lenses": "safety/D21-D22 + runtime/daemon/tests (2-agent panel)",
+        "p0_closed": "meno init re-run clobbered library/index.json (curated references) + adapters.toml (operator config) — only meno.toml was guarded -> ALL stateful writes are create-only now (self-model.md stays re-derived, it's the canonical type)",
+        "p1_closed": [
+          "egress trusted a mind-authored payload.host (omit it -> bypass) -> checks the ADAPTER's declared hosts (Adapter.hosts); a network adapter can't reach a non-allowlisted host even with no host field",
+          "no instance lock -> two daemons silently corrupted one substrate -> fcntl advisory lock held for the daemon's life",
+          "substrate saved only on shutdown (kill/disk-full lost the whole session) -> periodic save_every + guarded save()",
+          "step()-mode daemon would block cognition on the first efferent network call -> unbounded daemon uses Driver.start() (bg loop + off-thread worker); bounded uses the deterministic step loop (D27)",
+          "config errors silent (unknown [config] key dropped; no type coercion; cryptic [driver] int crash) -> loud ValueErrors naming the file/section/key",
+          "status real_fraction 0.0 ambiguous (stub vs degraded) -> emits cognition_provider + None for stub"
+        ],
+        "p2_closed": ["egress trailing-dot normalised; distinct egress_denied counter", "anthropic-without-key falls back to stub (tested)", "Containerfile non-root/volume/no-baked-identity asserted; image build/run smoke deferred (skip-not-fail, needs a container runtime)"],
+        "p2_open": ["pin the container base image by digest (reproducibility)", "STOPSIGNAL/grace for long cycles", "id-collision-after-restart test (D12 covered in R4)"],
+        "final_state": "P0 + 6 P1 + P2s closed; offline suite 192 passed / 5 skipped."
+      },
+      "carry_forward_to_I2": [
+        "I2 SlackAdapter declares hosts=('slack.com','*.slack.com') so the egress boundary gates its real reach",
+        "outbound intents that post carry egress=True; the daemon (start() mode) runs the off-thread worker so a post never blocks cognition"
+      ]
+    }
   },
-  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "176 passed, 4 skipped"}
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "192 passed, 5 skipped"}
 }

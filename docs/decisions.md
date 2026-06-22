@@ -449,3 +449,23 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   hygiene. The bot's own posts are skipped (subtype/bot_user_id) as the afferent half
   of I2's self-echo guard, but the authoritative self-echo guard is I2's
   `source="self:slack"` tag. A bot_user_id should be auto-derived (auth.test) in I2.
+
+### D27 — Two daemon modes: bounded step-loop (deterministic) vs unbounded start() (non-blocking)
+- **Decision.** `meno run --cycles N` drives the deterministic single-thread step loop
+  (tests, one-shots, reproducible). `meno run` with no `--cycles` (the real daemon) uses
+  `Driver.start()` — the background loop PLUS the off-thread outbound worker — so a slow
+  network call from an efferent adapter (I2/K3) never blocks cognition. The home's
+  advisory lock (`run/instance.lock`, `fcntl.flock`) is held for the daemon's life so two
+  processes can't race on one substrate (last-writer-wins would silently corrupt the
+  identity). The substrate is persisted **periodically** (`save_every`), not only on
+  shutdown, so a crash/SIGKILL resumes from a recent point, not the seed.
+- **Why.** A K1 review flagged that a step-loop daemon drains the outbox inline (on the
+  mind thread), so the first efferent adapter would block the whole loop — defeating the
+  reason I0a built the outbox/worker. The two-mode split keeps tests deterministic while
+  the production daemon gets the non-blocking path. The lock and periodic save close two
+  data-integrity gaps the I0b review found (two-daemon corruption; shutdown-only save
+  losing a whole session on a kill).
+- **Rules out / bounds.** `--cycles` mode is NOT for production with efferent adapters
+  (it would block on a network deliver) — it is the deterministic/test path. SIGKILL still
+  loses work since the last periodic save (unavoidable; the floor is the last snapshot).
+  The lock is POSIX (`fcntl`); a no-op where unavailable.

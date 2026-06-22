@@ -1,0 +1,12 @@
+# keep the image = type: never bake an instance home, secrets, or local state
+.git
+.venv
+.env
+*.key
+*.pem
+state/
+docs/
+tests/
+**/__pycache__/
+*.pyc
+.meno/
