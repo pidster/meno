@@ -308,3 +308,23 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   (a restart is sleep, not amnesia — D12). OCI-neutral (Docker/Podman/containerd);
   rootless preferred. The stdlib kernel is unaffected — network/async lives in the
   integration layer (I0), deps are pinned at the image layer.
+
+### D22 — Bump the Python floor to 3.11; read `meno.toml` with stdlib `tomllib`
+- **Decision.** `requires-python = ">=3.11"`. Operator config (`meno.toml`,
+  `adapters/*.toml`) is **read** with stdlib `tomllib`; the kernel never writes
+  config. Supersedes the prior 3.9 floor (the original 3.9.6 constraint, set when
+  `import anthropic` hung, no longer binds — anthropic is an optional extra and the
+  deployment target is a container, not the host interpreter).
+- **Why.** The instance home (`docs/instance-layout.md`, D21) is configured by a
+  human-edited TOML file; comments and hand-editing are the point, so JSON is the
+  wrong format. `tomllib` is stdlib only on **3.11+**. The alternatives were a
+  `tomli` backport dep (breaks "stdlib-only kernel" for a file the kernel must read
+  on every start) or JSON config (loses operator-friendly comments). A version
+  bump is the cleanest: a daemon shipped as an OCI image (D21) controls its own
+  interpreter, so the floor costs nothing and removes a runtime dependency.
+- **Rules out / bounds.** No `tomli`/`tomllib-w` dependency. The kernel **reads**
+  TOML and **writes** JSON/JSONL (machine state) — it never serialises TOML, so no
+  writer is pulled in. Pre-3.11 interpreters are unsupported; CI and the image base
+  pin 3.11+. The stdlib-only-kernel invariant is *preserved* (tomllib is stdlib),
+  not weakened. This is a prerequisite for I0b (`meno init` + the config loader +
+  the home-bound daemon); see `docs/roadmap-ii.md` I0.

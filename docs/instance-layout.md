@@ -96,10 +96,15 @@ this instance *this* instance — losing it is amnesia; losing anything else is 
 
 ### `library/` — reference (Roadmap K1)
 Reference knowledge, a **different memory type** from the substrate: keyed,
-stable, non-decaying, non-reconstructive. `self-model.md` is the full `_MENO_SELF`
-(relocated here from the inline constant once K1 lands). `index.json` maps keys →
-entries for lookup. The substrate is for experience; the library is for facts the
-agent should look up rather than trust to a possibly-islanded memory.
+stable, non-decaying, non-reconstructive — and **exact-key** in K1 (fuzzy `search`
+needs the cold embedder and is deferred to the backlog, to keep the Library
+embedder-free). `self-model.md` is the full `_MENO_SELF`; S loads it through one
+accessor from the start, and K1 swaps the backing store to this document without
+touching call sites. `index.json` maps keys → entries for lookup. The substrate is
+for experience; the library is for facts the agent looks up rather than trusts to a
+possibly-islanded memory. A looked-up fact re-enters as a **`Kind.REFERENCE`**
+percept (K2) — read into cognition but *never encoded as a graph node*, so
+reference can't contaminate the experiential substrate.
 
 ### `skills/` — Agent Skills (progressive disclosure)
 Each skill is a folder with a `SKILL.md`: frontmatter (`name`, `description`) plus
@@ -117,12 +122,16 @@ description: Look up a precise definition from the library or an external author
 # define-term
 Resolve <term> against library/dictionary first; if absent and an authority is
 configured (adapters/knowledge.toml), look it up, then write the result back to
-the library and re-enter it as a `source="reference"` percept.
+the library and re-enter it as a `Kind.REFERENCE` percept (read into cognition,
+never encoded as an experiential graph node).
 ```
 
-The abridged self-model's "load the full version only if there's a real need"
-(roadmap S) is itself this pattern — the full self-model lives in `library/` and
-is loaded on demand.
+Note the distinction: the model **surfaces** get the full or brief `_MENO_SELF` as
+a *static per-tier constant* (the calls are stateless — there is no mid-call load;
+reflexive tiers escalate rather than load — roadmap S). True load-on-demand is the
+*Agent Skills* pattern above — a skill body the agent pulls in only when its
+description matches the task. The full self-model document lives in `library/` as
+the canonical source the S accessor reads, not as something fetched per call.
 
 ### `adapters/` — sensorium + effectors (Roadmap I)
 Per-adapter config declaring **afferent** (sense) and **efferent** (act) capability
@@ -149,7 +158,10 @@ credential    = "SLACK_BOT_TOKEN"   # a REFERENCE; the secret is in the environm
 [authorities]
 dictionary = { kind = "local", path = "library/dictionary" }
 web        = { kind = "mcp",   server = "web-search", enabled = false }
-budget     = "20/cycle"      # lookups can't crowd out the substrate
+budget     = "20/cycle"      # coarse volume backstop; the real guard is the
+                             # supplantation ratio (K2): of cues that COULD be
+                             # reconstructed from the substrate, the fraction
+                             # routed to lookup instead must stay under threshold
 ```
 
 ### `journal/` and `run/`
@@ -163,13 +175,14 @@ coordination lock and live driver telemetry/status.
 ## Formats (stdlib-aligned)
 
 - **Operator config** (`meno.toml`, `adapters/*.toml`): TOML, **read** via stdlib
-  `tomllib` (Python 3.11+). The kernel never writes config; `meno init` ships
-  templates. Comments and human editing are the point.
+  `tomllib` (Python 3.11+, the floor — decision D22). The kernel never writes
+  config; `meno init` ships templates. Comments and human editing are the point.
 - **Machine state** (`substrate/graph.json`, `library/index.json`,
   `run/status.json`, `journal/*.jsonl`): JSON / JSON-lines, read+write stdlib.
 
-No new dependency: the kernel stays stdlib-only; network lives in the integration
-layer (Roadmap I0), not in the kernel that reads this home.
+No new runtime dependency: `tomllib` is stdlib on 3.11+ (D22), so the kernel stays
+stdlib-only; network lives in the integration/adapter layer (Roadmap I0a),
+not in the kernel that reads this home.
 
 ---
 
@@ -187,9 +200,14 @@ layer (Roadmap I0), not in the kernel that reads this home.
 
 | Area | Roadmap phase |
 |---|---|
-| `library/self-model.md`, the abridged-loads-full pattern | **S** Self-Model |
-| `library/`, `index.json`, `adapters/knowledge.toml`, `define-term` skill | **K** Transactive Memory |
-| `adapters/slack.toml`, `discord.toml`, the async/integration layer | **I** Reach |
+| the `_MENO_SELF` block + per-tier full/brief pattern | **S** Self-Model |
+| `library/`, `library/self-model.md`, `index.json` (the reference store) | **K1** The Library |
+| lookup effector, `define-term` skill, the transactive mechanics in `_MENO_SELF` | **K2** Know-when-to-look-up |
+| `adapters/knowledge.toml` schema (network authorities) | **K3** External authorities (executes after I0) |
+| the adapter seam (afferent + off-thread efferent contract) | **I0a** Integration substrate |
+| `meno init`, `meno.toml` loader, daemon, the OCI image (D21/D22) | **I0b** Daemon & image |
+| `adapters/slack.toml` / `discord.toml` afferent | **I1** Afferent channel (sense only) |
+| `adapters/*.toml [efferent]`, audit traces, the self-echo guard | **I2** Gated effector |
 | `substrate/`, `run/status.json`, `journal/` | already realised (R0–R5) |
 
 ## Guards
