@@ -285,3 +285,26 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   deferred (D14 ordering held: embedder before DB). A persisted graph is tied to
   the cold embedder that made it — loading it under a different cold model would
   mismatch the gist space; that pairing is the caller's responsibility.
+
+### D21 — Package an instance as an OCI image; the home is a mounted volume
+- **Decision.** A Meno instance is deployed as an **OCI image** (the *type*: Python
+  + the `meno` package + pinned extras + baked embedder weights) with the
+  **instance home** (`substrate/`, `library/`, `skills/`, `adapters/`,
+  `meno.toml`) as a **mounted volume** (the *identity*). Secrets are env-injected,
+  never baked. Planned in `docs/roadmap-ii.md` I0; the home is specified in
+  `docs/instance-layout.md`. It lands **before** the I2 effectors so the
+  network/egress boundary exists before any outward action.
+- **Why.** Continuous operation (R2) already made Meno a daemon; integrations (I)
+  add network and outward action. The image gives a reproducible runtime and bakes
+  the embedder weights (no Hugging Face cold-download — the R1 gap). The container
+  is the real safety boundary for I2: non-root, read-only rootfs, dropped caps, and
+  an **egress policy** scoping which hosts it may reach. The image=type /
+  volume=identity split mirrors the project's type≠identity principle and the
+  layout's "only `substrate/` carries identity."
+- **Rules out / bounds.** NOT per-call sandboxes — one long-lived container per
+  instance (this is not Managed-Agents / code-execution territory). NOT the dev
+  loop — `python -m meno` in a venv stays the inner loop; the image is a
+  deployment target. The substrate MUST be the volume, never container-internal
+  (a restart is sleep, not amnesia — D12). OCI-neutral (Docker/Podman/containerd);
+  rootless preferred. The stdlib kernel is unaffected — network/async lives in the
+  integration layer (I0), deps are pinned at the image layer.

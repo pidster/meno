@@ -24,8 +24,10 @@ cognitive kernel. Before changing anything, read the design.
    choice, why, and what it rules out. Append to it as you make decisions.
 5. `docs/reflection.md` — the experiential record from v1. What the system *is
    for*, and the source of its name (μένω, "I remain").
-6. `docs/roadmap.md` — the planning view: current status, immediate next steps,
-   and the deferred/open work.
+6. `docs/roadmap-ii.md` — the planning view: the current forward plan (self-model,
+   transactive memory, reach). The realised kernel (R0–R5) is recorded in
+   `docs/realisation-plan.md`; the historical v2-build roadmap is archived at
+   `docs/archive/roadmap-v2.md`.
 
 The seven numbered `docs/0N-*.md` are the original architecture documents — kept
 as the record of the first theory. `redesign.md` supersedes them as the statement

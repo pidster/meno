@@ -1,4 +1,10 @@
-# meno v2 — Roadmap
+# meno v2 — Roadmap  ·  ARCHIVED / SUPERSEDED
+
+> **This is the historical v2-kernel build roadmap.** Its "immediate next" and
+> deferred items are now done or carried forward: the embedder, lifetime-growth
+> (D19), and the sensorium were realised in `docs/realisation-plan.md` (R0–R5,
+> merged); everything still open lives in `docs/roadmap-ii.md`. Kept for the
+> record of how the v2 kernel was planned; not a live plan.
 
 Where the build is, and what's next. The *why* behind each choice lives in
 `decisions.md`; the mechanism lives in `redesign.md` / `system-design.md`. This
