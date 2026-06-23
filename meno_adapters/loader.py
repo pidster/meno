@@ -11,6 +11,7 @@ import tomllib
 from pathlib import Path
 
 from .knowledge import KnowledgeAdapter
+from .secrets import DotenvBackend, EnvBackend, SecretResolver
 from .slack import SlackAdapter
 
 
@@ -29,6 +30,21 @@ def _rate_per_min(rate, default: int = 5) -> int:
         return default
 
 
+def _secret_resolver(home: Path) -> SecretResolver:
+    """Env-first secret resolution for the composition root (D31). Always reads the
+    process environment; OPTIONALLY also a read-only dotenv file declared in
+    `meno.toml [secrets] file = …` (a relative path resolves against the home; an
+    absolute path lets the operator keep secrets OUTSIDE the home — the default posture
+    is env-only, no file). Env wins over the file. Never materialises a secret to disk
+    and never reaches the kernel or the mind."""
+    backends = [EnvBackend()]
+    path = _read(home / "meno.toml").get("secrets", {}).get("file")
+    if path:
+        p = Path(path).expanduser()
+        backends.append(DotenvBackend(p if p.is_absolute() else home / p))
+    return SecretResolver(backends)
+
+
 def load_adapters(inst) -> list:
     """Attach the adapters an instance's config enables. Returns the names attached.
     A Slack adapter is added if its afferent OR efferent side is enabled; the efferent
@@ -36,6 +52,7 @@ def load_adapters(inst) -> list:
     Audit trails land under the home's `journal/traces/`."""
     home = Path(inst.home)
     traces = home / "journal" / "traces"
+    secrets = _secret_resolver(home)                 # resolve token NAMES -> values here
     attached = []
 
     slack = _read(home / "adapters" / "slack.toml")
@@ -43,6 +60,7 @@ def load_adapters(inst) -> list:
     if aff.get("enabled") or eff.get("enabled"):
         inst.driver.add_adapter(SlackAdapter(
             channels=tuple(aff.get("channels", ())) if aff.get("enabled") else (),
+            secrets=secrets,                          # tokens resolved by name, off the loop
             # afferent receive model: poll (default) or Socket Mode (real-time, needs
             # $SLACK_APP_TOKEN). Socket Mode only takes effect in the unbounded daemon,
             # which calls adapter.start(); bounded `--cycles` runs stay on poll.

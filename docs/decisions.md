@@ -555,3 +555,27 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   slim runtime carries identically. `requires-python >= 3.11` (D22) unchanged; the lock
   resolves across that range. Baking the `local` embedder weights stays an opt-in,
   commented build stage (adds torch, ~100s of MB).
+
+### D31 — Secrets resolved by name in the composition root; no store the mind can read
+- **Decision.** A `SecretResolver` (in `meno_adapters`, never the kernel) resolves
+  config-declared secret NAMES (`SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, later DB creds) to
+  values at adapter-construction time. Values live only inside the adapter object —
+  outside cognition and outside the substrate. Backends are pluggable and tried in order
+  behind a `SecretBackend` protocol (`get(name) -> str | None`): the default is the
+  process environment (12-factor); a read-only `DotenvBackend` is an explicit opt-in via
+  `meno.toml [secrets] file = …` (env wins; a relative path resolves against the home and
+  is gitignored, an absolute path keeps secrets outside the home entirely). The resolver
+  holds no values and its repr hides the chain, so it can't leak a credential through a
+  log line or stack trace. `SlackAdapter` now reads both tokens through the resolver
+  instead of `os.environ`.
+- **Why.** Formalises the indirection the architecture already implied and answers
+  "does Meno need a K/V store for secrets?" — NO mind-accessible one. Giving the agent a
+  vault it could read would let a prompt-injected percept recall-and-exfiltrate a
+  credential; keeping secrets in the process/adapter boundary (and out of the graph,
+  which D26 redaction already enforces for inbound text) is the containment. Pluggable
+  backends leave a clean seam for an external manager (Vault, SOPS, a cloud secrets API)
+  without touching the kernel or the mind.
+- **Rules out / bounds.** Not a secrets *manager* (no rotation, no leasing) — it RESOLVES,
+  it doesn't store or issue. The default posture is unchanged (env-only, nothing in the
+  home); the dotenv file is a convenience, never required. The kernel-purity test is
+  extended to forbid `meno/` importing the resolver, same as the rest of the adapter layer.

@@ -9,6 +9,8 @@ slow network call never blocks cognition.
 from .base import Adapter, DeliveryResult
 from .knowledge import KnowledgeAdapter
 from .loopback import LoopbackAdapter
+from .secrets import DotenvBackend, EnvBackend, SecretResolver, env_resolver
 from .slack import SlackAdapter
 
-__all__ = ["Adapter", "DeliveryResult", "KnowledgeAdapter", "LoopbackAdapter", "SlackAdapter"]
+__all__ = ["Adapter", "DeliveryResult", "DotenvBackend", "EnvBackend", "KnowledgeAdapter",
+           "LoopbackAdapter", "SecretResolver", "SlackAdapter", "env_resolver"]

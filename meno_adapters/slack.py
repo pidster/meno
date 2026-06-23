@@ -37,7 +37,6 @@ token the adapter is inert. With efferent disabled (the default) it is sense-onl
 from __future__ import annotations
 
 import json
-import os
 import time
 from collections import deque
 from pathlib import Path
@@ -45,6 +44,7 @@ from typing import List, Optional
 
 from ._redact import redact as _redact
 from .base import Adapter, DeliveryResult, Percept
+from .secrets import SecretResolver, env_resolver
 
 
 
@@ -61,9 +61,13 @@ class SlackAdapter(Adapter):
                  membership_ttl: float = 120.0, token_env: str = "SLACK_BOT_TOKEN",
                  # --- afferent via Socket Mode (Events API, no public endpoint) ---
                  socket_mode: bool = False, app_token_env: str = "SLACK_APP_TOKEN",
+                 # secrets are resolved by NAME through the composition root's resolver,
+                 # never read from cognition; defaults to env-only (prior behaviour):
+                 secrets: Optional[SecretResolver] = None,
                  # --- efferent (I2): outward action is OPT-IN and gated ---
                  enabled: bool = False, post_channels=(), confirm: bool = True,
                  rate_per_min: int = 5, audit_path=None) -> None:
+        self._secrets = secrets or env_resolver()   # resolve token NAMES -> values here
         self.channels = tuple(channels)             # afferent allow-list (read)
         self.bot_user_id = bot_user_id              # skip our own posts (self-echo guard)
         self.max_chars = max_chars
@@ -88,8 +92,9 @@ class SlackAdapter(Adapter):
         if self._client is None:                    # build a real client only if SDK+token present
             try:  # pragma: no cover - depends on the optional dep + a token
                 import slack_sdk  # type: ignore
-                if os.environ.get(token_env):
-                    self._client = slack_sdk.WebClient(token=os.environ[token_env])
+                bot_token = self._secrets.resolve(token_env)
+                if bot_token:
+                    self._client = slack_sdk.WebClient(token=bot_token)
             except Exception:
                 self._client = None
         if self._client is not None and self.bot_user_id is None:
@@ -205,7 +210,7 @@ class SlackAdapter(Adapter):
         self._driver = driver
         if not self.socket_mode or not self.available:
             return
-        app_token = os.environ.get(self._app_token_env)
+        app_token = self._secrets.resolve(self._app_token_env)
         if not app_token:                            # fail loud-but-safe: stay deaf, don't crash
             self._record(RuntimeError(f"{self._app_token_env} unset"), "socket_mode")
             return

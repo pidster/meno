@@ -61,11 +61,17 @@ heartbeat_ticks = 8
 [egress]                     # D21: deny-by-default outbound allowlist (gates I2/K3)
 allow = []                   # e.g. ["slack.com", "www.slack.com"]
 
+[secrets]                    # D31: secrets are resolved by NAME (env-first), never stored
+                             # in cognition or the substrate. Default is env-only.
+# file = "secrets.env"       # OPTIONAL read-only dotenv fallback (env still wins). A
+                             # relative path resolves against the home (gitignored); use
+                             # an absolute path to keep secrets OUTSIDE the home entirely.
+
 [config]                     # overrides onto the Config dataclass (any field)
 # bus_log_max = 4096
 """
 
-_GITIGNORE = "run/\njournal/\n*.lock\n.env\n*.key\n*.pem\n"
+_GITIGNORE = "run/\njournal/\n*.lock\n.env\n*.env\n*.key\n*.pem\n"
 
 _ADAPTERS_TOML = """\
 # adapters.toml — which adapters are enabled. Each adapter has its own file.
