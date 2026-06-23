@@ -110,6 +110,15 @@ def test_a_public_channel_still_needs_listing():
     assert res.status == "refused" and res.reason == "scope"
 
 
+def test_empty_post_channels_replies_where_addressed():
+    # invite-as-consent: empty post_channels = reply wherever addressed (a reply only fires
+    # when addressed, so the address IS the consent), mirroring the afferent allow-list
+    fake = FakeSlack()
+    ad = _eff(fake, post_channels=[])
+    res = ad.deliver(_post(channel="C_anywhere", text="hi"))
+    assert res.status == "delivered" and fake.posts == [("C_anywhere", "hi")]
+
+
 def test_a_reply_threads_to_the_originating_message():
     fake = FakeSlack()
     ad = _eff(fake)

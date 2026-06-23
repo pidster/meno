@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Meno</title>
+  <desc>Meno app avatar: an ember core with a decaying spiral of activation, on a warm charcoal field. Full-bleed square; Slack rounds the corners.</desc>
+  <!-- Full-bleed background. Slack/most platforms mask to a rounded square or circle. -->
+  <rect width="512" height="512" fill="#1E1C1A"/>
+  <g transform="translate(256,256) scale(4.4) translate(-11.5,10)">
+    <g fill="none" stroke="#F2ECEE" stroke-width="3.1" stroke-linecap="round">
+      <path d="M 0 -10 A 12 12 0 0 1 15 0 A 18 18 0 0 1 0 22 A 26 26 0 0 1 -31 0"/>
+      <path d="M -31 0 A 36 36 0 0 1 0 -42" opacity="0.82"/>
+      <path d="M 0 -42 A 48 48 0 0 1 54 4" opacity="0.34" stroke-dasharray="3 5.5"/>
+    </g>
+    <circle cx="0" cy="22" r="2.9" fill="#F2ECEE"/>
+    <circle cx="0" cy="-42" r="2.5" fill="#F2ECEE" opacity="0.5"/>
+    <circle cx="0" cy="0" r="7" fill="#E8862F"/>
+  </g>
+</svg>

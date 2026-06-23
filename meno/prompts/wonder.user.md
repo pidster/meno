@@ -1,0 +1,2 @@
+Curiosity: {text}
+Referent: {referent}

@@ -115,7 +115,9 @@ socket_mode = false          # false = poll; true = real-time Events API over a
 
 [efferent]                   # what it may DO — gated, off by default
 enabled       = false        # the master switch; outward action is opt-in (a different risk class)
-post_channels = []           # may post ONLY to these channel IDs (DMs are in scope already)
+post_channels = []           # EMPTY = reply wherever it's addressed in a channel it was invited
+                             # to (the address is the consent); a list restricts to that subset.
+                             # DMs are always in scope (reply_in_dms).
 reply_in_dms  = true         # a DM is a 1:1 the person opened -> reply allowed without listing it
 dry_run       = false        # true = compose but DIVERT to the audit (watched-then-live ramp)
 rate          = "5/min"      # max posts/min — the runaway bound (no per-post approval, D35)

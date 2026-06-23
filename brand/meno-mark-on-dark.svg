@@ -1,0 +1,15 @@
+<svg width="120" height="120" viewBox="0 0 120 120" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Meno</title>
+  <desc>The Meno mark for dark backgrounds: a light spiral of activation around an ember core that remains.</desc>
+  <!-- dark backgrounds (e.g. Slack sidebar): light orbit, ember core -->
+  <g transform="translate(60,60) scale(0.95) translate(-11.5,10)">
+    <g fill="none" stroke="#F2ECEE" stroke-width="3.1" stroke-linecap="round">
+      <path d="M 0 -10 A 12 12 0 0 1 15 0 A 18 18 0 0 1 0 22 A 26 26 0 0 1 -31 0"/>
+      <path d="M -31 0 A 36 36 0 0 1 0 -42" opacity="0.82"/>
+      <path d="M 0 -42 A 48 48 0 0 1 54 4" opacity="0.34" stroke-dasharray="3 5.5"/>
+    </g>
+    <circle cx="0" cy="22" r="2.9" fill="#F2ECEE"/>
+    <circle cx="0" cy="-42" r="2.5" fill="#F2ECEE" opacity="0.5"/>
+    <circle cx="0" cy="0" r="7" fill="#E8862F"/>
+  </g>
+</svg>

@@ -47,7 +47,10 @@ class Appraiser(Processor):
     def run(self, event: Event, mind) -> List[Event]:
         event.seen_by.add(self.name)
         res = mind.models.appraise(event.content, event.surprise)
-        if event.kind in self.ENCODE:
+        # proprioception of meno's OWN outward action is appraised but NOT encoded (D38): it
+        # is not world-experience, and encoding it lets the agent reflect on its own posts and
+        # re-voice them (a reach feedback loop). Like REFERENCE, it informs without becoming memory.
+        if event.kind in self.ENCODE and not event.payload.get("proprioceptive"):
             # encode as a provisional node (forgetting has a front end: weak, decays).
             # The node lives in the GRAPH, so it must carry a COLD vector — not the
             # event's hot one (which is only for surprise/routing). add_node embeds

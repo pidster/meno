@@ -20,6 +20,7 @@ import os
 import re
 from typing import List, Optional
 
+from .prompts import load, render
 from .self_model import self_model
 
 _STOP = {"the", "a", "an", "is", "are", "of", "to", "and", "in", "on", "it",

@@ -558,10 +558,13 @@ class SlackAdapter(Adapter):
         return None
 
     def _in_post_scope(self, channel) -> bool:
-        """A reply is in scope if the channel is operator-listed, OR it is a DM (an `im`
-        channel, id 'D…'): a DM is a 1:1 the person opened, so replying there is consented
-        and its id can't be pre-listed (it's per-conversation). `reply_in_dms=False` turns
-        that off. Public/private channels always require `post_channels` (higher risk)."""
+        """A reply is in scope if: the channel is operator-listed; OR `post_channels` is
+        EMPTY (invite-as-consent — reply wherever it's addressed in a channel it was invited
+        to, mirroring the afferent allow-list; a reply only fires when addressed, so the
+        address IS the consent); OR it is a DM (a 1:1 the person opened, `reply_in_dms`).
+        A NON-empty `post_channels` is an optional restriction to that subset."""
+        if not self.post_channels:                    # empty = reply where addressed (consent = the invite)
+            return True
         if channel in self.post_channels:
             return True
         return bool(self.reply_in_dms) and str(channel or "").startswith("D")
@@ -619,7 +622,9 @@ class SlackAdapter(Adapter):
             return DeliveryResult("refused", refusal[1], refusal[0])
         if self.reach_dry_run:                        # watched-then-live: see what it WOULD say
             self._audit(channel, text, "reach-dry-run", f"would reach {target}")
-            return DeliveryResult("dry-run", f"[reach dry-run] to {target}: {text[:60]}")
+            # the FEEDBACK detail is terse — it must NOT echo the utterance (which would
+            # re-enter and loop); the full text is in the audit for the operator to read.
+            return DeliveryResult("dry-run", f"(reach to {target} held back — dry-run)")
         try:
             self._client.chat_postMessage(channel=channel, text=text)
         except Exception as exc:

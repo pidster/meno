@@ -166,7 +166,8 @@ class Driver:
                         self.last_error = f"egress: {exc}"
                         self._audit_outbound(name, action, "refused", "egress", str(exc))
                         self.feed(f"(egress denied: {exc})", source="driver",
-                                  kind=Kind.FEEDBACK, action=None, refused="egress")
+                                  kind=Kind.FEEDBACK, action=None, refused="egress",
+                                  proprioceptive=True)
                         return False
                 try:
                     result = ad.deliver(payload)          # the slow part, off the mind thread
@@ -183,7 +184,11 @@ class Driver:
                                   curate=True, key=ref.get("key"),
                                   provenance=ref.get("source", "lookup"), external=True)
                     elif getattr(result, "feeds_back", True):
-                        fb = {"action": None, "outbound": action}
+                        # proprioception of meno's OWN outward action — it reacts to having
+                        # acted (appraised) but this is NOT world-experience, so it is NOT
+                        # encoded as a memory (D38 review): otherwise meno reflects on its own
+                        # posts and re-voices them, a feedback loop. Mirrors REFERENCE (K2).
+                        fb = {"action": None, "outbound": action, "proprioceptive": True}
                         if status == "refused":
                             fb["refused"] = getattr(result, "reason", "")
                         self.feed(getattr(result, "detail", str(result)),
@@ -193,13 +198,13 @@ class Driver:
                     self.last_error = f"adapter {name}: {type(exc).__name__}: {exc}"
                     self._audit_outbound(name, action, "error", type(exc).__name__, str(exc))
                     self.feed(f"(action {action!r} failed: {type(exc).__name__})",
-                              source=name, kind=Kind.FEEDBACK, action=None)
+                              source=name, kind=Kind.FEEDBACK, action=None, proprioceptive=True)
                 return True
         # no adapter handled it: don't let the act vanish silently — feed back a miss
         self.dropped_outbound += 1
         self._audit_outbound("driver", action, "refused", "no-adapter", "")
         self.feed(f"(no adapter for action {action!r})", source="driver",
-                  kind=Kind.FEEDBACK, action=None)
+                  kind=Kind.FEEDBACK, action=None, proprioceptive=True)
         return False
 
     def _audit_outbound(self, adapter: str, action, outcome: str, reason: str, detail: str) -> None:

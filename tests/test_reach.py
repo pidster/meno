@@ -9,6 +9,7 @@ import json
 import tempfile
 
 from meno import Config, Driver, Meno, StubModelProvider
+from meno.event import Kind
 from meno.home import EgressPolicy
 from meno.models import ModelProvider
 from meno_adapters import SlackAdapter
@@ -115,6 +116,22 @@ def test_reach_redacts_the_outbound_text():
     ad = SlackAdapter(client=fake, reach_enabled=True, reach_dry_run=False, operator_dm="U_op")
     ad.deliver(_reach_payload(text="fyi password=hunter2secret"))
     assert "[redacted]" in fake.posts[0][1] and "hunter2secret" not in fake.posts[0][1]
+
+
+# --- the loop fix: meno does NOT reflect on its own actions (no re-voicing) -------- #
+def test_proprioceptive_action_feedback_is_not_encoded_as_memory():
+    mind = _mind()
+    n0 = len(mind.graph.nodes)
+    # proprioception of its OWN outbound action -> appraised, NOT encoded (else it reflects
+    # on its own posts and re-voices them: the reach feedback loop)
+    mind.feed("(reach to voice held back — dry-run)", source="slack",
+              kind=Kind.FEEDBACK, proprioceptive=True)
+    mind.run_until_quiescent()
+    assert len(mind.graph.nodes) == n0                # encoded nothing
+    # a normal WORLD feedback still DOES become a memory
+    mind.feed("the deploy finished cleanly", source="ci", kind=Kind.FEEDBACK)
+    mind.run_until_quiescent()
+    assert len(mind.graph.nodes) > n0
 
 
 # --- the loader arms reach from config (adapter + mind targets + driver cadence) -- #
