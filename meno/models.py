@@ -88,6 +88,10 @@ class ModelProvider:
         — reaching out is the highest-stakes act, so the safe base never initiates."""
         return {"speak": False, "text": "", "target": ""}
 
+    def usage_summary(self) -> dict:
+        """Cumulative token/cost accounting (D39). The offline providers spend nothing."""
+        return {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "by_method": {}}
+
 
 class StubModelProvider(ModelProvider):
     """Deterministic, offline stand-in. Good enough to exercise the whole loop."""
@@ -216,6 +220,22 @@ _REACH_SYSTEM = (
 _DEPTH = {"appraise": False, "relate": False, "associate": True, "synthesise": True,
           "wonder": True, "respond": True, "reach": True}
 
+# token-cost accounting (D39). $/1M tokens (input, output) per MODEL, from the model table
+# — cost depends on the model, not the method. Cache read is 0.1x input, 5-min write 1.25x.
+_MODEL_RATES = {"claude-haiku-4-5": (1.0, 5.0), "claude-sonnet-4-6": (3.0, 15.0),
+                "claude-opus-4-8": (5.0, 25.0)}
+
+
+def _call_cost(model: str, inp: int, out: int, cache_read: int, cache_write: int) -> float:
+    in_rate, out_rate = _MODEL_RATES.get(model, (3.0, 15.0))   # default Sonnet-tier if unknown
+    return ((inp + cache_read * 0.1 + cache_write * 1.25) * in_rate
+            + out * out_rate) / 1_000_000.0
+
+
+def _zero_usage() -> dict:
+    return {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
+            "cost_usd": 0.0, "by_model": {}}
+
 
 def _system_blocks(role_line: str, deep: bool) -> list:
     """System prompt as content blocks: the self-model first, the surface's role line
@@ -280,6 +300,40 @@ class AnthropicModelProvider(ModelProvider):
     def reset_telemetry(self) -> None:
         self.telemetry = {"real": 0, "fallback": 0, "last_error": None,
                           "by_method": {}}
+        self.usage = _zero_usage()              # token/cost accounting (D39); seeded from disk
+
+    def _create(self, **kw):
+        """The single chokepoint for every real model call: create, then METER the tokens
+        it spent (D39). Centralising here means accounting can't be forgotten at a call
+        site, and the model id (which sets the rate) is right there in the kwargs."""
+        msg = self._client.messages.create(**kw)
+        self._meter(kw.get("model", ""), msg)
+        return msg
+
+    def _meter(self, model: str, msg) -> None:
+        """Fold a call's tokens (input, output, prompt-cache read/write) and dollar cost
+        into the cumulative `usage`. Best-effort — never let accounting break cognition."""
+        u = getattr(msg, "usage", None)
+        if u is None:
+            return
+        inp = int(getattr(u, "input_tokens", 0) or 0)
+        out = int(getattr(u, "output_tokens", 0) or 0)
+        cr = int(getattr(u, "cache_read_input_tokens", 0) or 0)
+        cw = int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+        cost = _call_cost(model, inp, out, cr, cw)
+        g = self.usage
+        g["input"] += inp; g["output"] += out
+        g["cache_read"] += cr; g["cache_write"] += cw
+        g["cost_usd"] = round(g["cost_usd"] + cost, 6)
+        bm = g["by_model"].setdefault(model or "?", {"input": 0, "output": 0, "cost_usd": 0.0, "calls": 0})
+        bm["input"] += inp; bm["output"] += out
+        bm["cost_usd"] = round(bm["cost_usd"] + cost, 6); bm["calls"] += 1
+
+    def usage_summary(self) -> dict:
+        g = self.usage
+        return {"input_tokens": g["input"], "output_tokens": g["output"],
+                "cache_read_tokens": g["cache_read"], "cache_write_tokens": g["cache_write"],
+                "cost_usd": round(g["cost_usd"], 4), "by_model": g["by_model"]}
 
     @property
     def real_fraction(self) -> float:
@@ -324,7 +378,7 @@ class AnthropicModelProvider(ModelProvider):
 
     def appraise(self, content: str, surprise: float) -> dict:
         def real():
-            msg = self._client.messages.create(
+            msg = self._create(
                 model=self.TIER_MODELS[1],
                 max_tokens=256,
                 system=_system_blocks(_APPRAISE_SYSTEM, _DEPTH["appraise"]),
@@ -341,7 +395,7 @@ class AnthropicModelProvider(ModelProvider):
 
     def associate(self, stream_summary: str, related: List[str]) -> str:
         def real():
-            msg = self._client.messages.create(
+            msg = self._create(
                 model=self.TIER_MODELS[2],
                 max_tokens=200,
                 system=_system_blocks(_ASSOC_SYSTEM, _DEPTH["associate"]),
@@ -358,7 +412,7 @@ class AnthropicModelProvider(ModelProvider):
     def synthesise(self, occasion: str, material: List[str]) -> str:
         def real():
             prompt = f"Occasion: {occasion}\nMaterial:\n- " + "\n- ".join(material or ["(none)"])
-            msg = self._client.messages.create(
+            msg = self._create(
                 model=self.TIER_MODELS[3],
                 max_tokens=1500,                       # room for adaptive thinking + a short reflection
                 thinking={"type": "adaptive"},         # Opus 4.8: adaptive only (no budget_tokens)
@@ -374,7 +428,7 @@ class AnthropicModelProvider(ModelProvider):
 
     def relate(self, summary_a: str, summary_b: str) -> bool:
         def real():
-            msg = self._client.messages.create(
+            msg = self._create(
                 model=self.TIER_MODELS[1],
                 max_tokens=64,
                 system=_system_blocks(_RELATE_SYSTEM, _DEPTH["relate"]),
@@ -390,7 +444,7 @@ class AnthropicModelProvider(ModelProvider):
 
     def wonder(self, text: str, referent: Optional[str] = None) -> dict:
         def real():
-            msg = self._client.messages.create(
+            msg = self._create(
                 model=self.TIER_MODELS[2],
                 max_tokens=512,        # the structured {mode,thought,action,target} JSON; 200 truncated
                 system=_system_blocks(_WONDER_SYSTEM, _DEPTH["wonder"]),
@@ -433,7 +487,7 @@ class AnthropicModelProvider(ModelProvider):
                 system += (" You are in a 1:1 conversation the person opened, so do NOT stay "
                            "silent: if you have nothing substantive, briefly and honestly say "
                            "so (you may note what is on your mind) — never fabricate. speak=true.")
-            msg = self._client.messages.create(
+            msg = self._create(
                 model=self.TIER_MODELS[2],
                 max_tokens=600,
                 system=_system_blocks(system, _DEPTH["respond"]),
@@ -460,7 +514,7 @@ class AnthropicModelProvider(ModelProvider):
     def reach(self, ctx: dict) -> dict:
         def real():
             targets = ctx.get("targets") or []
-            msg = self._client.messages.create(
+            msg = self._create(
                 model=self.TIER_MODELS[2],
                 max_tokens=600,
                 system=_system_blocks(_REACH_SYSTEM, _DEPTH["reach"]),

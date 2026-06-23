@@ -766,3 +766,22 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   model's high bar. A reach post can't self-trigger (self-echo). The mind cannot post to an
   arbitrary channel — only configured targets resolve. Slices 2 (cadence/significance tuning,
   then go live) and 3 (channels-it's-in, with relevance routing) follow.
+
+### D39 — Token / cost accounting: meno knows its own running cost
+- **Decision.** Every real model call is metered. A single `_create` chokepoint on the
+  Anthropic provider calls `messages.create` and then folds `response.usage` (input, output,
+  and prompt-cache read/write tokens) plus the dollar cost — computed from per-MODEL rates
+  (cost depends on the model, not the method; cache read 0.1×, 5-min write 1.25×) — into a
+  cumulative `usage` accumulator, attributed `by_model`. It is surfaced in `status.json`
+  `health.usage` (cumulative input/output/cache tokens + `cost_usd` + `by_model`) and
+  PERSISTED to `run/usage.json`, which `build_instance` seeds back on start — so cumulative
+  cost survives restarts. Offline providers spend nothing (zero summary).
+- **Why.** meno previously tracked model-call *counts* in memory (lost on shutdown), and the
+  cost was only knowable from the Anthropic Console. Now the instance knows its own spend,
+  visible in the health surface and durable across restarts — observability the continuous
+  daemon needs, and the real cost signal the D32 cost governor can later throttle against
+  instead of its deep-op proxy.
+- **Rules out / bounds.** Metering is best-effort (a missing `usage` never breaks cognition).
+  The dollar figure is an ESTIMATE from the published rates — the Anthropic Console remains
+  authoritative for billing. Wiring the cost governor to a real USD budget/cap (rate breaker
+  vs spending cap is a distinct design) is a follow-on; this slice is the accounting it needs.

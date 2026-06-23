@@ -304,6 +304,21 @@ class Instance:
         tmp = self.status_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(status, indent=2))
         os.replace(tmp, self.status_path)
+        self._persist_usage(models)               # D39: cost survives restarts
+
+    def _persist_usage(self, models) -> None:
+        """Write the cumulative token/cost accounting beside status, so it carries across
+        restarts (build_instance seeds it back). Best-effort."""
+        usage = getattr(models, "usage", None)
+        if not usage:
+            return
+        try:
+            p = self.home / "run" / "usage.json"
+            tmp = p.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(usage))
+            os.replace(tmp, p)
+        except Exception:
+            pass
 
     def _health(self, models) -> dict:
         """The operational health surface (D32): the signals an operator watches to SEE
@@ -329,7 +344,8 @@ class Instance:
             "node_ceiling": self.mind.cfg.node_ceiling or None,
             "cognition_degraded": getattr(models, "degraded", False),
             "throttled": tel.get("throttled", False),
-            "cost": tel.get("cost"),
+            "cost": tel.get("cost"),                      # the deep-op breaker state (D32)
+            "usage": models.usage_summary() if hasattr(models, "usage_summary") else None,  # tokens + $ (D39)
             "last_error": tel.get("last_error"),
         }
 
@@ -357,6 +373,16 @@ def build_instance(home) -> Instance:
                                         strict=bool(cognition.get("strict", False)))
     else:
         models = StubModelProvider()
+
+    # seed cumulative token accounting from disk so cost survives restarts (D39)
+    usage_file = home / "run" / "usage.json"
+    if usage_file.exists() and hasattr(models, "usage"):
+        try:
+            prior = json.loads(usage_file.read_text())
+            if isinstance(prior, dict):
+                models.usage.update({k: prior[k] for k in models.usage if k in prior})
+        except Exception:
+            pass
 
     handle = (conf.get("instance") or {}).get("handle", home.name)
     mind = Meno(config=cfg, models=models, embed=embed, workspace=home, name=handle)
