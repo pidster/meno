@@ -37,6 +37,7 @@ token the adapter is inert. With efferent disabled (the default) it is sense-onl
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import deque
 from pathlib import Path
@@ -371,7 +372,11 @@ class SlackAdapter(Adapter):
             v = snap.get(k)
             return "—" if v is None else str(v)
 
+        def _tidy(s):                                    # strip the 'slack #<id>:' provenance noise
+            return re.sub(r"slack #\S+:\s*", "", str(s)).strip()
+
         def _bullets(items, empty):
+            items = [_tidy(i) for i in items if _tidy(i)]
             return "\n".join(f"•  {i}" for i in items) if items else f"_{empty}_"
 
         disp = str(self.agent_name).capitalize()         # DISPLAY name (Meno); slug stays lowercase
