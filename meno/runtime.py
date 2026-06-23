@@ -405,6 +405,25 @@ class Meno:
             self.bus.publish(ev)
         return self.run_until_quiescent()
 
+    def musings(self, reflections: int = 3, curiosities: int = 3) -> dict:
+        """A light, model-FREE digest of what is on meno's mind right now — what it has
+        recently reflected on, and what it is currently curious about — for presentation
+        surfaces (the Slack App Home). Reads STORED text only and never RECONSTRUCTS a
+        reflection (no model calls), so it is cheap to regenerate on every page open: a
+        journaled reflection shows its conclusion, a reconstructive one shows what it was
+        about; curiosities are listed strongest-first."""
+        cues = sorted(self.graph.cues.values(), key=lambda c: c.created_at, reverse=True)
+        refl: List[str] = []
+        for c in cues:
+            text = (c.verbatim or c.occasion or "").strip()
+            if text:
+                refl.append(text[:240])
+            if len(refl) >= reflections:
+                break
+        curi = [c.text.strip()[:240] for c in self.curiosities.items[:curiosities]
+                if (c.text or "").strip()]
+        return {"reflections": refl, "curiosities": curi}
+
     # --- observability ---
     def snapshot(self) -> dict:
         return {

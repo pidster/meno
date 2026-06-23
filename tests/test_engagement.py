@@ -147,6 +147,34 @@ def test_home_view_renders_menos_state():
     assert "Meno" in blob and "@Meno" in blob and "Memories" in blob and "Talk to me" in blob
 
 
+def test_musings_digests_recent_reflections_and_curiosities():
+    mind = _mind()
+    mind.graph.store_cue([], "otters rafting in kelp", tone=0.5,
+                         conclusion="they hold paws so they don't drift apart",
+                         material=["x"], journal=True)          # journaled -> conclusion shows
+    mind.graph.store_cue([], "the turning tide", tone=0.4, conclusion="patterns recur",
+                         material=["y"])                        # reconstructive -> the topic shows
+    mind.curiosities.register("why do otters hold paws?", source="top-down")
+    m = mind.musings()
+    assert any("hold paws" in r for r in m["reflections"])      # the journaled conclusion
+    assert any("tide" in r for r in m["reflections"])           # the reconstructive occasion
+    assert any("otters hold paws" in c for c in m["curiosities"])
+
+
+def test_home_view_shows_the_live_narrative():
+    mind = _mind()
+    mind.graph.store_cue([], "the shape of a habit", tone=0.5,
+                         conclusion="repetition wears a groove", material=["x"], journal=True)
+    mind.curiosities.register("what makes a memory stick?", source="top-down")
+    driver = Driver(mind, sleep=lambda _: None)
+    ad = SlackAdapter(channels=(), name="meno", bot_user_id="U_bot")
+    driver.add_adapter(ad)
+    ad._driver = driver                               # what start() wires live
+    blob = json.dumps(ad._home_view())
+    assert "reflecting on" in blob and "repetition wears a groove" in blob   # narrative present
+    assert "curious about" in blob and "what makes a memory stick" in blob
+
+
 def test_home_view_degrades_gracefully_with_no_driver():
     ad = SlackAdapter(channels=(), name="meno")       # no driver attached
     view = ad._home_view()                            # must still render (no crash)

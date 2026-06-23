@@ -347,23 +347,32 @@ class SlackAdapter(Adapter):
             self._record(exc, "views_publish")
 
     def _home_view(self) -> dict:
-        """A Block Kit 'home' view reflecting meno's live state of mind — memories,
-        reflections, what it's doing. Pure (no network); reads the mind's snapshot off the
-        driver if present, degrading to '—' so the page always renders."""
-        snap, cycles = {}, "—"
+        """A Block Kit 'home' view reflecting meno's live state of mind — a light narrative
+        of what it has recently reflected on and is curious about, plus the stats. Pure (no
+        network); regenerated on every page open from the mind's snapshot + musings (both
+        model-free), degrading to placeholders so the page always renders."""
+        snap, muse, cycles = {}, {}, "—"
         drv = self._driver
+        mind = getattr(drv, "mind", None) if drv is not None else None
         if drv is not None:
             cycles = getattr(drv, "cycles", "—")
-            mind = getattr(drv, "mind", None)
-            if mind is not None and hasattr(mind, "snapshot"):
+        if mind is not None:
+            try:
+                snap = mind.snapshot()
+            except Exception:
+                snap = {}
+            if hasattr(mind, "musings"):
                 try:
-                    snap = mind.snapshot()
+                    muse = mind.musings()
                 except Exception:
-                    snap = {}
+                    muse = {}
 
         def _f(k):
             v = snap.get(k)
             return "—" if v is None else str(v)
+
+        def _bullets(items, empty):
+            return "\n".join(f"•  {i}" for i in items) if items else f"_{empty}_"
 
         disp = str(self.agent_name).capitalize()         # DISPLAY name (Meno); slug stays lowercase
         return {"type": "home", "blocks": [
@@ -373,6 +382,13 @@ class SlackAdapter(Adapter):
                 "curiosity — I become particular through experience. I'm not a chatbot: "
                 "I reply when I'm addressed and have something earned to say, and otherwise "
                 "I'm just thinking._"}},
+            {"type": "divider"},
+            {"type": "section", "text": {"type": "mrkdwn", "text":
+                "*🧠  Lately I've been reflecting on*\n"
+                + _bullets(muse.get("reflections", []), "nothing yet — I'm still settling in")}},
+            {"type": "section", "text": {"type": "mrkdwn", "text":
+                "*🔭  I'm curious about*\n"
+                + _bullets(muse.get("curiosities", []), "nothing is pulling at me just now")}},
             {"type": "divider"},
             {"type": "section", "fields": [
                 {"type": "mrkdwn", "text": f"*Memories*\n{_f('nodes')}"},
@@ -386,7 +402,8 @@ class SlackAdapter(Adapter):
                 "direct message. I may answer — or I may just listen and remember. Either "
                 "is me reacting to you."}},
             {"type": "context", "elements": [{"type": "mrkdwn", "text":
-                "Sensing is always on; what I say back is gated and stays off until enabled."}]},
+                "Sensing is always on; what I say back is gated and stays off until enabled. "
+                "This page refreshes whenever you open it."}]},
         ]}
 
     def _addressing(self, etype, channel, event):
