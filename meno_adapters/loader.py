@@ -70,6 +70,7 @@ def load_adapters(inst) -> list:
             enabled=bool(eff.get("enabled", False)),
             post_channels=tuple(eff.get("post_channels", ())),
             dry_run=bool(eff.get("dry_run", False)),
+            reply_in_dms=bool(eff.get("reply_in_dms", True)),
             rate_per_min=_rate_per_min(eff.get("rate", "5/min")),
             audit_path=traces / "slack-sends.jsonl"))
         attached.append("slack")

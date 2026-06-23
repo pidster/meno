@@ -67,6 +67,7 @@ class SlackAdapter(Adapter):
                  secrets: Optional[SecretResolver] = None,
                  # --- efferent (I2/I3): outward action is OPT-IN and gated ---
                  enabled: bool = False, post_channels=(), dry_run: bool = False,
+                 reply_in_dms: bool = True,   # a DM is a 1:1 the person opened -> in scope by consent
                  rate_per_min: int = 5, audit_path=None) -> None:
         self._secrets = secrets or env_resolver()   # resolve token NAMES -> values here
         self.channels = tuple(channels)             # afferent allow-list (read)
@@ -83,6 +84,7 @@ class SlackAdapter(Adapter):
         self.enabled = enabled
         self.post_channels = tuple(post_channels)   # efferent allow-list (write) — distinct from read
         self.dry_run = dry_run                      # divert posts to the audit, don't send (tuning ramp)
+        self.reply_in_dms = reply_in_dms            # DMs are in scope without listing (per-DM ids are dynamic)
         self.rate_per_min = rate_per_min
         self.audit_path = Path(audit_path) if audit_path else None
         self.egress = None                          # set by the Driver; checked on the send path
@@ -443,7 +445,7 @@ class SlackAdapter(Adapter):
         that has since narrowed (disabled / out-of-scope / rate / egress) still blocks it."""
         if not self.enabled:
             return ("disabled", "efferent disabled (outward action is opt-in)")
-        if channel not in self.post_channels:
+        if not self._in_post_scope(channel):
             return ("scope", f"channel {channel!r} not in post scope")
         now = time.monotonic()
         while self._sent_at and now - self._sent_at[0] > 60.0:
@@ -453,6 +455,15 @@ class SlackAdapter(Adapter):
         if not self._egress_ok():                    # the network boundary, on every send path
             return ("egress", f"egress to {list(self.hosts)} denied")
         return None
+
+    def _in_post_scope(self, channel) -> bool:
+        """A reply is in scope if the channel is operator-listed, OR it is a DM (an `im`
+        channel, id 'D…'): a DM is a 1:1 the person opened, so replying there is consented
+        and its id can't be pre-listed (it's per-conversation). `reply_in_dms=False` turns
+        that off. Public/private channels always require `post_channels` (higher risk)."""
+        if channel in self.post_channels:
+            return True
+        return bool(self.reply_in_dms) and str(channel or "").startswith("D")
 
     def _egress_ok(self) -> bool:
         if self.egress is None:

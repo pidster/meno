@@ -88,6 +88,28 @@ def test_dry_run_still_passes_through_the_gate_first():
     assert res.status == "refused" and res.reason == "scope" and fake.posts == []
 
 
+def test_a_dm_is_in_post_scope_without_being_listed():
+    # a DM channel id is per-conversation; the person opened it, so a reply is consented
+    fake = FakeSlack()
+    ad = _eff(fake, post_channels=["C_meno"])          # DM channel NOT listed
+    res = ad.deliver(_post(channel="D0ABC123", text="hi back"))
+    assert res.status == "delivered" and fake.posts == [("D0ABC123", "hi back")]
+
+
+def test_reply_in_dms_can_be_turned_off():
+    fake = FakeSlack()
+    ad = _eff(fake, post_channels=["C_meno"], reply_in_dms=False)
+    res = ad.deliver(_post(channel="D0ABC123", text="nope"))
+    assert res.status == "refused" and res.reason == "scope" and fake.posts == []
+
+
+def test_a_public_channel_still_needs_listing():
+    fake = FakeSlack()
+    ad = _eff(fake, post_channels=["C_meno"])
+    res = ad.deliver(_post(channel="C_other", text="x"))   # non-DM, unlisted -> refused
+    assert res.status == "refused" and res.reason == "scope"
+
+
 def test_a_reply_threads_to_the_originating_message():
     fake = FakeSlack()
     ad = _eff(fake)
