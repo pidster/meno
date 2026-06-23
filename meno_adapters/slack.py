@@ -171,9 +171,13 @@ class SlackAdapter(Adapter):
         if not self.available or self.socket_mode:   # Socket Mode pushes; don't also poll
             return []
         joined = self._joined()
+        # consent = the invite. With no explicit allow-list, sense EVERY channel the bot
+        # was invited to (discovered dynamically); an allow-list, if given, further
+        # restricts to a subset. Either way it can only read a channel it has joined.
+        targets = self.channels or tuple(joined)
         out: List[Percept] = []
-        for ch in self.channels:
-            if ch not in joined:                     # consent: listed AND joined
+        for ch in targets:
+            if ch not in joined:                     # joined is always required
                 continue
             oldest = self._cursor.get(ch, "0")
             try:
@@ -271,19 +275,20 @@ class SlackAdapter(Adapter):
         redaction, then push a SENSE percept via the driver's thread-safe inbox. Tested
         directly; the WebSocket plumbing in start()/_on_request is live-gated.
 
-        Consent: Slack only delivers events for channels the bot is in (membership is
-        enforced upstream), and we additionally require the channel be operator-LISTED.
-        We accept only BARE messages and app_mentions — any `subtype` (edits, deletes,
-        joins, file-shares, bot_message) is dropped: a `message_changed` carries its real
-        author and edited body NESTED under `event['message']`, so the top-level
-        self-echo guard can't see them; dropping subtyped events closes that bypass (a
-        conservative bound — documented in docs/slack-app.md)."""
+        Consent IS the invite: Slack only delivers events for channels the bot was added
+        to. With no explicit allow-list we sense all of them (dynamic — the operator never
+        collects channel IDs); a non-empty `channels` further restricts to a subset. We
+        accept only BARE messages and app_mentions — any `subtype` (edits, deletes, joins,
+        file-shares, bot_message) is dropped: a `message_changed` carries its real author
+        and edited body NESTED under `event['message']`, so the top-level self-echo guard
+        can't see them; dropping subtyped events closes that bypass (documented in
+        docs/slack-app.md)."""
         if event.get("type") not in ("message", "app_mention"):
             return
         if event.get("subtype"):                     # bare messages/mentions only (see docstring)
             return
         channel = event.get("channel")
-        if channel not in self.channels:             # consent: only operator-listed channels
+        if self.channels and channel not in self.channels:   # allow-list is an OPTIONAL restriction
             return
         content = self._shape(channel, event.get("user"), event.get("subtype"),
                               event.get("text"), event.get("bot_id"))

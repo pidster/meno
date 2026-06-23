@@ -99,8 +99,8 @@ token) or where a WebSocket is undesirable.
 |---|---|---|
 | **The Slack app** | required | Create from the manifest; install; capture the `xoxb-` bot token. |
 | **App-level token** | required for Socket Mode | Generate in *Basic Information → App-Level Tokens* (scope `connections:write`); give it as `$SLACK_APP_TOKEN`. Not needed for polling. |
-| **Channel IDs** | minor | The adapter takes channel **IDs** (`C…`), not names. Get them from the channel's "View details" or `conversations.list`. *(Could add name→ID resolution as a convenience.)* |
-| **Bot must be invited** | required | `/invite @meno` per channel — our consent requires the bot be a member (Socket Mode only delivers events for channels it's in; polling checks membership). |
+| **Channel IDs** | none | Not needed — leave `channels = []` and meno senses every channel it's invited to (discovered via `users.conversations`; Socket Mode only delivers joined-channel events). An explicit ID list is an optional restriction. |
+| **Bot must be invited** | required | `/invite @meno` per channel — the invite is the consent (Socket Mode only delivers events for channels it's in; polling checks membership). |
 | **Mention-reply behaviour** | optional | Socket Mode now *receives* `app_mention` as a SENSE percept, but meno has no special "always reply when mentioned" reflex — a mention enters cognition like any percept, and any reply goes through the gated efferent path. |
 | **DMs / group DMs** | optional | Add `im:*`/`mpim:*` scopes + `message.im`/`message.mpim` events to sense those conversation types. |
 | **Egress** | required | `slack.com` and `*.slack.com` (covers `www.slack.com` and the Socket Mode `wss-*.slack.com`) must be in `meno.toml [egress]`, or every call — including the WebSocket open — is refused at the boundary. |
@@ -123,12 +123,14 @@ in egress, and (for Socket Mode) provide the app-level token.
    export SLACK_BOT_TOKEN=xoxb-…
    export SLACK_APP_TOKEN=xapp-…          # Socket Mode only
    ```
-5. **Invite the bot** to each channel: `/invite @meno`. Note each channel's **ID**.
+5. **Invite the bot** to each channel it should sense: `/invite @meno`. That invite **is the
+   consent** — you don't collect channel IDs.
 6. **Configure the instance** (`<home>/adapters/slack.toml`):
    ```toml
    [afferent]
    enabled     = true
-   channels    = ["C0123ABC", "C0456DEF"] # the channel IDs you invited it to
+   channels    = []                       # empty = sense EVERY channel you invited it to
+                                           # (auto-discovered). A list restricts to a subset.
    socket_mode = true                     # real-time; false = poll (no app token needed)
 
    [efferent]                             # leave OFF until you want it to post

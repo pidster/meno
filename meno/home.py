@@ -105,7 +105,9 @@ _SLACK_TOML = """\
 # environment ($SLACK_BOT_TOKEN), never here.
 [afferent]                   # what it SENSES
 enabled     = false
-channels    = []             # channel IDs to listen on (must be joined too)
+channels    = []             # leave EMPTY to sense every channel you /invite @meno to
+                             # (auto-discovered — no need to collect IDs). A non-empty list
+                             # of channel IDs is an OPTIONAL further restriction to a subset.
 socket_mode = false          # false = poll; true = real-time Events API over a
                              # WebSocket (no public endpoint). Needs $SLACK_APP_TOKEN
                              # (xapp-…, scope connections:write); only active in the

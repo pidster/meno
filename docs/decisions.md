@@ -654,3 +654,16 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   and test against; deferred until needed). The `Store` seam stays kernel-pure (the file store
   is stdlib); a network backend, when added, lazily imports its client like the Anthropic
   provider does. Secrets for the DB are resolved by name (D31), never baked.
+
+### D26a — Slack consent is the INVITE; channel allow-list is optional
+- **Update to D26.** The afferent consent boundary is "the bot was invited" (joined), not a
+  hand-maintained channel-ID list. With `adapters/slack.toml [afferent] channels = []` (now
+  the default), meno senses EVERY channel `@meno` is invited to — discovered dynamically via
+  `users.conversations` (poll) and enforced by Slack delivering only joined-channel events
+  (Socket Mode). A non-empty `channels` is an OPTIONAL further restriction to a subset, not a
+  requirement. Inviting a bot to a channel is already a deliberate human act, so it is the
+  right consent signal; making the operator also collect channel IDs was friction without
+  added safety. Redaction (D26) and the off-by-default gated efferent (I2) are unchanged.
+- **Presentation.** The manifest now sets `bot_user.always_online: true` and enables
+  `app_home.messages_tab` so the bot shows a presence dot and appears in the workspace Apps
+  list — installation/registration was always fine; visibility just wasn't configured.

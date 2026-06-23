@@ -70,6 +70,14 @@ def test_a_joined_but_not_listed_channel_yields_nothing():
     assert ad.poll() == []
 
 
+def test_an_empty_channel_list_polls_every_joined_channel():
+    # consent is the invite: no allow-list -> sense all channels the bot was added to
+    hist = {"C_a": [_msg("100", "from a")], "C_b": [_msg("100", "from b")]}
+    ad = _adapter(["C_a", "C_b"], hist, channels=[])
+    chans = {p[2]["channel"] for p in ad.poll()}
+    assert chans == {"C_a", "C_b"}
+
+
 # --- privacy: secrets redacted; the bot's own posts skipped (self-echo) ----------- #
 def test_secrets_in_a_message_are_redacted_before_becoming_a_percept():
     ad = _adapter(["C_meno"], {"C_meno": [_msg("100", "the key is password=hunter2secret ok")]},

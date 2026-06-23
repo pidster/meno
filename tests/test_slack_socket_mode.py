@@ -55,6 +55,25 @@ def test_socket_event_from_an_unlisted_channel_is_dropped():
     assert drv.fed == [] and ad.events == 0
 
 
+def test_empty_channel_list_senses_every_invited_channel():
+    """Consent is the invite: with no explicit allow-list, ANY channel Slack delivers
+    events for (i.e. one the bot was added to) is sensed — no channel IDs to collect."""
+    ad = SlackAdapter(channels=(), socket_mode=True, bot_user_id="U_bot")
+    drv = FakeDriver()
+    ad._driver = drv
+    ad._handle_event(_event("from a freshly-invited channel", channel="C_whatever"))
+    assert len(drv.fed) == 1 and drv.fed[0][2]["channel"] == "C_whatever"
+
+
+def test_a_nonempty_channel_list_still_restricts_to_the_subset():
+    ad = SlackAdapter(channels=("C_only",), socket_mode=True, bot_user_id="U_bot")
+    drv = FakeDriver()
+    ad._driver = drv
+    ad._handle_event(_event("allowed", channel="C_only"))
+    ad._handle_event(_event("blocked", channel="C_other"))
+    assert len(drv.fed) == 1 and "allowed" in drv.fed[0][0]
+
+
 # --- self-echo: our own / bot posts never re-enter (matches the poll path) -------- #
 def test_socket_skips_our_own_posts_and_bot_messages():
     ad, drv = _socket_adapter(), FakeDriver()
