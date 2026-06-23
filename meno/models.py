@@ -128,12 +128,16 @@ class StubModelProvider(ModelProvider):
 
     def respond(self, ctx: dict) -> dict:
         # deterministic engagement: turn toward a DIRECT address (@mention / DM); stay
-        # silent on the soft 'possibly' cue (a named-but-maybe-not-for-me question) — so
-        # response is may-not-must even in the stub. A real model judges both bands.
+        # silent on the soft 'possibly' cue — so response is may-not-must even in the stub.
+        # In a 1:1 pane (`must_respond`), never go silent: give a brief honest non-answer.
+        who = ctx.get("actor") or "you"
         if ctx.get("addressed") != "directed":
+            if ctx.get("must_respond"):
+                return {"speak": True,
+                        "text": f"I don't have anything earned to say on that yet, {who}, "
+                                "but I'm here and listening."}
             return {"speak": False, "text": ""}
         msg = (ctx.get("text") or "").strip()
-        who = ctx.get("actor") or "you"
         return {"speak": True, "text": f"I heard you, {who} — you said: {msg[:120]}"}
 
 
@@ -397,10 +401,15 @@ class AnthropicModelProvider(ModelProvider):
     def respond(self, ctx: dict) -> dict:
         def real():
             mem = ctx.get("memory") or "(nothing specific comes to mind)"
+            system = _RESPOND_SYSTEM
+            if ctx.get("must_respond"):               # a 1:1 pane the person opened (D37)
+                system += (" You are in a 1:1 conversation the person opened, so do NOT stay "
+                           "silent: if you have nothing substantive, briefly and honestly say "
+                           "so (you may note what is on your mind) — never fabricate. speak=true.")
             msg = self._client.messages.create(
                 model=self.TIER_MODELS[2],
                 max_tokens=600,
-                system=_system_blocks(_RESPOND_SYSTEM, _DEPTH["respond"]),
+                system=_system_blocks(system, _DEPTH["respond"]),
                 messages=[{"role": "user",
                            "content": f"You are {ctx.get('name','meno')}. "
                                       f"{ctx.get('actor','someone')} addressed you "

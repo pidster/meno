@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -318,9 +319,18 @@ class SlackAdapter(Adapter):
         band, reply_to = self._addressing(etype, channel, event)   # I3: how directed at me?
         if band in ("directed", "possibly"):         # resolve the speaker's NAME only when we
             reply_to["user_name"] = self._user_name(event.get("user"))   # might actually reply
+        # a DM / assistant pane is a 1:1 the person opened: no pure silence there (D37).
+        is_dm = event.get("channel_type") == "im"
+        if is_dm:
+            reply_to["must_respond"] = True
         self.events += 1
+        # QUEUE the percept FIRST, then show the 'thinking…' status OFF-THREAD: a slow Slack
+        # call must never delay or stall message ingestion on the websocket thread.
         self._driver.feed(content, source=self.source, channel=channel, ts=event.get("ts"),
                           user=event.get("user"), addressed=band, reply_to=reply_to)
+        if is_dm:
+            threading.Thread(target=self._assistant_status, daemon=True,
+                             args=(channel, event.get("thread_ts"))).start()
 
     def _user_name(self, user_id):
         """Resolve a Slack user id to a human display name (cached). Falls back to the
@@ -437,6 +447,21 @@ class SlackAdapter(Adapter):
                                               text=self._assistant_greeting())
         except Exception as exc:
             self._record(exc, "assistant_started")
+
+    def _assistant_status(self, channel, thread_ts, status: str = "is thinking…") -> None:
+        """Show the assistant 'thinking…' status on a pane thread while meno composes; it
+        auto-clears when the reply posts. Called OFF the websocket thread (see _handle_event)
+        so a slow call can't stall ingestion. No-op outside an assistant thread (needs a
+        thread_ts) or without egress; best-effort — a failure never blocks sensing. (Edge:
+        if a reply is suppressed — cost-throttle or per-cycle budget — the status isn't
+        auto-cleared until the next message overwrites it; rare for a 1:1 and self-healing.)"""
+        if not (channel and thread_ts and self.available and self._egress_ok()):
+            return
+        try:
+            self._client.assistant_threads_setStatus(
+                channel_id=channel, thread_ts=thread_ts, status=status)
+        except Exception as exc:
+            self._record(exc, "assistant_status")
 
     def _assistant_prompts(self) -> list:
         return [

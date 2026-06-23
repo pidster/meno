@@ -270,6 +270,38 @@ def test_stub_respond_turns_toward_a_direct_address_but_not_a_soft_one():
     assert ModelProvider().respond({"addressed": "directed"})["speak"] is False
 
 
+def test_in_a_1to1_pane_it_gives_an_honest_non_answer_instead_of_silence():
+    p = StubModelProvider()
+    # the soft signal would normally be silence — but must_respond (a pane) forbids it
+    d = p.respond({"addressed": "possibly", "text": "?", "actor": "Pid", "must_respond": True})
+    assert d["speak"] is True and d["text"] and "Pid" in d["text"]
+
+
+def test_an_assistant_pane_message_is_marked_must_respond():
+    class PaneClient:
+        def assistant_threads_setStatus(self, **kw): pass
+        def users_info(self, user): return {"user": {"profile": {"display_name": "Pid"}}}
+    ad = SlackAdapter(client=PaneClient(), channels=(), name="meno", bot_user_id="U_bot")
+    ad._driver = FakeDriver()
+    ad._handle_event({"type": "message", "channel": "D0XYZ", "channel_type": "im",
+                      "user": "U_a", "text": "what's on your mind?", "thread_ts": "1729.0001"})
+    payload = ad._driver.fed[0][2]
+    assert payload["reply_to"]["must_respond"] is True          # a DM/pane -> no pure silence
+    assert payload["channel"] == "D0XYZ"
+
+
+def test_assistant_status_shows_thinking_on_the_thread():
+    seen = []
+    class PaneClient:
+        def assistant_threads_setStatus(self, **kw): seen.append(kw)
+    ad = SlackAdapter(client=PaneClient(), channels=(), name="meno", bot_user_id="U_bot")
+    ad._assistant_status("D0XYZ", "1729.0001")                  # the sync call (dispatched off-thread live)
+    assert seen and seen[0]["thread_ts"] == "1729.0001" and "thinking" in seen[0]["status"]
+    # no-op without a thread_ts (not an assistant thread)
+    seen.clear(); ad._assistant_status("D0XYZ", None)
+    assert seen == []
+
+
 # --- the engagement loop: a directed percept becomes a gated POST intent ----------- #
 def _drain_outbox(mind):
     out = []
