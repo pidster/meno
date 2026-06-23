@@ -1,0 +1,47 @@
+# Slack app manifest for a Meno instance — v1 (polling).
+#
+# Create the app from this manifest at https://api.slack.com/apps → "Create New App"
+# → "From an app manifest", then Install to Workspace. That issues a BOT token
+# (xoxb-…) — give it to the instance as $SLACK_BOT_TOKEN (never store it in the home).
+#
+# v1 matches what meno's SlackAdapter actually does: it POLLS `conversations.history`
+# (+ `users.conversations` for membership). That needs only the bot token and the read
+# scopes below — NO public Request URL, NO Events API, NO Socket Mode. (See
+# docs/slack-app.md for the Socket Mode upgrade path and the scopes it would add.)
+
+_metadata:
+  major_version: 2
+  minor_version: 2
+
+display_information:
+  name: Meno
+  description: A persistent cognitive agent — senses Slack, and (gated, opt-in) posts.
+  background_color: "#16161d"
+
+features:
+  bot_user:
+    display_name: meno
+    always_online: false
+
+oauth_config:
+  scopes:
+    bot:
+      # afferent (sense) — the bot reads only channels it is a MEMBER of:
+      - channels:read        # users.conversations — list public channels the bot joined
+      - groups:read          # users.conversations — list private channels the bot joined
+      - channels:history     # conversations.history — read public-channel messages
+      - groups:history       # conversations.history — read private-channel messages
+      # efferent (act) — posting is OFF by default in adapters/slack.toml and gated
+      # (scope/rate/confirm-first); this scope only makes it POSSIBLE, not automatic:
+      - chat:write           # chat.postMessage — post as the bot to channels it joined
+      # add `im:read`+`im:history`+`mpim:read`+`mpim:history` only if you want it to
+      # sense DMs / group DMs (the adapter requests public+private channels today).
+
+settings:
+  org_deploy_enabled: false
+  token_rotation_enabled: false   # single-workspace internal app: a static bot token
+  socket_mode_enabled: false      # v1 POLLS; flip to true + add event_subscriptions for v2
+  # event_subscriptions:          # (v2 / Socket Mode only — unused while polling)
+  #   bot_events:
+  #     - message.channels        # real-time channel messages
+  #     - app_mention             # respond when @meno is mentioned

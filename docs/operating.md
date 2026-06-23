@@ -164,6 +164,8 @@ half of the egress boundary; `meno.toml [egress]` is the in-app half.
 
 ## 5 · Channels — Slack
 
+> **Creating the Slack app** (manifest, scopes, setup): see [`slack-app.md`](slack-app.md).
+
 Meno reaches the world through **adapters** (the `meno_adapters` package; the network
 SDKs live there, never in the kernel). Slack is the first channel, in two halves:
 
