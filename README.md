@@ -117,10 +117,13 @@ and a **real local embedder** (`--split-embed`). On top of the realised kernel
   (sleep-not-amnesia), an **OCI image** (image = type, home = volume), a deny-by-default
   **egress** boundary, and a **Slack** channel — afferent (consented, redacted) and a
   **gated** efferent (disabled by default, scoped, rate-limited, confirm-first, audited).
+- **K3** — external network **authorities**: a Library miss falls out to a web/MCP
+  authority, the result curated back so a repeat is a local hit; egress-gated, audited.
 
-Each phase passed a multi-lens adversarial review before landing. **Remaining:** K3
-(external network authorities), and the config-driven adapter loader that lets
-`meno run` attach channels from `adapters/*.toml` (today they attach in code — see
-[`docs/operating.md`](docs/operating.md) §5). Deferred scale items (a vector/graph DB,
-the async worker pool, D19 lifetime-growth) remain in the docs' open lists; scoring
-constants in `meno/config.py` are first cuts, tuned empirically.
+**Roadmap II is complete** — every phase through a multi-lens adversarial review.
+`meno run` wires the channels/authorities an instance's `adapters/*.toml` enables
+(the kernel stays adapter-blind; the entrypoint is a composition root). What remains is
+*live* validation, gated on credentials/runtime (a funded model key, a Slack token, a
+container runtime, a real authority client), plus deferred scale items (a vector/graph
+DB, the async worker pool, D19 lifetime-growth). Scoring constants in `meno/config.py`
+are first cuts, tuned empirically.

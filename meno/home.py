@@ -87,6 +87,21 @@ hosts   = []                 # the authority's host(s) — MUST also be in meno.
 # credential = "WEB_SEARCH_KEY"   # a REFERENCE; the secret is in the environment
 """
 
+_SLACK_TOML = """\
+# slack.toml — the Slack channel (Roadmap I1/I2). The bot token is in the
+# environment ($SLACK_BOT_TOKEN), never here.
+[afferent]                   # what it SENSES
+enabled  = false
+channels = []                # channel IDs to listen on (must be joined too)
+
+[efferent]                   # what it may DO — gated, off by default
+enabled       = false        # outward action is opt-in; a different risk class
+post_channels = []           # may post ONLY to these channel IDs
+confirm       = true         # confirm-first: each post needs operator approval
+rate          = "5/min"
+# slack.com MUST also be in meno.toml [egress] for any post to leave the box
+"""
+
 
 def init_home(path, handle: Optional[str] = None) -> Path:
     """Scaffold an instance home from templates: the directory tree, a starter
@@ -111,6 +126,7 @@ def init_home(path, handle: Optional[str] = None) -> Path:
     _create(home / "meno.toml", _MENO_TOML.format(handle=handle))
     _create(home / "adapters" / "adapters.toml", _ADAPTERS_TOML)
     _create(home / "adapters" / "knowledge.toml", _KNOWLEDGE_TOML)
+    _create(home / "adapters" / "slack.toml", _SLACK_TOML)
     _create(home / ".gitignore", _GITIGNORE)
     if not (home / "library" / "index.json").exists():      # never wipe a grown/curated library
         seed_library().save(home / "library" / "index.json")

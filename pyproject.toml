@@ -18,7 +18,7 @@ slack = ["slack_sdk"]   # optional: the Slack integration adapter (I1/I2)
 all = ["pytest", "anthropic", "sentence-transformers", "slack_sdk"]
 
 [project.scripts]
-meno = "meno.cli:main"   # I0b: the instance entrypoint (init / run / status)
+meno = "meno_adapters.cli:main"   # the composition root: init/run/status + config-driven adapters
 
 [tool.setuptools.packages.find]
 include = ["meno*"]   # meno + meno_adapters

@@ -18,7 +18,7 @@ from .home import build_instance, init_home
 
 def run_instance(home, *, max_cycles: Optional[int] = None, status_every: int = 4,
                  save_every: int = 32, feed: Optional[List[str]] = None,
-                 sleep=time.sleep, idle_sleep: float = 0.2):
+                 on_build=None, sleep=time.sleep, idle_sleep: float = 0.2):
     """Bind to a home and drive its loop. Holds the home's advisory lock (two daemons
     must not race on one substrate). Persists `run/status.json` periodically AND the
     substrate periodically (`save_every`) — not only on shutdown — so a crash/kill
@@ -30,6 +30,10 @@ def run_instance(home, *, max_cycles: Optional[int] = None, status_every: int = 
     background loop + the off-thread outbound worker — so a slow network call from an
     efferent adapter never blocks cognition (the reason I0a built the worker)."""
     inst = build_instance(home)
+    # the composition root (outside the kernel) wires channel/authority adapters here,
+    # so the kernel stays adapter-blind — `meno/` never imports `meno_adapters`.
+    if on_build is not None:
+        on_build(inst)
     if not inst.acquire_lock():
         raise RuntimeError(f"{inst.lock_path} is held by another live instance — refusing to start")
     for text in (feed or []):

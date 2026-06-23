@@ -181,45 +181,40 @@ SDKs live there, never in the kernel). Slack is the first channel, in two halves
 > it off) each post is confirmed.
 
 ### Status of the wiring (read this)
-The Slack adapter is **built and tested**; its configuration surface is a per-channel
-file the home anticipates (`adapters/slack.toml`):
+`meno run` attaches the channel from `adapters/slack.toml` automatically — it is OFF
+until you enable it there:
 
 ```toml
-# adapters/slack.toml  (the intended config surface)
-[afferent]
+# adapters/slack.toml
+[afferent]                            # what it SENSES
 enabled  = true
-channels = ["#meno", "#design"]       # only joined, listed channels
-redact   = ["secret", "token", "password"]
+channels = ["C_MENO", "C_DESIGN"]     # channel IDs — must be joined too
 
-[efferent]                            # outward action — gated
-enabled       = false                 # off by default
-post_channels = ["#meno"]             # may post ONLY here
-confirm       = true                  # confirm-first
+[efferent]                            # what it may DO — gated, off by default
+enabled       = false                 # outward action is opt-in
+post_channels = ["C_MENO"]            # may post ONLY here
+confirm       = true                  # confirm-first: each post needs operator approval
 rate          = "5/min"
-credential    = "SLACK_BOT_TOKEN"     # a REFERENCE — the secret is in the environment
+# slack.com MUST also be in meno.toml [egress] for any post to leave the box
 ```
 
-**What is not yet wired:** `meno run` does not yet construct adapters *from* this file
-— `build_instance` builds the mind, driver, and egress boundary, but does not attach
-channels. So today you attach Slack **programmatically**:
+Then `meno run <home>` builds the instance and wires the enabled adapters; it reports
+what it attached (`adapters=['slack']`). Sense-only is the safe first step —
+`[afferent].enabled = true` with `[efferent].enabled = false` lets Meno *hear* Slack
+and post nothing. The bot token is supplied as `$SLACK_BOT_TOKEN`; with no token the
+adapter is inert.
 
-```python
-from meno.home import build_instance
-from meno.cli import run_instance
-from meno_adapters import SlackAdapter
+> **The kernel stays adapter-blind.** `meno/` never imports the integration layer;
+> the `meno` entrypoint is a *composition root* (`meno_adapters/cli.py`) that wires the
+> kernel and the adapters together. A test enforces that no kernel module imports
+> `meno_adapters`.
 
-inst = build_instance("~/.meno/meno-pid")
-inst.driver.add_adapter(SlackAdapter(
-    channels=["C_MENO"],              # afferent (listen)
-    enabled=True, post_channels=["C_MENO"], confirm=True, rate_per_min=5,
-    audit_path=inst.home / "journal" / "traces" / "slack-sends.jsonl",
-))
-inst.acquire_lock()
-inst.driver.start()                   # the egress policy is handed to the adapter automatically
-```
-
-Closing this seam — a config-driven adapter loader so `meno run` reads
-`adapters/*.toml` and attaches channels — is the natural next step.
+### External knowledge authorities (K3)
+`adapters/knowledge.toml` enables a network lookup authority consulted when the
+Library misses a factual lookup. Its `hosts` must also be in `meno.toml [egress]`; the
+result re-enters as reference (never encoded as experience) and is curated back so a
+repeat is a local hit. The live web/MCP client is the one deferred piece — with none
+configured, a miss is honest.
 
 ---
 

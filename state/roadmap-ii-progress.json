@@ -234,6 +234,7 @@
       }
     }
   },
-  "roadmap_ii_status": "ALL PHASES COMPLETE (S, K1, K2, I0a, I0b, I1, I2, K3), each through a multi-lens adversarial gate. Remaining for a fully config-driven instance: the adapter loader (meno run attaches channels/authorities from adapters/*.toml). Live gates (zombie_run, cache smoke, real Slack/authority) remain key+token+runtime deferred.",
-  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "224 passed, 5 skipped"}
+  "roadmap_ii_status": "COMPLETE. All 8 phases (S, K1, K2, I0a, I0b, I1, I2, K3) through a multi-lens adversarial gate, PLUS the config-driven adapter loader: `meno run` attaches the channels/authorities an instance's adapters/*.toml enables, the kernel staying adapter-blind (composition root in meno_adapters/cli.py; a test enforces no meno/ module imports meno_adapters). A working meno: init -> configure (cognition/channels/authorities/egress) -> run a daemon that senses Slack, thinks, looks up (local + network authority), and gated-acts. LIVE validation deferred on credentials/runtime: the full zombie_run + S cache smoke (funded ANTHROPIC key), real Slack (SLACK_BOT_TOKEN), the OCI image build/run (container runtime), a real web/MCP authority client.",
+  "adapter_loader": {"modules": ["meno_adapters/loader.py", "meno_adapters/cli.py (the `meno` composition root)", "meno/cli.py (on_build hook — stays adapter-blind)", "meno/home.py (slack.toml scaffold)"], "tests": "tests/test_adapter_loader.py (5)", "pyproject": "[project.scripts] meno = meno_adapters.cli:main"},
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "229 passed, 5 skipped"}
 }
