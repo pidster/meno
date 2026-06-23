@@ -633,3 +633,24 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   all grief is templated (no model call) under throttle, so forgetting stays enforced under the
   cost breaker while the expensive generative work is withheld. Not a token-exact bound; the
   grief reflection under throttle is templated prose, not model-authored.
+
+### D34 — The substrate store is a selectable backend; a DB is a sidecar, not baked in
+- **Decision.** Persistence goes behind a `Store` interface (`meno/store.py`): `save(mind)`
+  / `load(mind)`, selected by `meno.toml [storage] backend`. `FileStore` (the JSON substrate
+  under the home volume) is the default and the only backend that ships. A graph/vector DB
+  (SurrealDB) plugs in behind the same interface and is provisioned as a SIDECAR
+  (`deploy/compose.yaml`, gated behind the `db` compose profile) — a separate, digest-pinned
+  container with its own volume on an internal network, NEVER co-baked into the app image.
+  Selecting an unimplemented backend raises `NotImplementedError` with a pointer; it never
+  silently falls back.
+- **Why.** For a single instance the file substrate IS the right persistence — the mounted
+  volume is the identity, with no service to run; a DB is premature until an instance outgrows
+  it (concurrent readers, vector search at scale). Co-packaging a stateful DB into the app
+  container would break the hardened, single-process, read-only-rootfs image and couple their
+  lifecycles. The sidecar keeps the app image minimal and the DB independently
+  backup-able/upgradable. A loud failure on an unbuilt backend honours the zombie test — a
+  substrate that doesn't persist must never look like it does.
+- **Rules out / bounds.** No SurrealDB backend ships yet (it needs a running service to build
+  and test against; deferred until needed). The `Store` seam stays kernel-pure (the file store
+  is stdlib); a network backend, when added, lazily imports its client like the Anthropic
+  provider does. Secrets for the DB are resolved by name (D31), never baked.

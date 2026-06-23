@@ -55,6 +55,12 @@ instance identity baked in** (`.dockerignore` excludes `.env`, `*.key`, `*.pem`)
 bake the local embedder weights so a running instance never does a cold download,
 uncomment the `[local]` block in the `Containerfile`.
 
+For a full deployment topology — the hardened container, env-injected secrets, and an
+optional graph/vector DB **sidecar** (D34) — see [`deploy/`](../deploy/README.md)
+(`docker compose up`, or `--profile db` to also start SurrealDB). The substrate backend
+is selectable via `meno.toml [storage] backend` (default `file`; `surreal` is the
+provisioned-but-not-yet-implemented seam in `meno/store.py`).
+
 ### Try it without an instance (the offline demo)
 ```bash
 python -m meno                 # a scripted run of the whole loop, offline

@@ -1,0 +1,80 @@
+# meno deployment topology (D21/D34) — OCI-neutral (docker compose or podman-compose).
+#
+#   meno     = the cognitive kernel (the app image; the TYPE)
+#   home vol = the instance identity (the substrate lives here; the IDENTITY)
+#   surreal  = an OPTIONAL graph/vector DB SIDECAR for when an instance outgrows the
+#              JSON file substrate (concurrent readers, vector search at scale)
+#
+# Today meno persists to the JSON file store under its home volume (the right default for
+# a single instance — no DB to run). The `surreal` service is provisioned but gated behind
+# the `db` profile, so it does NOT start by default:
+#
+#   docker compose up                 # meno on the file substrate (the working default)
+#   docker compose --profile db up    # also start the SurrealDB sidecar (for when the
+#                                     # Store 'surreal' backend lands — see meno/store.py)
+#
+# Secrets are env-injected, NEVER baked into the image or committed (meno resolves them by
+# name; D31). Put them in a gitignored `.env` beside this file, or export them.
+
+services:
+  meno:
+    build:
+      context: ..
+      dockerfile: Containerfile
+    image: meno:latest
+    command: ["run", "/home/meno/.meno/instance"]
+    # the home (identity) is a named volume; the image carries no instance identity
+    volumes:
+      - meno-home:/home/meno/.meno
+    environment:
+      # resolved by NAME at runtime (D31); the values live only here/in the env, never on disk
+      - ANTHROPIC_API_KEY
+      - SLACK_BOT_TOKEN
+      - SLACK_APP_TOKEN
+    # the container is the egress safety boundary that precedes outward action (I2):
+    read_only: true                       # rootfs is immutable; only the home volume is writable
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    user: "10001:10001"                   # non-root, matches the image's meno user
+    restart: on-failure                   # a crashed cycle restarts; the home resumes (D12)
+    networks:
+      - meno-net
+
+  # --- optional graph/vector DB sidecar (does not start without `--profile db`) ---
+  surreal:
+    profiles: ["db"]
+    # pin by DIGEST in production (image: surrealdb/surrealdb@sha256:...); tag shown for clarity
+    image: surrealdb/surrealdb:v2.1
+    command:
+      - start
+      - --bind=0.0.0.0:8000
+      - --user=$${SURREAL_USER}          # $$ escapes for compose; values from the env/.env
+      - --pass=$${SURREAL_PASS}
+      - rocksdb:/data/meno.db            # the DB's OWN durable volume (its identity)
+    environment:
+      - SURREAL_USER
+      - SURREAL_PASS
+    volumes:
+      - surreal-data:/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: on-failure
+    networks:
+      - meno-net                          # internal only — NOT published to the host
+    # When the Store 'surreal' backend is implemented, meno reaches this over meno-net at
+    # `surreal:8000`; add that host to meno.toml [egress] allow, and set [storage] backend
+    # = "surreal" with the connection from $SURREAL_* (resolved by name, D31).
+
+networks:
+  meno-net:
+    driver: bridge
+
+volumes:
+  meno-home:
+  surreal-data:

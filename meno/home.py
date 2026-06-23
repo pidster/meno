@@ -31,6 +31,7 @@ except ImportError:                    # pragma: no cover - non-POSIX
     fcntl = None
 
 from .config import Config
+from .store import make_store
 
 # Directories scaffolded under a home (instance-layout.md). substrate/ is the only
 # identity-bearing one — it is the mounted volume's reason to exist (D21).
@@ -60,6 +61,12 @@ heartbeat_ticks = 8
 
 [egress]                     # D21: deny-by-default outbound allowlist (gates I2/K3)
 allow = []                   # e.g. ["slack.com", "www.slack.com"]
+
+[storage]                    # D34: the substrate backend
+backend = "file"             # "file" (default): the JSON substrate under this home — right
+                             # for a single instance (the mounted volume IS the persistence).
+                             # A SurrealDB/vector backend plugs in behind the Store interface,
+                             # provisioned as a sidecar (deploy/compose.yaml). Not yet built.
 
 [secrets]                    # D31: secrets are resolved by NAME (env-first), never stored
                              # in cognition or the substrate. Default is env-only.
@@ -216,6 +223,7 @@ class Instance:
     egress: EgressPolicy
     home: Path
     conf: dict
+    store: object = None                       # the substrate backend (D34); FileStore by default
     _lock_fh: object = field(default=None, repr=False)
 
     @property
@@ -259,8 +267,8 @@ class Instance:
 
     def save(self) -> None:
         try:
-            self.graph_path.parent.mkdir(parents=True, exist_ok=True)
-            self.mind.save(self.graph_path)           # substrate + library (its own home)
+            from .store import FileStore
+            (self.store or FileStore(self.graph_path)).save(self.mind)   # substrate backend (D34)
         except Exception as exc:                      # a failed save must not crash shutdown silently
             self.driver.last_error = f"save failed: {type(exc).__name__}: {exc}"
 
@@ -338,8 +346,8 @@ def build_instance(home) -> Instance:
         models = StubModelProvider()
 
     mind = Meno(config=cfg, models=models, embed=embed, workspace=home)
-    if (home / "substrate" / "graph.json").exists():
-        mind.load(home / "substrate" / "graph.json")   # sleep, not amnesia (D12)
+    store = make_store(conf, home)                    # the substrate backend (D34); file by default
+    store.load(mind)                                  # sleep, not amnesia (D12) — no-op on a fresh home
 
     egress = EgressPolicy.from_config(conf)
     driver = Driver(mind, dream_every=_int(driver_conf, "dream_every", 8),
@@ -347,4 +355,4 @@ def build_instance(home) -> Instance:
                     sense_every=_int(driver_conf, "sense_every", 1),
                     egress=egress,                    # the boundary is enforced on the outbound path
                     audit_path=home / "journal" / "traces" / "outbound.jsonl")   # the outward-action trail
-    return Instance(mind=mind, driver=driver, egress=egress, home=home, conf=conf)
+    return Instance(mind=mind, driver=driver, egress=egress, home=home, conf=conf, store=store)
