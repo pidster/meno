@@ -49,6 +49,36 @@ def test_a_named_question_without_an_at_is_possibly():
     assert ad._driver.fed[0][2]["addressed"] == "possibly"
 
 
+def test_a_dm_is_directed_every_message():
+    ad = _adapter()
+    ad._handle_event({"type": "message", "channel": "D_99", "channel_type": "im",
+                      "user": "U_a", "text": "no @ here, but it's a DM", "ts": "1.0"})
+    assert ad._driver.fed[0][2]["addressed"] == "directed"
+
+
+def test_a_one_to_one_channel_is_directed_every_message():
+    # a channel whose only members are meno + one other is effectively a DM
+    class FakeMembers:
+        def conversations_members(self, channel, limit=100, cursor=None):
+            return {"members": ["U_bot", "U_a"]}        # exactly two
+    ad = SlackAdapter(client=FakeMembers(), channels=(), bot_user_id="U_bot", name="meno")
+    ad._driver = FakeDriver()
+    ad._handle_event({"type": "message", "channel": "C_pair", "user": "U_a",
+                      "text": "just us two here", "ts": "1.0"})
+    assert ad._driver.fed[0][2]["addressed"] == "directed"
+
+
+def test_a_busy_channel_is_not_treated_as_one_to_one():
+    class FakeMembers:
+        def conversations_members(self, channel, limit=100, cursor=None):
+            return {"members": ["U_bot", "U_a", "U_b", "U_c"]}   # many -> not 1:1
+    ad = SlackAdapter(client=FakeMembers(), channels=(), bot_user_id="U_bot", name="meno")
+    ad._driver = FakeDriver()
+    ad._handle_event({"type": "message", "channel": "C_busy", "user": "U_a",
+                      "text": "lovely weather", "ts": "1.0"})
+    assert ad._driver.fed[0][2]["addressed"] == "ambient"
+
+
 def test_plain_channel_chatter_is_ambient():
     ad = _adapter()
     ad._handle_event({"type": "message", "channel": "C_t", "user": "U_a",

@@ -39,11 +39,13 @@ oauth_config:
       - channels:history     # conversations.history — read public-channel messages
       - groups:history       # conversations.history — read private-channel messages
       - app_mentions:read    # receive app_mention events (when someone @meno's)
+      - im:read              # identify DM (im) channels — every DM message is 'directed' (I3)
+      - im:history           # read DM messages (message.im events)
       # efferent (act) — posting is OFF by default in adapters/slack.toml and gated
-      # (scope/rate/confirm-first); this scope only makes it POSSIBLE, not automatic:
+      # (scope/rate/dry-run); this scope only makes it POSSIBLE, not automatic:
       - chat:write           # chat.postMessage — post as the bot to channels it joined
-      # add `im:read`+`im:history`+`mpim:read`+`mpim:history` only if you want it to
-      # sense DMs / group DMs (the adapter requests public+private channels today).
+      # add `mpim:read`+`mpim:history` + a `message.mpim` event only if you also want it to
+      # sense GROUP DMs (1:1-channel detection uses conversations.members, no extra scope).
 
 settings:
   org_deploy_enabled: false
@@ -53,4 +55,5 @@ settings:
     bot_events:
       - message.channels          # real-time public-channel messages
       - message.groups            # real-time private-channel messages
+      - message.im                # DMs to meno — every one is 'directed' (I3)
       - app_mention               # when someone @meno's (app_mentions:read)

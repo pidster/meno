@@ -105,6 +105,7 @@ class SlackAdapter(Adapter):
         self._cursor: dict = {}                      # channel -> last ts emitted (string, for the API)
         self._joined_cache: Optional[set] = None
         self._joined_at = 0.0
+        self._one_to_one_cache: dict = {}            # channel -> (is_1to1, fetched_at): I3 1:1 detection
         # Socket Mode (push afferent): real-time Events API over an OUTBOUND WebSocket —
         # no public Request URL. OFF by default; needs an app-level token ($SLACK_APP_TOKEN,
         # scope connections:write) distinct from the bot token. Supersedes polling when on.
@@ -307,17 +308,50 @@ class SlackAdapter(Adapter):
 
     def _addressing(self, etype, channel, event):
         """How directed at meno is this percept? Returns (band, reply_to). Structural cues
-        give certainty — an @mention is 'directed' (DM / 1:1 channel will be too, once the
-        im scopes land); a lexical cue (our name + a question) is a soft 'possibly' that
-        the may-respond loop weighs; everything else is 'ambient' (sensed, never replied)."""
+        give certainty — an @mention, a DM, or a 1:1 channel (just meno + one other) are all
+        'directed' (every message in a 1:1 is for meno); a lexical cue (our name + a
+        question) is a soft 'possibly' the may-respond loop weighs; everything else is
+        'ambient' (sensed, never replied)."""
         reply_to = {"channel": channel, "user": event.get("user"),
                     "thread_ts": event.get("thread_ts") or event.get("ts")}
         if etype == "app_mention":
+            return "directed", reply_to
+        if event.get("channel_type") == "im":        # a DM — there's no one else it could be for
+            return "directed", reply_to
+        if self._one_to_one(channel):                # a channel with just meno and one other
             return "directed", reply_to
         text = (event.get("text") or "").lower()
         if self.agent_name and self.agent_name.lower() in text and "?" in text:
             return "possibly", reply_to
         return "ambient", reply_to
+
+    def _one_to_one(self, channel) -> bool:
+        """Is this channel just meno and ONE other member? Then it is effectively a DM and
+        every message is directed. TTL-cached (a members lookup per message would burn the
+        rate budget); a big channel short-circuits at >2 members. Fails CLOSED (not 1:1) on
+        any error, so an API blip can't widen the addressed band."""
+        if not self.available or not channel:
+            return False
+        cached = self._one_to_one_cache.get(channel)
+        now = time.monotonic()
+        if cached is not None and now - cached[1] < self.membership_ttl:
+            return cached[0]
+        try:
+            members: list = []
+            cursor = ""
+            while len(members) <= 2:                 # we only care whether it's exactly 2
+                resp = self._client.conversations_members(
+                    channel=channel, limit=100, cursor=cursor or None)
+                members += (resp.get("members") or [])
+                cursor = ((resp.get("response_metadata") or {}).get("next_cursor") or "")
+                if not cursor:
+                    break
+            is_1to1 = len(members) == 2 and (not self.bot_user_id or self.bot_user_id in members)
+            self._one_to_one_cache[channel] = (is_1to1, now)
+            return is_1to1
+        except Exception as exc:
+            self._record(exc, "conversations_members")
+            return False
 
     # --- efferent (I2/I3): outward action, gated. Every layer is a refusal first. ---
     def handles(self, action) -> bool:

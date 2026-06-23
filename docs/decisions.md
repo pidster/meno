@@ -713,6 +713,7 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   posts — posts are now mind-authored). (3) The reply channel comes from the delivered event
   (not message text) and is re-checked against `post_channels` at send — injection can't
   redirect a reply. Self-echo (bot_id) prevents meno's own posts re-entering as a new address.
-- **Rules out / bounds.** DMs / 1:1-channel detection need new Slack scopes (im:*) + a manifest
-  change — deferred (the structural bands are wired, the scopes aren't). No interlocutor model
-  yet (the transactive follow-on). With the stub, replies are templated, not meaningful.
+- **Rules out / bounds.** DMs (`message.im`, im:* scopes) and 1:1-channel detection
+  (conversations.members, cached) are now wired — a DM or a meno+one-other channel is
+  'directed'. Group DMs (mpim) remain optional. No interlocutor model yet (the transactive
+  follow-on). With the stub, replies are templated, not meaningful.
