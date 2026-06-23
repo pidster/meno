@@ -91,8 +91,12 @@ _SLACK_TOML = """\
 # slack.toml — the Slack channel (Roadmap I1/I2). The bot token is in the
 # environment ($SLACK_BOT_TOKEN), never here.
 [afferent]                   # what it SENSES
-enabled  = false
-channels = []                # channel IDs to listen on (must be joined too)
+enabled     = false
+channels    = []             # channel IDs to listen on (must be joined too)
+socket_mode = false          # false = poll; true = real-time Events API over a
+                             # WebSocket (no public endpoint). Needs $SLACK_APP_TOKEN
+                             # (xapp-…, scope connections:write); only active in the
+                             # `meno run` daemon, not in bounded `--cycles` runs.
 
 [efferent]                   # what it may DO — gated, off by default
 enabled       = false        # outward action is opt-in; a different risk class

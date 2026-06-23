@@ -1,13 +1,16 @@
-# Slack app manifest for a Meno instance — v1 (polling).
+# Slack app manifest for a Meno instance — Socket Mode (real-time Events API).
 #
 # Create the app from this manifest at https://api.slack.com/apps → "Create New App"
 # → "From an app manifest", then Install to Workspace. That issues a BOT token
 # (xoxb-…) — give it to the instance as $SLACK_BOT_TOKEN (never store it in the home).
 #
-# v1 matches what meno's SlackAdapter actually does: it POLLS `conversations.history`
-# (+ `users.conversations` for membership). That needs only the bot token and the read
-# scopes below — NO public Request URL, NO Events API, NO Socket Mode. (See
-# docs/slack-app.md for the Socket Mode upgrade path and the scopes it would add.)
+# Socket Mode means meno receives events over an OUTBOUND WebSocket — no public Request
+# URL, no inbound ingress. After installing, generate an APP-LEVEL token in Basic
+# Information → App-Level Tokens (scope: connections:write) and give it to the instance
+# as $SLACK_APP_TOKEN (xapp-…). Set `socket_mode = true` in adapters/slack.toml.
+#
+# The SlackAdapter also still supports polling (`socket_mode = false`): that path needs
+# only the bot token + read scopes — no app-level token. See docs/slack-app.md.
 
 _metadata:
   major_version: 2
@@ -31,6 +34,7 @@ oauth_config:
       - groups:read          # users.conversations — list private channels the bot joined
       - channels:history     # conversations.history — read public-channel messages
       - groups:history       # conversations.history — read private-channel messages
+      - app_mentions:read    # receive app_mention events (when someone @meno's)
       # efferent (act) — posting is OFF by default in adapters/slack.toml and gated
       # (scope/rate/confirm-first); this scope only makes it POSSIBLE, not automatic:
       - chat:write           # chat.postMessage — post as the bot to channels it joined
@@ -40,8 +44,9 @@ oauth_config:
 settings:
   org_deploy_enabled: false
   token_rotation_enabled: false   # single-workspace internal app: a static bot token
-  socket_mode_enabled: false      # v1 POLLS; flip to true + add event_subscriptions for v2
-  # event_subscriptions:          # (v2 / Socket Mode only — unused while polling)
-  #   bot_events:
-  #     - message.channels        # real-time channel messages
-  #     - app_mention             # respond when @meno is mentioned
+  socket_mode_enabled: true       # receive events over an outbound WebSocket (no public URL)
+  event_subscriptions:            # the bot events meno's Socket Mode adapter handles
+    bot_events:
+      - message.channels          # real-time public-channel messages
+      - message.groups            # real-time private-channel messages
+      - app_mention               # when someone @meno's (app_mentions:read)

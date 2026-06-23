@@ -43,6 +43,10 @@ def load_adapters(inst) -> list:
     if aff.get("enabled") or eff.get("enabled"):
         inst.driver.add_adapter(SlackAdapter(
             channels=tuple(aff.get("channels", ())) if aff.get("enabled") else (),
+            # afferent receive model: poll (default) or Socket Mode (real-time, needs
+            # $SLACK_APP_TOKEN). Socket Mode only takes effect in the unbounded daemon,
+            # which calls adapter.start(); bounded `--cycles` runs stay on poll.
+            socket_mode=bool(aff.get("socket_mode", False)) and bool(aff.get("enabled")),
             enabled=bool(eff.get("enabled", False)),
             post_channels=tuple(eff.get("post_channels", ())),
             confirm=bool(eff.get("confirm", True)),

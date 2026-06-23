@@ -59,6 +59,8 @@ class SlackAdapter(Adapter):
     def __init__(self, *, client=None, channels=(), bot_user_id: Optional[str] = None,
                  max_chars: int = 2000, max_per_poll: int = 8, max_per_channel: int = 8,
                  membership_ttl: float = 120.0, token_env: str = "SLACK_BOT_TOKEN",
+                 # --- afferent via Socket Mode (Events API, no public endpoint) ---
+                 socket_mode: bool = False, app_token_env: str = "SLACK_APP_TOKEN",
                  # --- efferent (I2): outward action is OPT-IN and gated ---
                  enabled: bool = False, post_channels=(), confirm: bool = True,
                  rate_per_min: int = 5, audit_path=None) -> None:
@@ -98,6 +100,17 @@ class SlackAdapter(Adapter):
         self._cursor: dict = {}                      # channel -> last ts emitted (string, for the API)
         self._joined_cache: Optional[set] = None
         self._joined_at = 0.0
+        # Socket Mode (push afferent): real-time Events API over an OUTBOUND WebSocket —
+        # no public Request URL. OFF by default; needs an app-level token ($SLACK_APP_TOKEN,
+        # scope connections:write) distinct from the bot token. Supersedes polling when on.
+        self.socket_mode = socket_mode
+        self._app_token_env = app_token_env
+        self._socket_client = None
+        self._driver = None                          # set in start(); the thread-safe inbox
+        self.events = 0                              # Socket Mode events fed (observability)
+        self._seen_ids: deque = deque()              # bounded event_id dedup (reconnect resends)
+        self._seen_set: set = set()
+        self._seen_max = 512
 
     @property
     def available(self) -> bool:
@@ -108,7 +121,9 @@ class SlackAdapter(Adapter):
 
     def _record(self, exc: Exception, where: str) -> None:
         self.errors += 1
-        self.last_error = f"slack {where}: {type(exc).__name__}: {exc}"
+        # redact the exception text: slack_sdk auth/handshake errors can echo the request
+        # (URL, Authorization header, the app token) and last_error surfaces in telemetry.
+        self.last_error = _redact(f"slack {where}: {type(exc).__name__}: {exc}")
 
     def _joined(self) -> set:
         """Channels the bot is a member of — consent: it cannot read a channel it was
@@ -136,8 +151,19 @@ class SlackAdapter(Adapter):
             self._record(exc, "users_conversations")
             return self._joined_cache if self._joined_cache is not None else set()
 
+    def _shape(self, channel, user, subtype, text, bot_id=None) -> Optional[str]:
+        """Turn a raw Slack message into a percept body, or None to drop it. Shared by the
+        poll path and the Socket Mode push path so BOTH apply the same bounds: skip our
+        own / ANY bot's posts (self-echo — `bot_id` catches bot-authored messages even
+        when our own user id is unknown, e.g. auth_test failed), redact secrets/PII
+        BEFORE truncating to max_chars."""
+        if (bot_id or subtype == "bot_message"
+                or (self.bot_user_id and user == self.bot_user_id)):
+            return None                              # our own / any bot voice never re-enters
+        return f"slack #{channel}: {self.redact(text or '')[:self.max_chars]}"
+
     def poll(self) -> List[Percept]:
-        if not self.available:
+        if not self.available or self.socket_mode:   # Socket Mode pushes; don't also poll
             return []
         joined = self._joined()
         out: List[Percept] = []
@@ -159,15 +185,108 @@ class SlackAdapter(Adapter):
                     continue
                 self._cursor[ch] = ts                # advance past it (string, for the API)
                 cur_f = _ts_float(ts)
-                if m.get("subtype") == "bot_message" or (
-                        self.bot_user_id and m.get("user") == self.bot_user_id):
-                    continue                         # skip our own / bot posts (self-echo)
-                text = self.redact(m.get("text") or "")[:self.max_chars]   # redact BEFORE truncate
-                out.append((f"slack #{ch}: {text}", self.source,
+                content = self._shape(ch, m.get("user"), m.get("subtype"),
+                                      m.get("text"), m.get("bot_id"))
+                if content is None:                  # skip our own / bot posts (self-echo)
+                    continue
+                out.append((content, self.source,
                             {"channel": ch, "ts": ts, "user": m.get("user")}))
                 if len(out) >= self.max_per_poll:
                     return out
         return out
+
+    # --- afferent via Socket Mode: real-time Events API over an outbound WebSocket ---
+    def start(self, driver) -> None:
+        """Open the Socket Mode WebSocket (the app dials OUT to Slack — Events API with no
+        public Request URL; egress-only, gated by the same *.slack.com allowlist). Called
+        by the Driver when the daemon starts (D27 unbounded mode). No-op unless socket
+        mode is configured AND both tokens are present — an unconfigured instance stays
+        poll/inert. Real-time push supersedes poll()."""
+        self._driver = driver
+        if not self.socket_mode or not self.available:
+            return
+        app_token = os.environ.get(self._app_token_env)
+        if not app_token:                            # fail loud-but-safe: stay deaf, don't crash
+            self._record(RuntimeError(f"{self._app_token_env} unset"), "socket_mode")
+            return
+        try:  # pragma: no cover - live: needs slack_sdk + the app token + a network
+            from slack_sdk.socket_mode import SocketModeClient
+            self._socket_client = SocketModeClient(app_token=app_token, web_client=self._client)
+            self._socket_client.socket_mode_request_listeners.append(self._on_request)
+            self._socket_client.connect()            # background WS thread; returns immediately
+        except Exception as exc:
+            self._record(exc, "socket_mode")
+            self._socket_client = None
+
+    def stop(self) -> None:
+        if self._socket_client is not None:
+            try:  # pragma: no cover - live
+                self._socket_client.disconnect()
+            except Exception as exc:
+                self._record(exc, "socket_mode_stop")
+            self._socket_client = None
+
+    def _dedup(self, event_id) -> bool:
+        """True if this event_id was already handled. Socket Mode redelivers an event on
+        reconnect or after a missed/slow ack, always with the SAME event_id — so a single
+        bounded id cache makes 'ack-first then dispatch' safe: a transient ack failure
+        costs neither a lost percept (we still dispatch) nor a doubled one (the resend is
+        caught here). Bounded to the last `_seen_max` ids."""
+        if not event_id:
+            return False
+        if event_id in self._seen_set:
+            return True
+        self._seen_set.add(event_id)
+        self._seen_ids.append(event_id)
+        if len(self._seen_ids) > self._seen_max:
+            self._seen_set.discard(self._seen_ids.popleft())
+        return False
+
+    def _on_request(self, client, req) -> None:
+        """Socket Mode listener (runs on the client's WS thread). ACK first — Slack
+        re-sends an un-acked envelope — then dispatch events_api envelopes through the
+        same bounds as poll(). A failed ack is recorded but NOT fatal: Slack will resend,
+        and `_dedup` (same event_id) makes the resend a no-op, so we neither lose nor
+        double the percept."""
+        try:
+            from slack_sdk.socket_mode.response import SocketModeResponse
+            client.send_socket_mode_response(
+                SocketModeResponse(envelope_id=getattr(req, "envelope_id", None)))
+        except Exception as exc:                     # incl. SDK absent offline: record, still dispatch
+            self._record(exc, "socket_ack")
+        if getattr(req, "type", None) != "events_api":
+            return                                   # only Events API envelopes carry percepts
+        payload = getattr(req, "payload", None) or {}
+        if self._dedup(payload.get("event_id")):     # reconnect / ack-resend -> handle once
+            return
+        self._handle_event(payload.get("event") or {})
+
+    def _handle_event(self, event: dict) -> None:
+        """Pure dispatch (no slack_sdk): apply consent (LISTED channel) + self-echo +
+        redaction, then push a SENSE percept via the driver's thread-safe inbox. Tested
+        directly; the WebSocket plumbing in start()/_on_request is live-gated.
+
+        Consent: Slack only delivers events for channels the bot is in (membership is
+        enforced upstream), and we additionally require the channel be operator-LISTED.
+        We accept only BARE messages and app_mentions — any `subtype` (edits, deletes,
+        joins, file-shares, bot_message) is dropped: a `message_changed` carries its real
+        author and edited body NESTED under `event['message']`, so the top-level
+        self-echo guard can't see them; dropping subtyped events closes that bypass (a
+        conservative bound — documented in docs/slack-app.md)."""
+        if event.get("type") not in ("message", "app_mention"):
+            return
+        if event.get("subtype"):                     # bare messages/mentions only (see docstring)
+            return
+        channel = event.get("channel")
+        if channel not in self.channels:             # consent: only operator-listed channels
+            return
+        content = self._shape(channel, event.get("user"), event.get("subtype"),
+                              event.get("text"), event.get("bot_id"))
+        if content is None or self._driver is None:
+            return
+        self.events += 1
+        self._driver.feed(content, source=self.source,
+                          channel=channel, ts=event.get("ts"), user=event.get("user"))
 
     # --- efferent (I2): outward action, gated. Every layer is a refusal first. ---
     def handles(self, action) -> bool:
@@ -258,13 +377,20 @@ class SlackAdapter(Adapter):
         """Append-only record of every gate DECISION — delivered, refused, or pending —
         not just successes: 'Meno tried to post to #x and was blocked by scope' is the
         highest-value security event. Best-effort (a write failure doesn't block a send,
-        which can't be un-sent); failures bump `errors`."""
+        which can't be un-sent); failures bump `errors`.
+
+        The recorded `text`/`detail` are REDACTED before they touch disk: the mind may
+        author a post quoting a secret/PII it recalled, and the at-rest audit is the wrong
+        place for it to persist. Only the audit COPY is scrubbed — the actually-sent
+        message (and the confirm-first operator preview) keep the real text, since the
+        operator authored it deliberately and reviews it in the clear."""
         if self.audit_path is None:
             return
         try:
             self.audit_path.parent.mkdir(parents=True, exist_ok=True)
             rec = {"ts": time.time(), "action": "post", "channel": channel,
-                   "text": text, "outcome": outcome, "detail": detail}
+                   "text": self.redact(text), "outcome": outcome,
+                   "detail": self.redact(detail)}
             with open(self.audit_path, "a") as f:
                 f.write(json.dumps(rec) + "\n")
         except Exception as exc:

@@ -449,6 +449,13 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   hygiene. The bot's own posts are skipped (subtype/bot_user_id) as the afferent half
   of I2's self-echo guard, but the authoritative self-echo guard is I2's
   `source="self:slack"` tag. A bot_user_id should be auto-derived (auth.test) in I2.
+- **Extension (egress side).** The same redactor scrubs the **at-rest audit copy** of an
+  outbound post (`journal/traces/slack-sends.jsonl`): the mind may author a post quoting
+  a secret it recalled, and the audit log is the wrong place for a credential to persist.
+  Only the audited copy is redacted — the message actually sent, and the confirm-first
+  operator preview (`_pending`), keep the real text (the operator authored it
+  deliberately and reviews it in the clear). SDK exception strings reaching `last_error`
+  are redacted too, and `xapp-` (Socket Mode app token) is in the secret pattern.
 
 ### D27 — Two daemon modes: bounded step-loop (deterministic) vs unbounded start() (non-blocking)
 - **Decision.** `meno run --cycles N` drives the deterministic single-thread step loop
@@ -493,3 +500,36 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   as stable reference until evicted/overwritten — accepted, contained to the shelf. A
   re-verification/TTL policy on authority entries is deferred (the live network client
   is deferred); the cap + eviction + audit are the v1 floor.
+
+### D29 — Slack afferent has two receive modes; Socket Mode senses only bare messages
+- **Decision.** The `SlackAdapter` supports both receive models behind one
+  `socket_mode` flag (`adapters/slack.toml`): **polling** (`conversations.history`, bot
+  token only) and **Socket Mode** (real-time Events API over an outbound WebSocket, the
+  `start(driver)` push contract, needs an app-level token `$SLACK_APP_TOKEN`). Neither
+  needs a public endpoint — both are outbound-only, gated by the same `*.slack.com`
+  egress (D21). Socket Mode is active only in the unbounded `meno run` daemon (D27),
+  which calls `adapter.start()`; bounded `--cycles` runs stay on poll. Both paths share
+  one `_shape()` (consent + self-echo + redaction-before-truncation), pinned by a parity
+  test. The push path additionally: **drops every subtyped `message` event** (accepts
+  only bare `message`/`app_mention`); honours a message's **`bot_id`** as a self-echo
+  signal; **de-duplicates by Slack `event_id`** (bounded cache); and **acks before
+  dispatch**.
+- **Why.** (1) Subtype drop closes a real self-echo bypass: a `message_changed` edit
+  carries the true author/body *nested* under `event['message']`, invisible to a
+  top-level guard — meno editing its own post could re-enter as experience. Dropping all
+  subtypes is the conservative bound (it also forgoes real-time threaded-broadcast /
+  file-share text — poll still sees those). (2) `bot_id` keeps the self-echo guard intact
+  even when `auth_test` failed and meno's own user id is unknown (its own posts arrive
+  without the `bot_message` subtype). (3) `event_id` dedup makes "ack-first" safe: a
+  failed/slow ack triggers a Slack resend, which dedup absorbs — so a transient ack
+  failure costs neither a lost percept nor a doubled one. (4) SDK exception text is
+  redacted before it reaches `last_error`/telemetry, and `xapp-` is added to the secret
+  pattern, so an app token can't leak through an error string.
+- **Rules out / bounds.** Socket Mode percepts dropped under inbox backpressure are NOT
+  recoverable (ack precedes ingest), unlike poll's self-healing cursor — accepted (the
+  drop is counted in `dropped_input`; a reflective agent need not ingest faster than it
+  thinks). No per-window rate cap on the push path beyond the bounded inbox (deferred).
+  Membership ('joined') consent rests on Slack only delivering events for joined
+  channels plus the operator's listed-channel filter — no extra `_joined()` network call
+  on the WS thread. Mentions enter cognition as ordinary percepts; there is no
+  "always-reply-when-mentioned" reflex (any reply goes through the gated efferent path).

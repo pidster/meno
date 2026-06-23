@@ -44,6 +44,24 @@ def test_sense_only_slack_does_not_arm_posting(tmp_path):
     assert slack.channels == ("C_MENO",) and slack.enabled is False   # listens, cannot post
 
 
+def test_socket_mode_flows_through_from_config_but_requires_afferent_enabled(tmp_path):
+    home = init_home(tmp_path / "inst")
+    (home / "adapters" / "slack.toml").write_text(
+        '[afferent]\nenabled = true\nsocket_mode = true\nchannels = ["C_MENO"]\n')
+    inst = build_instance(home)
+    load_adapters(inst)
+    assert inst.driver.adapters[0].socket_mode is True   # real-time receive selected
+
+    # socket_mode with the afferent OFF must not silently arm a receive path
+    home2 = init_home(tmp_path / "inst2")
+    (home2 / "adapters" / "slack.toml").write_text(
+        '[afferent]\nenabled = false\nsocket_mode = true\n'
+        '[efferent]\nenabled = true\npost_channels = ["C_X"]\n')
+    inst2 = build_instance(home2)
+    load_adapters(inst2)
+    assert inst2.driver.adapters[0].socket_mode is False  # no afferent -> no socket
+
+
 def test_meno_run_drives_with_configured_adapters(tmp_path, capsys):
     home = tmp_path / "inst"
     meno_main(["init", str(home)])

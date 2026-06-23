@@ -7,7 +7,8 @@ from __future__ import annotations
 import re
 
 _SECRET_RE = re.compile(
-    r"(xox[baprs]-[A-Za-z0-9-]{8,}"                                  # slack tokens
+    r"(xox[baprs]-[A-Za-z0-9-]{8,}"                                  # slack bot/user tokens
+    r"|xapp-[A-Za-z0-9-]{8,}"                                        # slack app-level token (Socket Mode)
     r"|sk-[A-Za-z0-9_\-]{16,}"                                       # openai-style keys
     r"|AKIA[0-9A-Z]{16}"                                             # aws access key id
     r"|gh[posru]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"      # github tokens

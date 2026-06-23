@@ -123,6 +123,34 @@ def test_every_send_is_audited(tmp_path):
     assert rec["action"] == "post" and rec["outcome"] == "delivered" and "ts" in rec
 
 
+def test_audited_text_is_redacted_but_the_sent_message_is_intact(tmp_path):
+    """The mind may author a post quoting a secret it recalled. The at-rest audit copy
+    must REDACT it (the wrong place for a credential to persist), while the message
+    actually sent — and the confirm-first operator preview — keep the real text."""
+    fake = FakeSlack()
+    audit = tmp_path / "journal" / "traces" / "sends.jsonl"
+    ad = _eff(fake, audit_path=audit)
+    ad.deliver(_post(text="deploy with password=hunter2secret now"))
+    rec = json.loads(audit.read_text().strip())
+    assert "[redacted]" in rec["text"] and "hunter2secret" not in rec["text"]   # scrubbed on disk
+    assert fake.posts == [("C_meno", "deploy with password=hunter2secret now")]  # but sent in the clear
+
+
+def test_refused_pending_audit_redacts_but_operator_preview_keeps_real_text(tmp_path):
+    """Confirm-first stashes the REAL text for the operator to review; only the audit
+    line is redacted. A pending post that later sends carries the unredacted message."""
+    fake = FakeSlack()
+    audit = tmp_path / "sends.jsonl"
+    ad = _eff(fake, confirm=True, audit_path=audit)
+    res = ad.deliver(_post(text="the api_key=sk-abcdef0123456789 leaked"))
+    rec = json.loads(audit.read_text().strip())
+    assert rec["outcome"] == "pending" and "[redacted]" in rec["text"]
+    token = res.detail.split("[")[1].rstrip("]")
+    assert "sk-abcdef0123456789" in ad._pending[token]["text"]   # operator sees the real thing
+    ad.confirm_send(token)
+    assert fake.posts == [("C_meno", "the api_key=sk-abcdef0123456789 leaked")]  # sent in the clear
+
+
 def test_refused_attempts_are_audited_too(tmp_path):
     """The highest-value security event — 'Meno tried to post out of scope' — must
     leave a durable trace, not only successful sends."""
