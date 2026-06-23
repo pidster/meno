@@ -30,6 +30,15 @@ features:
     home_tab_enabled: true                  # the App Home page — a window into meno's state of mind
     messages_tab_enabled: true              # makes meno appear in the workspace Apps list
     messages_tab_read_only_enabled: false   # allow DMs — users can message meno (I3 DM ingestion)
+  assistant_view:                           # the Agent/Assistant pane (I3.5) — meno's dedicated surface
+    assistant_description: >-
+      A persistent cognitive agent — I sense, remember, and follow my own curiosity.
+      Not a chatbot: I answer when I have something earned to say.
+    suggested_prompts:                      # defaults; the app also sets these per-thread on open
+      - title: "What have you been reflecting on?"
+        message: "What have you been reflecting on lately?"
+      - title: "What are you curious about?"
+        message: "What are you curious about right now?"
 
 oauth_config:
   scopes:
@@ -43,6 +52,7 @@ oauth_config:
       - im:read              # identify DM (im) channels — every DM message is 'directed' (I3)
       - im:history           # read DM messages (message.im events)
       - users:read           # resolve a speaker's id -> display name, to reply by NAME (I3)
+      - assistant:write      # the assistant pane: suggested prompts, status, thread titles (I3.5)
       # efferent (act) — posting is OFF by default in adapters/slack.toml and gated
       # (scope/rate/dry-run); this scope only makes it POSSIBLE, not automatic:
       - chat:write           # chat.postMessage — post as the bot to channels it joined
@@ -60,3 +70,5 @@ settings:
       - message.im                # DMs to meno — every one is 'directed' (I3)
       - app_mention               # when someone @meno's (app_mentions:read)
       - app_home_opened           # a user opened meno's App Home -> publish its state-of-mind view
+      - assistant_thread_started          # a user opened meno's assistant pane -> greet + prompts (I3.5)
+      - assistant_thread_context_changed  # they switched channels while the pane is open

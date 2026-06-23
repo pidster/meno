@@ -274,9 +274,15 @@ class SlackAdapter(Adapter):
         if self._dedup(payload.get("event_id")):     # reconnect / ack-resend -> handle once
             return
         event = payload.get("event") or {}
-        if event.get("type") == "app_home_opened":   # render meno's App Home (a window in, not a percept)
+        etype = event.get("type")
+        if etype == "app_home_opened":               # render meno's App Home (a window in, not a percept)
             self._publish_home(event.get("user"), event.get("tab"))
             return
+        if etype == "assistant_thread_started":      # a user opened the assistant pane (I3.5)
+            self._assistant_started(event)
+            return
+        if etype == "assistant_thread_context_changed":
+            return                                   # no action yet (the pane tracks its own context)
         self._handle_event(event)
 
     def _handle_event(self, event: dict) -> None:
@@ -410,6 +416,43 @@ class SlackAdapter(Adapter):
                 "Sensing is always on; what I say back is gated and stays off until enabled. "
                 "This page refreshes whenever you open it."}]},
         ]}
+
+    # --- the Assistant pane (I3.5): meno's dedicated conversational surface ----------- #
+    def _assistant_started(self, event) -> None:
+        """A user opened meno's assistant pane: name the thread, offer prompts, and greet.
+        The title/prompts are assistant-UI affordances (assistant:write); the greeting is a
+        posted message, so it respects the efferent `enabled` switch. All egress-gated."""
+        at = event.get("assistant_thread") or {}
+        channel, thread_ts = at.get("channel_id"), at.get("thread_ts")
+        if not (channel and thread_ts and self.available and self._egress_ok()):
+            return
+        try:  # pragma: no cover - live: needs the Web client + a real assistant thread
+            self._client.assistant_threads_setTitle(
+                channel_id=channel, thread_ts=thread_ts,
+                title=f"With {str(self.agent_name).capitalize()}")
+            self._client.assistant_threads_setSuggestedPrompts(
+                channel_id=channel, thread_ts=thread_ts, prompts=self._assistant_prompts())
+            if self.enabled:                         # a greeting is a post -> gated like any reply
+                self._client.chat_postMessage(channel=channel, thread_ts=thread_ts,
+                                              text=self._assistant_greeting())
+        except Exception as exc:
+            self._record(exc, "assistant_started")
+
+    def _assistant_prompts(self) -> list:
+        return [
+            {"title": "What have you been reflecting on?",
+             "message": "What have you been reflecting on lately?"},
+            {"title": "What are you curious about?",
+             "message": "What are you curious about right now?"},
+            {"title": "What do you remember about…",
+             "message": "What do you remember about "},
+        ]
+
+    def _assistant_greeting(self) -> str:
+        disp = str(self.agent_name).capitalize()
+        return (f"I'm {disp} — a persistent cognitive agent, not a chatbot. I sense, "
+                "remember, and follow my own curiosity. Ask what's on my mind, or anything "
+                "you like; I'll answer when I have something earned to say.")
 
     def _addressing(self, etype, channel, event):
         """How directed at meno is this percept? Returns (band, reply_to). Structural cues

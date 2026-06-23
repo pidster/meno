@@ -717,3 +717,28 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   (conversations.members, cached) are now wired — a DM or a meno+one-other channel is
   'directed'. Group DMs (mpim) remain optional. No interlocutor model yet (the transactive
   follow-on). With the stub, replies are templated, not meaningful.
+
+### D37 — The Assistant surface (I3.5): meno's dedicated Slack pane
+- **Decision.** Adopt Slack's Agents/Assistants feature as meno's primary conversational
+  surface: a dedicated split-view pane with greeting, suggested prompts, a "thinking…"
+  status, thread titles, and (later) streaming. It rides the existing Socket Mode afferent
+  + the I3 engagement loop — an assistant thread is a directed 1:1 space, so messages route
+  through `directed → may-respond → gated reply` unchanged. Manifest adds `features.
+  assistant_view` (+ `assistant:write` scope, `assistant_thread_started` /
+  `assistant_thread_context_changed` events). Built in slices: **A** — pane lifecycle
+  (greet/prompts/title on open) [done]; **B** — conversation in the pane (status indicator;
+  the honest-non-answer rule below); **C** — streaming replies (deferred).
+- **Why.** It's the *native* home for a conversational agent in Slack — a threaded, 1:1,
+  affordance-rich space where "addressed → may respond" actually fits, far better than
+  @mentions scattered in channels. The Slack **MCP server is explicitly NOT adopted**: it's
+  the inverse direction (external agents reaching *into* Slack) and using it as a reach-tool
+  would breach meno's invite-as-consent boundary.
+- **The pane-silence rule (operator choice).** In the dedicated pane a person has opened a
+  conversation, so pure silence reads as broken. meno still never fabricates, but in the
+  pane it gives a brief HONEST non-answer ("nothing specific comes to mind on that, but I've
+  been turning over X") instead of nothing — may-not-must preserved, dedicated-surface
+  expectation met. Outside the pane (channels, ordinary DMs) it may still stay fully silent.
+- **Rules out / bounds.** The greeting is a posted message, so it respects the efferent
+  `enabled` switch; the prompts/title/status are assistant-UI affordances (assistant:write),
+  egress-gated. Requires a manifest reinstall (the new scope + feature). Streaming and a
+  dynamic (musings-driven) prompt set are follow-ons.

@@ -205,6 +205,61 @@ def test_app_home_opened_publishes_the_home_view_and_is_not_a_percept():
     assert drv.fed == []                              # the home-open is NOT sensed as a message
 
 
+# --- the Assistant pane (I3.5): greet + prompts + title on open ------------------- #
+class _AssistantClient:
+    def __init__(self):
+        self.calls = []
+    def assistant_threads_setTitle(self, **kw):           self.calls.append(("title", kw))
+    def assistant_threads_setSuggestedPrompts(self, **kw): self.calls.append(("prompts", kw))
+    def chat_postMessage(self, **kw):                      self.calls.append(("post", kw))
+
+
+_ASSIST_EVENT = {"type": "assistant_thread_started",
+                 "assistant_thread": {"user_id": "U_a", "channel_id": "D0XYZ",
+                                      "thread_ts": "1729.0001"}}
+
+
+def test_opening_the_assistant_pane_sets_title_and_prompts_and_greets():
+    cli = _AssistantClient()
+    ad = SlackAdapter(client=cli, channels=(), name="meno", bot_user_id="U_bot",
+                      enabled=True, post_channels=[])   # efferent on -> greeting posts
+    ad._assistant_started(_ASSIST_EVENT)
+    kinds = [c[0] for c in cli.calls]
+    assert "title" in kinds and "prompts" in kinds and "post" in kinds
+    prompts = next(kw for k, kw in cli.calls if k == "prompts")["prompts"]
+    assert any("reflecting" in p["title"].lower() for p in prompts)
+    greet = next(kw for k, kw in cli.calls if k == "post")["text"]
+    assert "Meno" in greet and greet  # in-voice, names itself
+    assert all(kw.get("channel_id") == "D0XYZ" or kw.get("channel") == "D0XYZ"
+               for _, kw in cli.calls)                  # all scoped to the pane thread
+
+
+def test_the_greeting_respects_the_efferent_switch():
+    cli = _AssistantClient()
+    ad = SlackAdapter(client=cli, channels=(), name="meno", bot_user_id="U_bot")  # enabled=False
+    ad._assistant_started(_ASSIST_EVENT)
+    kinds = [c[0] for c in cli.calls]
+    assert "prompts" in kinds and "title" in kinds       # UI affordances still set...
+    assert "post" not in kinds                           # ...but no greeting posted (efferent off)
+
+
+def test_on_request_dispatches_assistant_thread_started():
+    cli = _AssistantClient()
+    ad = SlackAdapter(client=cli, channels=(), name="meno", bot_user_id="U_bot", enabled=True)
+    drv = FakeDriver()
+    ad._driver = drv
+
+    class _Req:
+        type = "events_api"; envelope_id = "e1"
+        payload = {"event_id": "Ev1", "event": _ASSIST_EVENT}
+
+    class _Ack:
+        def send_socket_mode_response(self, resp): pass
+    ad._on_request(_Ack(), _Req())
+    assert any(k == "prompts" for k, _ in cli.calls)     # the pane was set up
+    assert drv.fed == []                                 # opening the pane is NOT a sensed message
+
+
 # --- the respond judgment (stub): may-not-must ------------------------------------ #
 def test_stub_respond_turns_toward_a_direct_address_but_not_a_soft_one():
     p = StubModelProvider()
