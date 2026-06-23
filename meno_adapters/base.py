@@ -15,10 +15,10 @@ Designed against I1 (afferent channels) and I2 (gated effectors), not just loopb
     performs it OFF the mind thread (a Driver worker calls it) and returns a structured
     `DeliveryResult`. The result's `detail` is fed back as **FEEDBACK** (proprioception
     of *my own* action — distinct from the world's SENSE). The structured result is
-    what gives I2 its gating seam: a send can be `delivered`, `refused` (disabled /
-    out of scope / rate-limited — carry the reason for the audit trail), or `pending`
-    (confirm-first: not sent yet, and crucially NOT fed back and NOT blocking the
-    worker — a later confirmation completes it).
+    what gives the efferent its gating seam: a send can be `delivered`, `refused`
+    (disabled / out of scope / rate-limited / egress — carry the reason for the audit),
+    or `dry-run` (composed but diverted to the audit, not posted — the tuning ramp, D35).
+    All three feed back as FEEDBACK so the mind feels what it did (or would have done).
 
 The network SDKs an adapter imports live in THIS package, never in `meno/`.
 """
@@ -42,14 +42,14 @@ class DeliveryResult:
     posted message feeds back as FEEDBACK (encoded as experience), but a looked-up fact
     must re-enter as a REFERENCE (read, never encoded) and be curated into the Library.
     When set, it carries `{key, body, source}` and the driver re-enters it that way."""
-    status: str          # "delivered" | "refused" | "pending"
-    detail: str          # proprioceptive text (fed back as FEEDBACK), unless pending
-    reason: str = ""     # refused: "disabled" | "scope" | "rate" | ... (audit/telemetry)
+    status: str          # "delivered" | "refused" | "dry-run"
+    detail: str          # proprioceptive text (fed back as FEEDBACK)
+    reason: str = ""     # refused: "disabled" | "scope" | "rate" | "egress" (audit/telemetry)
     reference: "Optional[dict]" = None   # K3: {key, body, source} — re-enter as REFERENCE + curate
 
     @property
     def feeds_back(self) -> bool:
-        return self.status != "pending"   # a pending (confirm-first) send hasn't happened yet
+        return True       # every outward decision (sent / refused / dry-run) is felt as FEEDBACK
 
 
 class Adapter:

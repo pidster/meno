@@ -667,3 +667,23 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
 - **Presentation.** The manifest now sets `bot_user.always_online: true` and enables
   `app_home.messages_tab` so the bot shows a presence dot and appears in the workspace Apps
   list — installation/registration was always fine; visibility just wasn't configured.
+
+### D35 — No per-post approval; the efferent is autonomous within standing bounds + dry-run
+- **Decision.** Confirm-first (the `_pending` store + `confirm_send` operator step) is REMOVED.
+  A file-based per-post approval was too cumbersome for something meant to converse. Outward
+  posting is instead gated by standing bounds: the master `enabled` toggle, the `post_channels`
+  scope, a `rate` limit, the egress allowlist, and an append-only audit — plus, for the mind,
+  the may-respond restraint (it only considers posting when *addressed*, and may stay silent)
+  and the cost governor. A `dry_run` flag diverts a composed post to the audit instead of the
+  channel: the mind still "spoke" (and feels it as FEEDBACK), but nothing reaches Slack —
+  a watched-then-live tuning ramp you flip off in one step, not approve-per-message.
+- **Why.** Confirm-first was built for I2 when posting was the highest-stakes unknown; per-post
+  human approval is the wrong ergonomics for engagement (it makes conversation impossible). The
+  honest safety story for autonomous outward action is layered standing bounds + after-the-fact
+  audit + an instant kill (`enabled = false`), not a signature on every utterance. `dry_run`
+  preserves a real safety ramp during tuning without the ceremony.
+- **Rules out / bounds.** This IS a real step up in autonomy: once enabled for a channel, meno
+  posts there without a human in the loop per message. `DeliveryResult` loses `pending`; every
+  decision (`delivered` / `refused` / `dry-run`) now feeds back. Replies thread to the
+  originating message (`thread_ts`). The addressed-ness detection + the may-respond loop that
+  drive *when* it posts are the engagement phase (built next).

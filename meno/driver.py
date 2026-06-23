@@ -130,8 +130,8 @@ class Driver:
         efferent side delivers outbound intents the mind hands to the outbox — run by
         a dedicated worker thread, OFF the mind thread, so a slow network call never
         blocks cognition (I0a). Network/async live in the adapter, never the kernel.
-        The egress policy is handed to the adapter too, so its own send paths (e.g. an
-        out-of-band confirm_send) enforce the boundary, not only the driver dispatch."""
+        The egress policy is handed to the adapter too, so its own send path enforces
+        the boundary, not only the driver dispatch."""
         if self.egress is not None and getattr(adapter, "egress", "unset") is None:
             adapter.egress = self.egress
         self.adapters.append(adapter)

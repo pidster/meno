@@ -114,10 +114,10 @@ socket_mode = false          # false = poll; true = real-time Events API over a
                              # `meno run` daemon, not in bounded `--cycles` runs.
 
 [efferent]                   # what it may DO — gated, off by default
-enabled       = false        # outward action is opt-in; a different risk class
+enabled       = false        # the master switch; outward action is opt-in (a different risk class)
 post_channels = []           # may post ONLY to these channel IDs
-confirm       = true         # confirm-first: each post needs operator approval
-rate          = "5/min"
+dry_run       = false        # true = compose but DIVERT to the audit (watched-then-live ramp)
+rate          = "5/min"      # max posts/min — the runaway bound (no per-post approval, D35)
 # slack.com MUST also be in meno.toml [egress] for any post to leave the box
 """
 

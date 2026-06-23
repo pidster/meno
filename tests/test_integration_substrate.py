@@ -97,16 +97,6 @@ def test_refused_delivery_feeds_back_a_refusal_with_its_reason():
     assert fb and fb[0].payload["refused"] == "scope"     # the mind feels 'I was blocked', with why
 
 
-def test_pending_delivery_does_not_feed_back_yet():
-    mind = _mind()
-    driver = Driver(mind, sleep=_noop_sleep)
-    driver.add_adapter(LoopbackAdapter(action="post", status="pending"))
-    mind.outbox.put({"action": "post", "data": "awaiting confirm"})
-    driver.drain_outbox_once()
-    driver.run(max_cycles=1)
-    assert not any(e.kind == Kind.FEEDBACK and e.source == "loopback" for e in mind.bus.log)
-
-
 def test_unhandled_outbound_intent_drops_cleanly_and_feeds_a_miss():
     mind = _mind()
     driver = Driver(mind, sleep=_noop_sleep)
@@ -205,4 +195,5 @@ def test_adapter_layer_is_importable_and_separate_from_the_kernel():
     import meno_adapters
     assert pathlib.Path(meno_adapters.__file__).parent != pathlib.Path(meno.__file__).parent
     assert issubclass(LoopbackAdapter, Adapter)
-    assert DeliveryResult("delivered", "x").feeds_back and not DeliveryResult("pending", "").feeds_back
+    # every outward decision is felt — delivered, refused, or dry-run (D35: no pending)
+    assert DeliveryResult("delivered", "x").feeds_back and DeliveryResult("dry-run", "y").feeds_back

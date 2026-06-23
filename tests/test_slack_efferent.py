@@ -20,8 +20,8 @@ class FakeSlack:
     def __init__(self):
         self.posts = []
 
-    def chat_postMessage(self, channel, text):
-        self.posts.append((channel, text))
+    def chat_postMessage(self, channel, text, thread_ts=None):
+        self.posts.append((channel, text) if thread_ts is None else (channel, text, thread_ts))
         return {"ok": True, "ts": "100"}
 
     # afferent stubs (so a combined adapter can also poll)
@@ -35,7 +35,6 @@ class FakeSlack:
 def _eff(fake, **kw):
     kw.setdefault("enabled", True)
     kw.setdefault("post_channels", ["C_meno"])
-    kw.setdefault("confirm", False)
     return SlackAdapter(client=fake, **kw)
 
 
@@ -70,46 +69,36 @@ def test_rate_limit_refuses_the_n_plus_first_send():
     assert len(fake.posts) == 2                                # the 3rd never went out
 
 
-def test_confirm_first_sends_nothing_until_approved():
+# --- dry-run: composed but DIVERTED to the audit, not posted (the tuning ramp, D35) -- #
+def test_dry_run_diverts_to_the_audit_without_posting(tmp_path):
+    audit = tmp_path / "sends.jsonl"
     fake = FakeSlack()
-    ad = _eff(fake, confirm=True)
-    res = ad.deliver(_post(text="awaiting"))
-    assert res.status == "pending" and fake.posts == []        # NOT sent yet
-    token = next(iter(ad._pending))
-    done = ad.confirm_send(token)
-    assert done.status == "delivered" and fake.posts == [("C_meno", "awaiting")]  # sent on approval
+    ad = _eff(fake, dry_run=True, audit_path=audit)
+    res = ad.deliver(_post(text="what I would say"))
+    assert res.status == "dry-run" and fake.posts == []         # composed, but NOT sent
+    rec = json.loads(audit.read_text().strip())
+    assert rec["outcome"] == "dry-run" and "what I would say" in rec["text"]   # captured for review
 
 
-def test_the_mind_cannot_self_approve_a_confirm_first_post():
-    """The security property: confirm-first is an OPERATOR gate. A `confirmed` flag in
-    the mind-authored intent must be ignored — only confirm_send approves."""
+def test_dry_run_still_passes_through_the_gate_first():
+    # a dry-run post to an out-of-scope channel is REFUSED, not diverted — the gate is first
     fake = FakeSlack()
-    ad = _eff(fake, confirm=True)
-    res = ad.deliver(_post(text="trying to self-approve", confirmed=True))   # mind sets the flag
-    assert res.status == "pending" and fake.posts == []                      # still NOT sent
+    ad = _eff(fake, dry_run=True, post_channels=["C_meno"])
+    res = ad.deliver(_post(channel="C_other", text="nope"))
+    assert res.status == "refused" and res.reason == "scope" and fake.posts == []
 
 
-# --- confirm-first re-validates the gate (no back door around scope/rate/enabled) -- #
-def test_confirm_send_revalidates_against_current_config():
-    """A pending post must be re-gated at approval time — config that narrowed
-    (disabled/scope/rate) between author and approve still blocks the stale post."""
+def test_a_reply_threads_to_the_originating_message():
     fake = FakeSlack()
-    ad = _eff(fake, confirm=True)
-    token = next(iter((ad.deliver(_post(text="queued")), ad._pending)[1]))
-    ad.enabled = False                                  # operator disables before approving
-    done = ad.confirm_send(token)
-    assert done.status == "refused" and done.reason == "disabled"
-    assert fake.posts == []                             # the stale pending post did NOT go out
+    ad = _eff(fake)
+    ad.deliver(_post(text="threaded reply", thread_ts="1700.0001"))
+    assert fake.posts == [("C_meno", "threaded reply", "1700.0001")]   # thread_ts carried through
 
 
-def test_pending_store_is_bounded():
-    fake = FakeSlack()
-    ad = _eff(fake, confirm=True)
-    ad.max_pending = 3
-    for i in range(3):
-        assert ad.deliver(_post(text=f"m{i}")).status == "pending"
-    overflow = ad.deliver(_post(text="one too many"))
-    assert overflow.status == "refused" and overflow.reason == "pending-overflow"
+def test_there_is_no_per_post_approval_seam():
+    # the confirm-first machinery is gone (D35): no pending store, no approval method
+    ad = _eff(FakeSlack())
+    assert not hasattr(ad, "confirm_send") and not hasattr(ad, "_pending")
 
 
 # --- every gate DECISION is audited, not just successes -------------------------- #
@@ -126,7 +115,7 @@ def test_every_send_is_audited(tmp_path):
 def test_audited_text_is_redacted_but_the_sent_message_is_intact(tmp_path):
     """The mind may author a post quoting a secret it recalled. The at-rest audit copy
     must REDACT it (the wrong place for a credential to persist), while the message
-    actually sent — and the confirm-first operator preview — keep the real text."""
+    actually sent keeps the real text (the mind authored it deliberately)."""
     fake = FakeSlack()
     audit = tmp_path / "journal" / "traces" / "sends.jsonl"
     ad = _eff(fake, audit_path=audit)
@@ -136,19 +125,16 @@ def test_audited_text_is_redacted_but_the_sent_message_is_intact(tmp_path):
     assert fake.posts == [("C_meno", "deploy with password=hunter2secret now")]  # but sent in the clear
 
 
-def test_refused_pending_audit_redacts_but_operator_preview_keeps_real_text(tmp_path):
-    """Confirm-first stashes the REAL text for the operator to review; only the audit
-    line is redacted. A pending post that later sends carries the unredacted message."""
+def test_dry_run_audit_is_redacted_too(tmp_path):
+    """A diverted (dry-run) post is captured for review, but a secret the mind quoted is
+    still redacted in the at-rest audit copy."""
     fake = FakeSlack()
     audit = tmp_path / "sends.jsonl"
-    ad = _eff(fake, confirm=True, audit_path=audit)
-    res = ad.deliver(_post(text="the api_key=sk-abcdef0123456789 leaked"))
+    ad = _eff(fake, dry_run=True, audit_path=audit)
+    ad.deliver(_post(text="the api_key=sk-abcdef0123456789 leaked"))
     rec = json.loads(audit.read_text().strip())
-    assert rec["outcome"] == "pending" and "[redacted]" in rec["text"]
-    token = res.detail.split("[")[1].rstrip("]")
-    assert "sk-abcdef0123456789" in ad._pending[token]["text"]   # operator sees the real thing
-    ad.confirm_send(token)
-    assert fake.posts == [("C_meno", "the api_key=sk-abcdef0123456789 leaked")]  # sent in the clear
+    assert rec["outcome"] == "dry-run" and "[redacted]" in rec["text"]
+    assert "sk-abcdef0123456789" not in rec["text"] and fake.posts == []
 
 
 def test_refused_attempts_are_audited_too(tmp_path):
@@ -248,7 +234,7 @@ def test_a_slow_post_runs_off_the_mind_thread_and_does_not_block_cognition():
     gate = threading.Event()
     fake = FakeSlack()
     _orig = fake.chat_postMessage
-    fake.chat_postMessage = lambda channel, text: (gate.wait(timeout=5), _orig(channel, text))[1]
+    fake.chat_postMessage = lambda channel, text, thread_ts=None: (gate.wait(timeout=5), _orig(channel, text))[1]
     mind = Meno(config=Config(), models=StubModelProvider(), workspace=tempfile.mkdtemp())
     driver = Driver(mind, sleep=_t.sleep, idle_backoff=0.001, max_backoff=0.01,
                     egress=EgressPolicy(allow=("slack.com", "*.slack.com")))
@@ -269,7 +255,7 @@ def test_a_slow_post_runs_off_the_mind_thread_and_does_not_block_cognition():
 
 # --- the SDK stays out of the kernel; inert without a client --------------------- #
 def test_effector_is_inert_without_a_client():
-    ad = SlackAdapter(channels=["C_meno"], enabled=True, post_channels=["C_meno"], confirm=False)
+    ad = SlackAdapter(channels=["C_meno"], enabled=True, post_channels=["C_meno"])
     assert ad.available is False
     res = ad.deliver({"action": "post", "channel": "C_meno", "text": "x"})
     # no client -> the send raises inside _send and is caught as a refusal, never a crash

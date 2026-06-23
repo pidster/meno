@@ -18,14 +18,14 @@ different world:
     fetched per channel and `max_per_poll` emitted per poll; only messages NEW since
     the last poll (per-channel ts cursor, compared numerically).
 
-EFFERENT (act, I2). Outward posting is a different risk class, so it is OPT-IN and
+EFFERENT (act, I2/I3). Outward posting is a different risk class, so it is OPT-IN and
 gated, every layer failing safe: `enabled=False` by default; `post_channels` scope
-(distinct from the read list); a rate limit; confirm-first (a post returns `pending`
-and sends nothing until an out-of-band operator approves — the FULL gate re-applied at
-approval); and an append-only audit record of every decision (delivered/refused/
-pending), best-effort. The adapter declares its `hosts` so the egress allowlist gates
-its real reach on BOTH send paths. Own posts are skipped on re-read (self-echo guard)
-so Meno's voice never re-enters as experience.
+(distinct from the read list); a rate limit; the egress boundary; and an append-only
+audit of every decision. There is NO per-post approval (D35) — the master `enabled`
+toggle, the scope, the rate, the egress allowlist, and the audit ARE the controls;
+`dry_run` diverts a post to the audit instead of the channel as a watched-then-live
+tuning ramp. Own posts are skipped on re-read (self-echo guard) so Meno's voice never
+re-enters as experience.
 
 Concurrency: afferent `poll()` runs on the mind thread, efferent `deliver()` on the
 single outbound worker — disjoint state except the advisory `errors` counter, so there
@@ -64,8 +64,8 @@ class SlackAdapter(Adapter):
                  # secrets are resolved by NAME through the composition root's resolver,
                  # never read from cognition; defaults to env-only (prior behaviour):
                  secrets: Optional[SecretResolver] = None,
-                 # --- efferent (I2): outward action is OPT-IN and gated ---
-                 enabled: bool = False, post_channels=(), confirm: bool = True,
+                 # --- efferent (I2/I3): outward action is OPT-IN and gated ---
+                 enabled: bool = False, post_channels=(), dry_run: bool = False,
                  rate_per_min: int = 5, audit_path=None) -> None:
         self._secrets = secrets or env_resolver()   # resolve token NAMES -> values here
         self.channels = tuple(channels)             # afferent allow-list (read)
@@ -79,14 +79,11 @@ class SlackAdapter(Adapter):
         # efferent gate state — DISABLED by default; nothing posts until an operator opts in
         self.enabled = enabled
         self.post_channels = tuple(post_channels)   # efferent allow-list (write) — distinct from read
-        self.confirm = confirm                      # confirm-first: a post waits for approval
+        self.dry_run = dry_run                      # divert posts to the audit, don't send (tuning ramp)
         self.rate_per_min = rate_per_min
         self.audit_path = Path(audit_path) if audit_path else None
-        self.max_pending = 256                      # bound the confirm-first backlog
-        self.egress = None                          # set by the Driver; checked on BOTH send paths
+        self.egress = None                          # set by the Driver; checked on the send path
         self._sent_at: deque = deque()              # send timestamps, for the rate window
-        self._pending: dict = {}                    # confirm-first: token -> {channel,text}
-        self._pending_seq = 0
         self.sent_texts: List[str] = []             # what we posted (self-echo detection)
         self._client = client
         if self._client is None:                    # build a real client only if SDK+token present
@@ -298,15 +295,14 @@ class SlackAdapter(Adapter):
         self._driver.feed(content, source=self.source,
                           channel=channel, ts=event.get("ts"), user=event.get("user"))
 
-    # --- efferent (I2): outward action, gated. Every layer is a refusal first. ---
+    # --- efferent (I2/I3): outward action, gated. Every layer is a refusal first. ---
     def handles(self, action) -> bool:
         return action == "post"
 
     def _gate(self, channel: str):
         """The channel-independent gate, each layer fail-safe. Returns a (reason, detail)
-        refusal or None to proceed. Applied on BOTH the deliver and confirm paths — a
-        post is re-validated at the moment it would actually go out, so config that
-        narrowed (disabled/scope/rate) between authoring and approval still blocks it."""
+        refusal or None to proceed. Checked at the moment a post would go out, so config
+        that has since narrowed (disabled / out-of-scope / rate / egress) still blocks it."""
         if not self.enabled:
             return ("disabled", "efferent disabled (outward action is opt-in)")
         if channel not in self.post_channels:
@@ -333,47 +329,26 @@ class SlackAdapter(Adapter):
     def deliver(self, payload: dict) -> DeliveryResult:
         """Post to Slack, but only through the gate, fail-safe at every layer, so the
         default for an unconfigured instance is silence: disabled → scope → rate →
-        egress → confirm-first → send. A delivered or refused post feeds back as
-        FEEDBACK (with the reason); a pending one does not (and does not block the
-        worker). Every decision is audited."""
+        egress → (dry-run?) → send. There is NO per-post approval (D35): the master
+        `enabled` toggle, the `post_channels` scope, the rate limit, the egress boundary,
+        and the audit ARE the controls; `dry_run` diverts a post to the audit (the mind
+        still 'spoke', it just didn't reach the channel) as the tuning ramp. Every
+        decision feeds back as FEEDBACK and is audited."""
         channel = payload.get("channel")
         text = (payload.get("text") or "")[:self.max_chars]
+        thread_ts = payload.get("thread_ts")
         refusal = self._gate(channel)
         if refusal:
             self._audit(channel, text, *refusal)
             return DeliveryResult("refused", refusal[1], refusal[0])
-        if self.confirm:
-            # confirm-first: the MIND authors this payload, so it can NEVER self-approve
-            # (a `confirmed` flag in the intent is ignored). The post is stashed and sends
-            # NOTHING until confirm_send(token) — an out-of-band operator step — fires.
-            if len(self._pending) >= self.max_pending:   # bounded backlog (don't grow unbounded)
-                self._audit(channel, text, "pending-overflow", "pending store full")
-                return DeliveryResult("refused", "pending store full", "pending-overflow")
-            self._pending_seq += 1
-            token = f"pending-{self._pending_seq}"
-            self._pending[token] = {"channel": channel, "text": text}
-            self._audit(channel, text, "pending", token)
-            return DeliveryResult("pending", f"awaiting confirmation [{token}]")
-        return self._send(channel, text)
+        if self.dry_run:                             # watched-then-live: divert, don't send
+            self._audit(channel, text, "dry-run", "diverted (dry_run); not posted")
+            return DeliveryResult("dry-run", f"[dry-run] would post to {channel}: {text[:60]}")
+        return self._send(channel, text, thread_ts)
 
-    def confirm_send(self, token: str) -> DeliveryResult:
-        """Approve a confirm-first post (the out-of-band operator step). The FULL gate
-        is re-applied against CURRENT config — a post authored when scope/rate/egress
-        were fine but since narrowed is still refused. Until this fires, the post has
-        sent NOTHING."""
-        payload = self._pending.pop(token, None)
-        if payload is None:
-            return DeliveryResult("refused", f"no pending post {token!r}", "unknown")
-        channel, text = payload["channel"], payload["text"]
-        refusal = self._gate(channel)
-        if refusal:
-            self._audit(channel, text, refusal[0], f"on confirm: {refusal[1]}")
-            return DeliveryResult("refused", refusal[1], refusal[0])
-        return self._send(channel, text)
-
-    def _send(self, channel: str, text: str) -> DeliveryResult:
+    def _send(self, channel: str, text: str, thread_ts=None) -> DeliveryResult:
         try:
-            self._client.chat_postMessage(channel=channel, text=text)
+            self._client.chat_postMessage(channel=channel, text=text, thread_ts=thread_ts)
         except Exception as exc:                     # an effector must not be blind/fatal
             self.errors += 1
             self._audit(channel, text, "error", f"{type(exc).__name__}: {exc}")
