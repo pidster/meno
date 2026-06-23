@@ -65,6 +65,10 @@ class Meno:
         self.fixations = 0            # D33: impulses force-taken-up after the fixation TTL
         self.engage_budget = self.cfg.engage_per_cycle   # I3: replies composable this cycle
                                                          # (the driver resets it each cycle)
+        self.reach_targets: list = []   # I4: abstract targets meno may reach OUT to ("voice",
+                                        # "operator", …), set by the composition root; empty = inert
+        self._last_reach_digest = None  # what was on its mind last time it CONSIDERED reaching —
+                                        # skip the (paid) judgment unless something has changed
         # K2 supplantation telemetry: lookups fired; of the factual curiosities the
         # substrate COULD serve (reconstructable), how many we still looked up
         # (supplanted) vs preferred memory. The don't-become-a-lookup-machine guard.
@@ -404,6 +408,42 @@ class Meno:
             ev.payload["role"] = "resurface"
             self.bus.publish(ev)
         return self.run_until_quiescent()
+
+    def reach(self) -> bool:
+        """Self-directed INITIATIVE (I4): consider voicing something UNPROMPTED. Called on a
+        cadence by the driver. Gathers what's on its mind (a curiosity, a recent reflection,
+        whether an impulse is pressing), asks the model whether it has something earned to
+        say and to whom, and — if so — enqueues a gated outbound 'reach' intent to that
+        target. No-op unless targets are configured (the composition root enables it) and
+        there is something to draw on; withheld while throttled. Returns True if it reached."""
+        if not self.reach_targets or self.outbox is None or self.throttled:
+            return False
+        muse = self.musings(reflections=1, curiosities=1)
+        cur = muse["curiosities"][0] if muse["curiosities"] else ""
+        refl = muse["reflections"][0] if muse["reflections"] else ""
+        impulse = "yes" if any(s.deferred for s in self.streams.active.values()) else ""
+        if not (cur or refl or impulse):
+            return False
+        digest = (cur, refl, impulse)                    # don't re-judge the SAME state of mind:
+        if digest == self._last_reach_digest:            # the paid reach judgment fires only when
+            return False                                 # something new has surfaced (cost + sense)
+        self._last_reach_digest = digest
+        self.cost_units += 1                             # count the paid judgment BEFORE the call,
+        decision = self.models.reach({                   # so a FAILING one still feeds the governor
+            "name": self.name, "curiosity": cur, "reflection": refl,
+            "impulse": impulse, "targets": list(self.reach_targets)})
+        if not isinstance(decision, dict) or not decision.get("speak") or not decision.get("text"):
+            return False
+        target = decision.get("target")
+        if target not in self.reach_targets:             # never honour an off-list target
+            return False
+        try:                                             # bounded outbox; the gate is the adapter's
+            self.outbox.put_nowait({"action": "reach", "target": target, "text": decision["text"]})
+        except queue.Full:
+            self.outbox_drops += 1
+            return False
+        self.trace(f"reaching out ({target}): {decision['text'][:50]!r}")
+        return True
 
     def musings(self, reflections: int = 3, curiosities: int = 3) -> dict:
         """A light, model-FREE digest of what is on meno's mind right now — what it has

@@ -70,7 +70,10 @@ class SlackAdapter(Adapter):
                  # --- efferent (I2/I3): outward action is OPT-IN and gated ---
                  enabled: bool = False, post_channels=(), dry_run: bool = False,
                  reply_in_dms: bool = True,   # a DM is a 1:1 the person opened -> in scope by consent
-                 rate_per_min: int = 5, audit_path=None) -> None:
+                 rate_per_min: int = 5, audit_path=None,
+                 # --- reach (I4): meno speaking UNPROMPTED — separate, tighter gate ---
+                 reach_enabled: bool = False, reach_dry_run: bool = True,
+                 voice_channel=None, operator_dm=None, reach_per_day: int = 3) -> None:
         self._secrets = secrets or env_resolver()   # resolve token NAMES -> values here
         self.channels = tuple(channels)             # afferent allow-list (read)
         self.bot_user_id = bot_user_id              # skip our own posts (self-echo guard)
@@ -92,6 +95,13 @@ class SlackAdapter(Adapter):
         self.egress = None                          # set by the Driver; checked on the send path
         self._sent_at: deque = deque()              # send timestamps, for the rate window
         self.sent_texts: List[str] = []             # what we posted (self-echo detection)
+        # reach (I4): UNPROMPTED speech — its own toggle, dry-run, targets and rate window
+        self.reach_enabled = reach_enabled
+        self.reach_dry_run = reach_dry_run
+        self.voice_channel = voice_channel          # "voice" -> this channel id (meno's own space)
+        self.operator_dm = operator_dm              # "operator" -> DM this user id
+        self.reach_per_day = reach_per_day
+        self._reached_at: deque = deque()           # reach timestamps, for the per-day window
         self._client = client
         if self._client is None:                    # build a real client only if SDK+token present
             try:  # pragma: no cover - depends on the optional dep + a token
@@ -528,7 +538,7 @@ class SlackAdapter(Adapter):
 
     # --- efferent (I2/I3): outward action, gated. Every layer is a refusal first. ---
     def handles(self, action) -> bool:
-        return action == "post"
+        return action in ("post", "reach")
 
     def _gate(self, channel: str):
         """The channel-independent gate, each layer fail-safe. Returns a (reason, detail)
@@ -574,6 +584,8 @@ class SlackAdapter(Adapter):
         and the audit ARE the controls; `dry_run` diverts a post to the audit (the mind
         still 'spoke', it just didn't reach the channel) as the tuning ramp. Every
         decision feeds back as FEEDBACK and is audited."""
+        if payload.get("action") == "reach":         # UNPROMPTED speech: its own gate (I4)
+            return self._reach(payload)
         channel = payload.get("channel")
         # redact BEFORE truncating, on the SEND path (not just the audit): a reply is now
         # mind-composed from recalled memory, so a secret that entered the substrate via
@@ -588,6 +600,59 @@ class SlackAdapter(Adapter):
             self._audit(channel, text, "dry-run", "diverted (dry_run); not posted")
             return DeliveryResult("dry-run", f"[dry-run] would post to {channel}: {text[:60]}")
         return self._send(channel, text, thread_ts)
+
+    def _reach(self, payload: dict) -> DeliveryResult:
+        """UNPROMPTED outward speech (I4) — meno's own initiative. A separate, TIGHTER gate
+        than replies: its own `reach_enabled` toggle (off by default), its own dry-run, a
+        per-DAY rate, and the egress boundary. The abstract target ('voice' / 'operator')
+        is resolved HERE to a Slack channel (the mind never holds channel ids). Redacted,
+        audited, self-echo-tracked exactly like a reply."""
+        target = payload.get("target")
+        text = self.redact(payload.get("text") or "")[:self.max_chars]
+        channel = self._reach_channel(target)
+        if not channel:
+            self._audit(str(target), text, "reach-no-target", f"reach target {target!r} not configured")
+            return DeliveryResult("refused", f"reach target {target!r} not configured", "no-target")
+        refusal = self._reach_gate()
+        if refusal:
+            self._audit(channel, text, "reach-" + refusal[0], refusal[1])
+            return DeliveryResult("refused", refusal[1], refusal[0])
+        if self.reach_dry_run:                        # watched-then-live: see what it WOULD say
+            self._audit(channel, text, "reach-dry-run", f"would reach {target}")
+            return DeliveryResult("dry-run", f"[reach dry-run] to {target}: {text[:60]}")
+        try:
+            self._client.chat_postMessage(channel=channel, text=text)
+        except Exception as exc:
+            self.errors += 1
+            self._audit(channel, text, "reach-error", f"{type(exc).__name__}: {exc}")
+            return DeliveryResult("refused", f"reach failed: {type(exc).__name__}: {exc}", "error")
+        self._reached_at.append(time.monotonic())
+        self.sent_texts.append(text)                  # our own voice (self-echo guard)
+        self._audit(channel, text, "reach-delivered", str(target))
+        return DeliveryResult("delivered", f"reached out to {target}")
+
+    def _reach_channel(self, target):
+        if target == "voice":
+            return self.voice_channel
+        if target == "operator":
+            return self.operator_dm
+        return None
+
+    def _reach_gate(self):
+        """The reach gate, each layer fail-safe: disabled by default; a per-DAY rate (far
+        tighter than the reply rate — unprompted speech must stay sparse); the egress
+        boundary. No per-channel scope: the target IS the scope (only configured targets
+        resolve to a channel)."""
+        if not self.reach_enabled:
+            return ("disabled", "reach (initiative) disabled")
+        now = time.monotonic()
+        while self._reached_at and now - self._reached_at[0] > 86400.0:
+            self._reached_at.popleft()
+        if len(self._reached_at) >= self.reach_per_day:
+            return ("rate", f"reach rate ({self.reach_per_day}/day) reached")
+        if not self._egress_ok():
+            return ("egress", f"egress to {list(self.hosts)} denied")
+        return None
 
     def _send(self, channel: str, text: str, thread_ts=None) -> DeliveryResult:
         try:

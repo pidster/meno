@@ -742,3 +742,27 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   `enabled` switch; the prompts/title/status are assistant-UI affordances (assistant:write),
   egress-gated. Requires a manifest reinstall (the new scope + feature). Streaming and a
   dynamic (musings-driven) prompt set are follow-ons.
+
+### D38 — Reach (I4): meno speaks UNPROMPTED, on its own initiative
+- **Decision.** meno can now reach OUT, not just respond — the highest-stakes capability
+  (speech no one asked for). On a cadence in the quiet heartbeat, `Meno.reach()` gathers
+  what's on its mind (a curiosity, a recent reflection, whether an impulse is pressing) and,
+  ONLY when that state has changed (`_last_reach_digest` — no paid re-judgment of the same
+  mind), asks `models.reach` whether it has something earned to say and to whom. The model's
+  bar is HIGH (silence is the default). If it speaks, the mind enqueues a gated outbound
+  intent carrying an ABSTRACT target ("voice" / "operator") — never a channel id; the adapter
+  resolves the target to a Slack channel. Gated harder than replies: a SEPARATE `reach_enabled`
+  toggle (off), its own `reach_dry_run` (on — watched-then-live), a per-DAY rate, egress,
+  redaction, audit. Off at every layer by default.
+- **Why.** The original design is "a default-mode loop and self-directed cognition" that
+  "follows its own curiosities" (the roadmap's *reach*). Without an outward path meno only
+  senses, reflects, and answers — quiescent. Reuse the gated effector; the new parts are the
+  reach judgment, the abstract-target seam (kernel stays Slack-agnostic), and the tighter
+  bounds. Targets: a "voice" channel (its own space), an "operator" DM; channels-it's-in (the
+  riskiest) is a later slice.
+- **Rules out / bounds.** Unprompted speech is contained by: default-off + dry-run-first + a
+  per-day cap + the cost governor (a reach judgment is a deep op) + the digest gate (judges
+  only on a new state of mind, so cost scales with cognitive change, not the clock) + the
+  model's high bar. A reach post can't self-trigger (self-echo). The mind cannot post to an
+  arbitrary channel — only configured targets resolve. Slices 2 (cadence/significance tuning,
+  then go live) and 3 (channels-it's-in, with relevance routing) follow.

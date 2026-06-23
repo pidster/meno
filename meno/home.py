@@ -120,6 +120,14 @@ reply_in_dms  = true         # a DM is a 1:1 the person opened -> reply allowed 
 dry_run       = false        # true = compose but DIVERT to the audit (watched-then-live ramp)
 rate          = "5/min"      # max posts/min — the runaway bound (no per-post approval, D35)
 # slack.com MUST also be in meno.toml [egress] for any post to leave the box
+
+[reach]                      # I4: meno speaking UNPROMPTED (its own initiative) — highest-stakes
+enabled       = false        # off by default; SEPARATE from [efferent] (reaching out != replying)
+dry_run       = true         # start diverted to the audit — watch what it WOULD say before it speaks
+voice_channel = ""           # a channel id (meno's own space, e.g. #meno) — its "voice" target
+operator_dm   = ""           # a user id to DM — its "operator" target (confide what's on its mind)
+per_day       = 3            # max unprompted reaches per DAY (kept sparse on purpose)
+every         = 50           # consider reaching every N cycles (the model's high bar is the real throttle)
 """
 
 

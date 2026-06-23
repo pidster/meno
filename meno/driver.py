@@ -50,7 +50,8 @@ def _dream_did_something(report: Optional[dict]) -> bool:
 
 class Driver:
     def __init__(self, mind, *, dream_every: int = 8, heartbeat_ticks: int = 8,
-                 sense_every: int = 1, idle_backoff: float = 0.02, max_backoff: float = 1.0,
+                 sense_every: int = 1, reach_every: int = 0,
+                 idle_backoff: float = 0.02, max_backoff: float = 1.0,
                  max_inbox: int = 10000, on_error: str = "continue",
                  max_consecutive_errors: int = 5, sleep=time.sleep, egress=None,
                  audit_path=None) -> None:
@@ -60,6 +61,7 @@ class Driver:
         self.dream_every = dream_every
         self.heartbeat_ticks = heartbeat_ticks
         self.sense_every = sense_every             # poll afferent sensors every N cycles
+        self.reach_every = reach_every             # I4: consider reaching OUT every N cycles (0 = off)
         self.sensors: list = []
         self.adapters: list = []                   # integration adapters (afferent + efferent)
         self._outbound_thread: Optional[threading.Thread] = None
@@ -254,6 +256,10 @@ class Driver:
             ingested += 1
         reactive = self.mind.run_until_quiescent()
         quiet = self.mind.heartbeat(ticks=self.heartbeat_ticks)
+        # I4: on its cadence, meno CONSIDERS reaching out unprompted (a self-directed intent
+        # the adapter then gates). The model's high bar means it mostly stays quiet.
+        if self.reach_every and self.cycles % self.reach_every == 0:
+            self.mind.reach()
         # No background worker (deterministic run() mode)? Drain the outbox inline so a
         # run()-only deployment can still act outward — synchronous here BY DESIGN
         # (one thread, reproducible); the off-thread worker is the start() path. Drain

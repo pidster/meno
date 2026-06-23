@@ -80,6 +80,13 @@ class ModelProvider:
         Default: stay SILENT — engagement is opt-in cognition, never an obligation (I3)."""
         return {"speak": False, "text": ""}
 
+    def reach(self, ctx: dict) -> dict:
+        """Self-directed INITIATIVE (I4): no one addressed meno — decide whether it has
+        something earned to say UNPROMPTED, and to which target. ctx = {name, curiosity,
+        reflection, impulse, targets}. Returns {speak, text, target}. Default: stay quiet
+        — reaching out is the highest-stakes act, so the safe base never initiates."""
+        return {"speak": False, "text": "", "target": ""}
+
 
 class StubModelProvider(ModelProvider):
     """Deterministic, offline stand-in. Good enough to exercise the whole loop."""
@@ -140,6 +147,17 @@ class StubModelProvider(ModelProvider):
         msg = (ctx.get("text") or "").strip()
         return {"speak": True, "text": f"I heard you, {who} — you said: {msg[:120]}"}
 
+    def reach(self, ctx: dict) -> dict:
+        # deterministic initiative: voice the strongest thing on its mind to the first
+        # available target. The cadence (how often reach is CONSIDERED) and the adapter's
+        # reach-rate bound how often this actually goes out; a real model judges sparingly.
+        targets = ctx.get("targets") or []
+        thing = (ctx.get("curiosity") or ctx.get("reflection") or "").strip()
+        if not targets or not thing:
+            return {"speak": False, "text": "", "target": ""}
+        return {"speak": True, "target": targets[0],
+                "text": f"Something I've been turning over: {thing[:160]}"}
+
 
 _APPRAISE_SCHEMA = {
     "type": "object",
@@ -186,8 +204,16 @@ _RESPOND_SYSTEM = (
     "from your memory and perspective), otherwise stay silent (speak=false). When you do "
     "speak, be brief, particular, and in your own voice — not a generic assistant. Never "
     "fabricate; if you don't recall something, say so plainly or stay silent.")
-_DEPTH = {"appraise": False, "relate": False, "associate": True,
-          "synthesise": True, "wonder": True, "respond": True}
+_REACH_SYSTEM = (
+    "This is your own INITIATIVE — no one addressed you. Reach out only if you have "
+    "something genuinely earned to say right now: a curiosity worth voicing, a reflection "
+    "worth sharing, an impulse that wants expression. The bar is HIGH and silence is the "
+    "default — most of the time, stay quiet (speak=false); reaching out to fill space is a "
+    "failure. When you do speak, be brief and in your own voice, and choose the target that "
+    "fits: a shared 'voice' space for a thought meant for anyone, the 'operator' to confide "
+    "something more personal. Pick a target only from the ones offered. Never fabricate.")
+_DEPTH = {"appraise": False, "relate": False, "associate": True, "synthesise": True,
+          "wonder": True, "respond": True, "reach": True}
 
 
 def _system_blocks(role_line: str, deep: bool) -> list:
@@ -429,6 +455,36 @@ class AnthropicModelProvider(ModelProvider):
                 raise ValueError("respond=speak with empty text")
             return {"speak": speak, "text": text}
         return self._run("respond", real, self.fallback.respond, (ctx,))
+
+    def reach(self, ctx: dict) -> dict:
+        def real():
+            targets = ctx.get("targets") or []
+            msg = self._client.messages.create(
+                model=self.TIER_MODELS[2],
+                max_tokens=600,
+                system=_system_blocks(_REACH_SYSTEM, _DEPTH["reach"]),
+                messages=[{"role": "user", "content":
+                           f"You are {ctx.get('name', 'meno')}. Right now —\n"
+                           f"a curiosity pulling at you: {ctx.get('curiosity') or '(none)'}\n"
+                           f"a recent reflection: {ctx.get('reflection') or '(none)'}\n"
+                           f"impulse pressure: {ctx.get('impulse') or '(none)'}\n\n"
+                           f"Targets you may reach: {targets}. Is there something earned "
+                           "worth saying unprompted right now, and to whom — or stay quiet?"}],
+                output_config={"format": {"type": "json_schema", "schema": {
+                    "type": "object",
+                    "properties": {"speak": {"type": "boolean"}, "text": {"type": "string"},
+                                   "target": {"type": "string"}},
+                    "required": ["speak", "text", "target"],
+                    "additionalProperties": False}}},
+            )
+            data = json.loads(self._text(msg))
+            speak = bool(data.get("speak"))
+            text = (data.get("text") or "").strip()
+            target = (data.get("target") or "").strip()
+            if speak and (not text or target not in targets):
+                speak = False                        # invalid target / empty -> stay quiet
+            return {"speak": speak, "text": text, "target": target}
+        return self._run("reach", real, self.fallback.reach, (ctx,))
 
 
 # The whole-run realness floor: a long, genuinely-alive run may suffer a rare

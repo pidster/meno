@@ -57,8 +57,8 @@ def load_adapters(inst) -> list:
 
     handle = (_read(home / "meno.toml").get("instance") or {}).get("handle", home.name)
     slack = _read(home / "adapters" / "slack.toml")
-    aff, eff = slack.get("afferent", {}), slack.get("efferent", {})
-    if aff.get("enabled") or eff.get("enabled"):
+    aff, eff, rch = slack.get("afferent", {}), slack.get("efferent", {}), slack.get("reach", {})
+    if aff.get("enabled") or eff.get("enabled") or rch.get("enabled"):
         inst.driver.add_adapter(SlackAdapter(
             channels=tuple(aff.get("channels", ())) if aff.get("enabled") else (),
             name=handle,                              # what it answers to in un-@'d text (I3)
@@ -72,8 +72,20 @@ def load_adapters(inst) -> list:
             dry_run=bool(eff.get("dry_run", False)),
             reply_in_dms=bool(eff.get("reply_in_dms", True)),
             rate_per_min=_rate_per_min(eff.get("rate", "5/min")),
-            audit_path=traces / "slack-sends.jsonl"))
+            audit_path=traces / "slack-sends.jsonl",
+            # reach (I4): unprompted speech — separate toggle/dry-run/targets/rate
+            reach_enabled=bool(rch.get("enabled", False)),
+            reach_dry_run=bool(rch.get("dry_run", True)),
+            voice_channel=rch.get("voice_channel") or None,
+            operator_dm=rch.get("operator_dm") or None,
+            reach_per_day=int(rch.get("per_day", 3))))
         attached.append("slack")
+
+    if rch.get("enabled"):                            # arm the mind's reach: abstract targets + cadence
+        targets = (["voice"] if rch.get("voice_channel") else []) + \
+                  (["operator"] if rch.get("operator_dm") else [])
+        inst.mind.reach_targets = targets
+        inst.driver.reach_every = int(rch.get("every", 50))
 
     know = _read(home / "adapters" / "knowledge.toml")
     if know.get("enabled"):
