@@ -24,10 +24,12 @@ Secrets are **never** stored in the home. Adapters name an environment variable
 ### From source (development)
 ```bash
 git clone … meno && cd meno
-python -m venv .venv && . .venv/bin/activate
-pip install -e ".[anthropic,slack,local]"   # extras are optional; see below
-python -m pytest -q                          # 210 passing, offline
+uv sync --extra dev --extra anthropic --extra slack   # extras optional; uv.lock pins them (D30)
+uv run python -m pytest -q                             # the offline suite
 ```
+`uv` (the fast resolver/installer) is preferred — it reads the committed `uv.lock` for a
+reproducible graph and resolves in milliseconds. Plain `pip` still works if you prefer:
+`python -m venv .venv && . .venv/bin/activate && pip install -e ".[dev,anthropic,slack]"`.
 
 Extras (all optional — the core runs offline with no dependencies):
 
@@ -44,11 +46,14 @@ Installing the package puts a `meno` command on the path (`[project.scripts]`).
 ```bash
 podman build -t meno:latest -f Containerfile .    # or: docker build …
 ```
-The image carries the code and dependencies (the *type*); the home is a mounted
-volume (the *identity*). It runs **non-root**, with **no instance identity baked in**
-(`.dockerignore` excludes `.env`, `state/`, `.meno/`). To bake the local embedder
-weights so a running instance never does a cold download, uncomment the `[local]`
-block in the `Containerfile`.
+The build is **multi-stage + uv** (D30): a uv builder resolves the frozen `uv.lock`
+into a venv (the anthropic+slack install takes ~1s, where the old pip path timed out),
+and only that venv is copied into a clean `python:3.13-slim` runtime — no uv, no build
+tools, no caches in the final image. The image carries the code and dependencies (the
+*type*); the home is a mounted volume (the *identity*). It runs **non-root**, with **no
+instance identity baked in** (`.dockerignore` excludes `.env`, `*.key`, `*.pem`). To
+bake the local embedder weights so a running instance never does a cold download,
+uncomment the `[local]` block in the `Containerfile`.
 
 ### Try it without an instance (the offline demo)
 ```bash

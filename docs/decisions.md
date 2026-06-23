@@ -533,3 +533,25 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   channels plus the operator's listed-channel filter — no extra `_joined()` network call
   on the WS thread. Mentions enter cognition as ordinary percepts; there is no
   "always-reply-when-mentioned" reflex (any reply goes through the gated efferent path).
+
+### D30 — uv + a committed lockfile; multi-stage uv container build
+- **Decision.** `uv` is the preferred resolver/installer for development and the
+  container build, with `uv.lock` committed for a reproducible dependency graph. The
+  `Containerfile` is multi-stage: a `ghcr.io/astral-sh/uv` builder runs
+  `uv sync --frozen --no-dev --extra anthropic --extra slack` into `/app/.venv`, and only
+  that venv is copied into a clean `python:3.13-slim` runtime (both stages share the
+  `python:3.13-bookworm` lineage, so the copied venv's interpreter resolves). `pip` still
+  works as a fallback; the kernel stays stdlib-only (uv is a build/dev tool, never a
+  runtime import).
+- **Why.** The single-stage pip build timed out resolving/compiling the `anthropic` layer
+  in the sandbox; the same install under uv completes in ~1s and the whole image builds
+  in ~6s. `--frozen` pins the exact graph (supply-chain reproducibility) instead of
+  re-resolving per build; multi-stage keeps uv, build tools, and caches out of the final
+  image (smaller surface). Validated end-to-end: image builds, then `init`/`run`/restart
+  pass under the hardened profile (read-only rootfs, non-root uid 10001, cap-drop=ALL).
+- **Rules out / bounds.** Not distroless (yet): a distroless runtime needs the venv's
+  interpreter relocated/copied to match its Python, a fiddly step deferred — the security
+  boundary is non-root + read-only rootfs + dropped caps + the egress allowlist, which a
+  slim runtime carries identically. `requires-python >= 3.11` (D22) unchanged; the lock
+  resolves across that range. Baking the `local` embedder weights stays an opt-in,
+  commented build stage (adds torch, ~100s of MB).
