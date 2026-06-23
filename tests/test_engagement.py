@@ -143,7 +143,8 @@ def test_home_view_renders_menos_state():
     view = ad._home_view()
     assert view["type"] == "home" and view["blocks"][0]["type"] == "header"
     blob = json.dumps(view)
-    assert "meno" in blob and "Memories" in blob and "Talk to me" in blob
+    # the DISPLAY name is capitalized (Meno) though the handle slug is lowercase (meno)
+    assert "Meno" in blob and "@Meno" in blob and "Memories" in blob and "Talk to me" in blob
 
 
 def test_home_view_degrades_gracefully_with_no_driver():

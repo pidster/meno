@@ -23,7 +23,8 @@ display_information:
 
 features:
   bot_user:
-    display_name: meno
+    display_name: Meno         # Slack DISPLAY name (and so the @mention: @Meno). The agent's
+                               # own lowercase identifier lives in meno.toml [instance] handle.
     always_online: true        # show a presence dot whenever the Socket Mode link is up
   app_home:
     home_tab_enabled: true                  # the App Home page — a window into meno's state of mind

@@ -365,8 +365,9 @@ class SlackAdapter(Adapter):
             v = snap.get(k)
             return "—" if v is None else str(v)
 
+        disp = str(self.agent_name).capitalize()         # DISPLAY name (Meno); slug stays lowercase
         return {"type": "home", "blocks": [
-            {"type": "header", "text": {"type": "plain_text", "text": f"{self.agent_name} 🌱"}},
+            {"type": "header", "text": {"type": "plain_text", "text": f"{disp} 🌱"}},
             {"type": "section", "text": {"type": "mrkdwn", "text":
                 "_A persistent cognitive agent. I sense, remember, and follow my own "
                 "curiosity — I become particular through experience. I'm not a chatbot: "
@@ -381,9 +382,9 @@ class SlackAdapter(Adapter):
             ]},
             {"type": "divider"},
             {"type": "section", "text": {"type": "mrkdwn", "text":
-                "*Talk to me*\nMention `@" + str(self.agent_name) + "` in a channel I'm in, "
-                "or send me a direct message. I may answer — or I may just listen and "
-                "remember. Either is me reacting to you."}},
+                "*Talk to me*\nMention `@" + disp + "` in a channel I'm in, or send me a "
+                "direct message. I may answer — or I may just listen and remember. Either "
+                "is me reacting to you."}},
             {"type": "context", "elements": [{"type": "mrkdwn", "text":
                 "Sensing is always on; what I say back is gated and stays off until enabled."}]},
         ]}
