@@ -687,3 +687,32 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   decision (`delivered` / `refused` / `dry-run`) now feeds back. Replies thread to the
   originating message (`thread_ts`). The addressed-ness detection + the may-respond loop that
   drive *when* it posts are the engagement phase (built next).
+
+### D36 — Engagement: meno reacts to being addressed (may-respond, not a chatbot)
+- **Decision.** Being addressed is a percept, and reacting to it can flow outward — so meno
+  MAY turn toward an interlocutor and reply, through the gated effector. It is not a chatbot:
+  it weighs whether it has something earned to say and may stay SILENT. Addressed-ness is
+  graded (the adapter tags each percept): **directed** (structural certainty — an @mention;
+  DM/1:1 once im scopes land), **possibly** (a soft lexical cue: meno's own name + a question
+  in un-@'d text), **ambient** (sensed, never replied). The mind knows its addressable name
+  (the handle). An `Engagement` processor, on a directed/possibly percept, consults memory
+  (substrate-first) and calls `models.respond` → `{speak, text}`; if it speaks, it emits a
+  POST intent to the percept's channel/thread through the same egress-gated outbound path.
+  Replies thread to the originating message. The stub turns toward `directed`, stays silent
+  on `possibly` (may-not-must even offline); a real model judges both.
+- **Why.** This is the honest reading of "react to sensing" — responsiveness emerges from
+  appraising "I'm being addressed" as salient and choosing to act, not a reply reflex. The
+  gradient reconciles broad addressing with not-a-chatterbox: ambient chatter is sensed but
+  never triggers a paid addressing judgment.
+- **Bounds (review fixes).** (1) A per-cycle `engage_per_cycle` budget caps replies COMPOSED
+  per cycle, so a burst of @mentions in one cycle can't each fire a paid `respond` call (the
+  cost governor only bounds the cross-cycle average; `deep_budget` is per-dream and would
+  starve replies). (2) Outbound reply text is REDACTED on the send path (not only the audit):
+  a reply is mind-composed from recalled memory, so a substrate secret must not egress via a
+  post (supersedes the D26 "sent message intact" stance, which assumed operator-authored
+  posts — posts are now mind-authored). (3) The reply channel comes from the delivered event
+  (not message text) and is re-checked against `post_channels` at send — injection can't
+  redirect a reply. Self-echo (bot_id) prevents meno's own posts re-entering as a new address.
+- **Rules out / bounds.** DMs / 1:1-channel detection need new Slack scopes (im:*) + a manifest
+  change — deferred (the structural bands are wired, the scopes aren't). No interlocutor model
+  yet (the transactive follow-on). With the stub, replies are templated, not meaningful.

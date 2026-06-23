@@ -112,17 +112,18 @@ def test_every_send_is_audited(tmp_path):
     assert rec["action"] == "post" and rec["outcome"] == "delivered" and "ts" in rec
 
 
-def test_audited_text_is_redacted_but_the_sent_message_is_intact(tmp_path):
-    """The mind may author a post quoting a secret it recalled. The at-rest audit copy
-    must REDACT it (the wrong place for a credential to persist), while the message
-    actually sent keeps the real text (the mind authored it deliberately)."""
+def test_outbound_text_is_redacted_on_both_the_send_and_the_audit(tmp_path):
+    """A reply is mind-composed from recalled memory (I3), so a secret that entered the
+    substrate via another sensor must not egress through a Slack post — redaction is on
+    the SEND path now, not only the at-rest audit copy."""
     fake = FakeSlack()
     audit = tmp_path / "journal" / "traces" / "sends.jsonl"
     ad = _eff(fake, audit_path=audit)
     ad.deliver(_post(text="deploy with password=hunter2secret now"))
     rec = json.loads(audit.read_text().strip())
     assert "[redacted]" in rec["text"] and "hunter2secret" not in rec["text"]   # scrubbed on disk
-    assert fake.posts == [("C_meno", "deploy with password=hunter2secret now")]  # but sent in the clear
+    sent_text = fake.posts[0][1]
+    assert "[redacted]" in sent_text and "hunter2secret" not in sent_text       # AND not posted
 
 
 def test_dry_run_audit_is_redacted_too(tmp_path):

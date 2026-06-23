@@ -103,6 +103,10 @@ class Config:
     # this many heartbeat ticks deferred-without-discharge it is judged FIXATED and granted
     # one forced deep slot to break the starvation (counted in telemetry). 0 = off.
     fixation_ttl_ticks: int = 64
+    # Engagement (I3): max replies meno COMPOSES per cycle — bounds the per-cycle burst of
+    # `respond` model calls (a flood of @mentions in one cycle can't each fire a paid call;
+    # the cost governor only bounds the cross-cycle average). 0 disables engagement.
+    engage_per_cycle: int = 3
     # Substrate ceiling: a hard cap on graph node count. Overflow does NOT garbage-collect
     # — it triggers grief-pruning of whole islanded node-streams (a reflected-on letting-go,
     # like cue grief), bounded per dream. 0 = no ceiling (growth unbounded, as before).

@@ -347,7 +347,8 @@ def build_instance(home) -> Instance:
     else:
         models = StubModelProvider()
 
-    mind = Meno(config=cfg, models=models, embed=embed, workspace=home)
+    handle = (conf.get("instance") or {}).get("handle", home.name)
+    mind = Meno(config=cfg, models=models, embed=embed, workspace=home, name=handle)
     store = make_store(conf, home)                    # the substrate backend (D34); file by default
     store.load(mind)                                  # sleep, not amnesia (D12) — no-op on a fresh home
 

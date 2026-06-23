@@ -55,11 +55,13 @@ def load_adapters(inst) -> list:
     secrets = _secret_resolver(home)                 # resolve token NAMES -> values here
     attached = []
 
+    handle = (_read(home / "meno.toml").get("instance") or {}).get("handle", home.name)
     slack = _read(home / "adapters" / "slack.toml")
     aff, eff = slack.get("afferent", {}), slack.get("efferent", {})
     if aff.get("enabled") or eff.get("enabled"):
         inst.driver.add_adapter(SlackAdapter(
             channels=tuple(aff.get("channels", ())) if aff.get("enabled") else (),
+            name=handle,                              # what it answers to in un-@'d text (I3)
             secrets=secrets,                          # tokens resolved by name, off the loop
             # afferent receive model: poll (default) or Socket Mode (real-time, needs
             # $SLACK_APP_TOKEN). Socket Mode only takes effect in the unbounded daemon,

@@ -356,5 +356,49 @@ class Curator(Processor):
         return []
 
 
-DEFAULT_PROCESSORS = [Appraiser(), Associator(), Synthesiser(), Effector(),
-                      OutboundRelay(), Curator()]
+class Engagement(Processor):
+    """I3: react to being ADDRESSED. Meno MAY turn toward an interlocutor and reply — it
+    is not a chatbot, so it weighs whether it has something earned to say and may stay
+    SILENT. A reply is an outward POST intent through the gated effector; the may-not-must
+    restraint, the cost governor (it withholds while throttled), and the rate limit keep
+    it from being a chatterbox. Responding emerges from sensing — being addressed is a
+    salient percept it chooses to act on, not a request it is obliged to answer."""
+    name = "engagement"
+    tier = 2
+
+    def triggers(self, event: Event, mind) -> bool:
+        return (self.name not in event.seen_by
+                and event.payload.get("addressed") in ("directed", "possibly")
+                and bool(event.payload.get("reply_to"))
+                and not getattr(mind, "throttled", False)
+                and getattr(mind, "engage_budget", 0) > 0     # bound the per-cycle reply burst
+                and getattr(mind, "outbox", None) is not None)
+
+    def run(self, event: Event, mind) -> List[Event]:
+        event.seen_by.add(self.name)
+        mind.engage_budget -= 1                          # spend a reply slot BEFORE the model call
+        rt = event.payload.get("reply_to") or {}
+        msg = event.content                              # strip the 'slack #chan: ' percept prefix
+        prefix = f"slack #{rt.get('channel')}: "
+        if msg.startswith(prefix):
+            msg = msg[len(prefix):]
+        recalled = mind.recall(msg)                      # substrate-first: what do I actually know?
+        decision = mind.models.respond({
+            "name": getattr(mind, "name", "meno"),
+            "addressed": event.payload["addressed"],
+            "text": msg, "actor": rt.get("user"),
+            "memory": (recalled or {}).get("text", "")})
+        mind.cost_units += 1                             # a respond judgment is a deep op (D32)
+        if not isinstance(decision, dict) or not decision.get("speak") or not decision.get("text"):
+            mind.trace(f"engagement: stayed silent on {msg[:40]!r}")
+            return []                                    # chose silence — may-not-must
+        intent = Event(content=f"reply to {rt.get('user')}: {decision['text'][:60]}",
+                       kind=Kind.INTENT, source="engagement",
+                       payload={"action": "post", "channel": rt.get("channel"),
+                                "thread_ts": rt.get("thread_ts"), "text": decision["text"],
+                                "egress": True, "host": "slack.com"})
+        return [intent]
+
+
+DEFAULT_PROCESSORS = [Appraiser(), Associator(), Synthesiser(), Engagement(),
+                      Effector(), OutboundRelay(), Curator()]

@@ -33,8 +33,10 @@ class Meno:
                  models: Optional[ModelProvider] = None,
                  processors: Optional[list] = None,
                  workspace: Optional[Path] = None,
+                 name: str = "meno",
                  verbose: bool = False) -> None:
         self.cfg = config or Config()
+        self.name = name              # its ADDRESSABLE name (the handle) — what it answers to (I3)
         self.embed = embed or HashingEmbedding()
         self.models = models or StubModelProvider()
         self.graph = Graph(self.embed, self.cfg)
@@ -61,6 +63,8 @@ class Meno:
         self.throttled = False
         self.cost_units = 0
         self.fixations = 0            # D33: impulses force-taken-up after the fixation TTL
+        self.engage_budget = self.cfg.engage_per_cycle   # I3: replies composable this cycle
+                                                         # (the driver resets it each cycle)
         # K2 supplantation telemetry: lookups fired; of the factual curiosities the
         # substrate COULD serve (reconstructable), how many we still looked up
         # (supplanted) vs preferred memory. The don't-become-a-lookup-machine guard.

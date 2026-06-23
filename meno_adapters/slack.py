@@ -57,6 +57,7 @@ class SlackAdapter(Adapter):
     hosts = ("slack.com", "*.slack.com")
 
     def __init__(self, *, client=None, channels=(), bot_user_id: Optional[str] = None,
+                 name: str = "meno",        # meno's addressable name, for un-@'d self-recognition (I3)
                  max_chars: int = 2000, max_per_poll: int = 8, max_per_channel: int = 8,
                  membership_ttl: float = 120.0, token_env: str = "SLACK_BOT_TOKEN",
                  # --- afferent via Socket Mode (Events API, no public endpoint) ---
@@ -70,6 +71,8 @@ class SlackAdapter(Adapter):
         self._secrets = secrets or env_resolver()   # resolve token NAMES -> values here
         self.channels = tuple(channels)             # afferent allow-list (read)
         self.bot_user_id = bot_user_id              # skip our own posts (self-echo guard)
+        self.agent_name = name                      # what meno answers to in un-@'d text (I3)
+                                                    # (NOT `self.name` — that's the adapter id "slack")
         self.max_chars = max_chars
         self.max_per_poll = max_per_poll            # global cap on percepts emitted per poll
         self.max_per_channel = max_per_channel      # API fetch limit per channel
@@ -280,20 +283,41 @@ class SlackAdapter(Adapter):
         and edited body NESTED under `event['message']`, so the top-level self-echo guard
         can't see them; dropping subtyped events closes that bypass (documented in
         docs/slack-app.md)."""
-        if event.get("type") not in ("message", "app_mention"):
+        etype = event.get("type")
+        if etype not in ("message", "app_mention"):
             return
         if event.get("subtype"):                     # bare messages/mentions only (see docstring)
             return
         channel = event.get("channel")
         if self.channels and channel not in self.channels:   # allow-list is an OPTIONAL restriction
             return
+        text = event.get("text") or ""
+        # a message that @-mentions us ALSO arrives as an app_mention event — let that one
+        # carry it (as 'directed') and skip the duplicate, so we don't sense/reply twice.
+        if etype == "message" and self.bot_user_id and f"<@{self.bot_user_id}>" in text:
+            return
         content = self._shape(channel, event.get("user"), event.get("subtype"),
-                              event.get("text"), event.get("bot_id"))
+                              text, event.get("bot_id"))
         if content is None or self._driver is None:
             return
+        band, reply_to = self._addressing(etype, channel, event)   # I3: how directed at me?
         self.events += 1
-        self._driver.feed(content, source=self.source,
-                          channel=channel, ts=event.get("ts"), user=event.get("user"))
+        self._driver.feed(content, source=self.source, channel=channel, ts=event.get("ts"),
+                          user=event.get("user"), addressed=band, reply_to=reply_to)
+
+    def _addressing(self, etype, channel, event):
+        """How directed at meno is this percept? Returns (band, reply_to). Structural cues
+        give certainty — an @mention is 'directed' (DM / 1:1 channel will be too, once the
+        im scopes land); a lexical cue (our name + a question) is a soft 'possibly' that
+        the may-respond loop weighs; everything else is 'ambient' (sensed, never replied)."""
+        reply_to = {"channel": channel, "user": event.get("user"),
+                    "thread_ts": event.get("thread_ts") or event.get("ts")}
+        if etype == "app_mention":
+            return "directed", reply_to
+        text = (event.get("text") or "").lower()
+        if self.agent_name and self.agent_name.lower() in text and "?" in text:
+            return "possibly", reply_to
+        return "ambient", reply_to
 
     # --- efferent (I2/I3): outward action, gated. Every layer is a refusal first. ---
     def handles(self, action) -> bool:
@@ -335,7 +359,10 @@ class SlackAdapter(Adapter):
         still 'spoke', it just didn't reach the channel) as the tuning ramp. Every
         decision feeds back as FEEDBACK and is audited."""
         channel = payload.get("channel")
-        text = (payload.get("text") or "")[:self.max_chars]
+        # redact BEFORE truncating, on the SEND path (not just the audit): a reply is now
+        # mind-composed from recalled memory, so a secret that entered the substrate via
+        # another sensor must not egress through a Slack reply (I3 review P2).
+        text = self.redact(payload.get("text") or "")[:self.max_chars]
         thread_ts = payload.get("thread_ts")
         refusal = self._gate(channel)
         if refusal:

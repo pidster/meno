@@ -241,6 +241,7 @@ class Driver:
     def step(self) -> CycleReport:
         self.cycles += 1
         self.mind.throttled = self.governor.tripped   # apply the breaker state for this cycle (D32)
+        self.mind.engage_budget = self.mind.cfg.engage_per_cycle   # I3: bound replies/cycle
         if (self.sensors or self.adapters) and self.cycles % self.sense_every == 0:
             self._poll_sensors()
         ingested = 0

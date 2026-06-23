@@ -74,6 +74,12 @@ class ModelProvider:
         Returns {mode: internal|external|both, thought: str|None, action: dict|None}."""
         return {"mode": "internal", "thought": f"I wonder: {text}", "action": None}
 
+    def respond(self, ctx: dict) -> dict:
+        """Decide whether to turn toward an interlocutor who addressed meno, and compose a
+        reply. ctx = {name, addressed, text, actor, memory}. Returns {speak: bool, text}.
+        Default: stay SILENT — engagement is opt-in cognition, never an obligation (I3)."""
+        return {"speak": False, "text": ""}
+
 
 class StubModelProvider(ModelProvider):
     """Deterministic, offline stand-in. Good enough to exercise the whole loop."""
@@ -120,6 +126,16 @@ class StubModelProvider(ModelProvider):
                     "action": {"action": "fs_read", "path": ref}}
         return {"mode": "internal", "thought": f"I wonder: {text}", "action": None}
 
+    def respond(self, ctx: dict) -> dict:
+        # deterministic engagement: turn toward a DIRECT address (@mention / DM); stay
+        # silent on the soft 'possibly' cue (a named-but-maybe-not-for-me question) — so
+        # response is may-not-must even in the stub. A real model judges both bands.
+        if ctx.get("addressed") != "directed":
+            return {"speak": False, "text": ""}
+        msg = (ctx.get("text") or "").strip()
+        who = ctx.get("actor") or "you"
+        return {"speak": True, "text": f"I heard you, {who} — you said: {msg[:120]}"}
+
 
 _APPRAISE_SCHEMA = {
     "type": "object",
@@ -160,8 +176,14 @@ _WONDER_SYSTEM = ("A curiosity has arisen. Decide how to follow it. Respond inwa
 # prepends the shared self-model — what a Meno is and how it operates — as a
 # cache-controllable block before each. Deep tiers (associate, synthesise, wonder)
 # carry the full self-model; reflexive tiers (appraise, relate) carry the brief one.
-_DEPTH = {"appraise": False, "relate": False,
-          "associate": True, "synthesise": True, "wonder": True}
+_RESPOND_SYSTEM = (
+    "Someone has addressed you. You are not a chatbot — you do not owe a reply. Decide "
+    "whether to TURN TOWARD them: speak only if you have something earned to say (drawn "
+    "from your memory and perspective), otherwise stay silent (speak=false). When you do "
+    "speak, be brief, particular, and in your own voice — not a generic assistant. Never "
+    "fabricate; if you don't recall something, say so plainly or stay silent.")
+_DEPTH = {"appraise": False, "relate": False, "associate": True,
+          "synthesise": True, "wonder": True, "respond": True}
 
 
 def _system_blocks(role_line: str, deep: bool) -> list:
@@ -371,6 +393,33 @@ class AnthropicModelProvider(ModelProvider):
                 action = {"action": "fs_read", "path": target}
             return {"mode": mode, "thought": thought, "action": action}
         return self._run("wonder", real, self.fallback.wonder, (text, referent))
+
+    def respond(self, ctx: dict) -> dict:
+        def real():
+            mem = ctx.get("memory") or "(nothing specific comes to mind)"
+            msg = self._client.messages.create(
+                model=self.TIER_MODELS[2],
+                max_tokens=600,
+                system=_system_blocks(_RESPOND_SYSTEM, _DEPTH["respond"]),
+                messages=[{"role": "user",
+                           "content": f"You are {ctx.get('name','meno')}. "
+                                      f"{ctx.get('actor','someone')} addressed you "
+                                      f"({ctx.get('addressed','directed')}): "
+                                      f"{ctx.get('text','')}\n\nWhat you recall:\n{mem}"}],
+                output_config={"format": {"type": "json_schema", "schema": {
+                    "type": "object",
+                    "properties": {"speak": {"type": "boolean"},
+                                   "text": {"type": "string"}},
+                    "required": ["speak", "text"],
+                    "additionalProperties": False}}},
+            )
+            data = json.loads(self._text(msg))
+            speak = bool(data.get("speak"))
+            text = (data.get("text") or "").strip()
+            if speak and not text:                     # "speak" with nothing to say is a degradation
+                raise ValueError("respond=speak with empty text")
+            return {"speak": speak, "text": text}
+        return self._run("respond", real, self.fallback.respond, (ctx,))
 
 
 # The whole-run realness floor: a long, genuinely-alive run may suffer a rare
