@@ -87,6 +87,28 @@ class Config:
     # (so a slow network call never blocks the mind thread). Drops newest when full.
     outbox_max: int = 1024
 
+    # --- pathology containment (D32): a continuously-running mind must not run away ---
+    # Cost governor: a circuit-breaker on EXPENSIVE cognition (Tier-3 synthesis, the
+    # outward curiosity reach, the dream — the ops that cost real model calls online).
+    # It counts deep ops over a rolling window of cycles and, when the count exceeds the
+    # budget, THROTTLES (skips dreams, suppresses the outward reach and Tier-3) until the
+    # rate falls back — a runaway backstop, not a normal-operation limiter. A budget of 0
+    # disables it. Generous by default so it never bites ordinary use; tune off the
+    # health surface (status.json `health.cost`).
+    cost_window_cycles: int = 20        # rolling window over which deep ops are summed
+    cost_budget_per_window: int = 60    # deep ops/window above which the breaker trips (0 = off)
+    cost_resume_ratio: float = 0.5      # resume when the windowed count falls to budget*this (hysteresis)
+    # Fixation watchdog: an impulse (deferred stream) builds pressure and never decays
+    # (intrinsic — F4), so a stream starved of a deep slot can sit deferred forever. After
+    # this many heartbeat ticks deferred-without-discharge it is judged FIXATED and granted
+    # one forced deep slot to break the starvation (counted in telemetry). 0 = off.
+    fixation_ttl_ticks: int = 64
+    # Substrate ceiling: a hard cap on graph node count. Overflow does NOT garbage-collect
+    # — it triggers grief-pruning of whole islanded node-streams (a reflected-on letting-go,
+    # like cue grief), bounded per dream. 0 = no ceiling (growth unbounded, as before).
+    node_ceiling: int = 0
+    node_grief_max_per_dream: int = 2   # whole node-streams released per dream when over the ceiling
+
     @property
     def load_norm_base(self) -> int:
         return max(1, self.working_set_capacity)

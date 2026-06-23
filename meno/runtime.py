@@ -54,6 +54,12 @@ class Meno:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.verbose = verbose
         self.deep_budget = self.cfg.deep_per_pass
+        # pathology containment (D32): `throttled` is set by the driver's cost governor
+        # — while True the mind suppresses its EXPENSIVE cognition (Tier-3 synthesis and
+        # the outward curiosity reach). `cost_units` is the monotonic deep-op counter the
+        # governor samples per cycle. Default off / zero, so a bare Meno is unchanged.
+        self.throttled = False
+        self.cost_units = 0
         # K2 supplantation telemetry: lookups fired; of the factual curiosities the
         # substrate COULD serve (reconstructable), how many we still looked up
         # (supplanted) vs preferred memory. The don't-become-a-lookup-machine guard.
@@ -109,12 +115,14 @@ class Meno:
             if proc.triggers(ev, self):
                 emitted.extend(proc.run(ev, self))
                 self.trace(f"{proc.name}(t{proc.tier}) on {ev.content[:36]!r}")
-        # relevance-but-unaffordable -> defer (build pressure), do not discard
-        if self._synth and self._synth.wants(ev, self) and self.deep_budget <= 0:
+        # relevance-but-unaffordable -> defer (build pressure), do not discard. Budget
+        # exhaustion OR a tripped cost governor (D32) both defer the want, so throttled
+        # deep work resurfaces later rather than lapsing silently.
+        if self._synth and self._synth.wants(ev, self) and (self.deep_budget <= 0 or self.throttled):
             st = self.streams.get(ev.stream_id)
             if st is not None and not st.deferred:
                 st.deferred = True
-                self.trace(f"deferred (deep budget spent) -> stream {ev.stream_id}")
+                self.trace(f"deferred (deep work withheld) -> stream {ev.stream_id}")
         for child in emitted:
             self.bus.publish(child)
         if ev.status == Status.ACTIVE:
@@ -165,7 +173,11 @@ class Meno:
                 # impulses-first, properly: don't wander while unfinished cognition
                 # is still pending — even if its pressure hasn't yet crossed the
                 # wake line (timing must not let curiosity jump the queue).
-                if self._idle_ticks >= self.cfg.boredom_ticks and not deferred_pending:
+                # the outward reach is EXPENSIVE (model-routed wonder); a tripped cost
+                # governor suppresses it while throttled (D32) — impulses still resurface
+                # (cheap, internal), the agent just stops reaching toward the world.
+                if (self._idle_ticks >= self.cfg.boredom_ticks and not deferred_pending
+                        and not self.throttled):
                     if self.curiosities.top() is None:
                         self._birth_topdown_curiosity()
                     for ev in self._discharge_curiosity():
@@ -249,6 +261,7 @@ class Meno:
         if cur is None or cur.intensity < self.cfg.curiosity_discharge_threshold:
             return []
         route = self.models.wonder(cur.text, cur.referent)
+        self.cost_units += 1                                 # the outward reach: a deep op (D32)
         mode = route.get("mode", "internal")
         action = route.get("action")
         wanted_lookup = bool(action) and action.get("action") in ("lookup", "define")
@@ -294,6 +307,9 @@ class Meno:
     # --- circadian: the dream ---
     def dream(self) -> dict:
         report = self.consolidation.run()
+        # the dream's model-call-bearing ops (merges = relate, retires = grief synthesis)
+        # count toward the governor's deep-op tally (D32).
+        self.cost_units += 1 + report.get("merges", 0) + report.get("retired", 0)
         self.deep_budget = self.cfg.deep_per_pass   # rested: deep capacity replenished
         return report
 

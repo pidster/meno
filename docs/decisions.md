@@ -579,3 +579,29 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   it doesn't store or issue. The default posture is unchanged (env-only, nothing in the
   home); the dotenv file is a convenience, never required. The kernel-purity test is
   extended to forbid `meno/` importing the resolver, same as the rest of the adapter layer.
+
+### D32 — Cost governor + a health surface (pathology containment, part 1)
+- **Decision.** A continuously-running mind gets a circuit-breaker on EXPENSIVE cognition.
+  `CostGovernor` (meno/governor.py) counts "deep ops" — Tier-3 synthesis, the outward
+  curiosity reach, and the dream (the operations that cost real model calls online) — over
+  a rolling window of cycles. When the windowed count crosses `cost_budget_per_window` it
+  TRIPS; the driver then sets `mind.throttled`, which (a) skips the dream and (b) makes the
+  mind suppress the outward reach and withhold Tier-3 — withheld deep work DEFERS (builds
+  impulse pressure) and resumes when the throttle lifts, it is never discarded. Self-
+  regulating with hysteresis (resets at `budget * cost_resume_ratio`); disabled at
+  `budget = 0`; generous default (60/20 cycles) so it's a runaway backstop, not a normal
+  limiter. A `health` block in `status.json` surfaces the operator-facing signals — idle
+  fraction, queue depth, dropped input/outbound, egress denials, working-set/stream depth,
+  degraded cognition, and the breaker state — so pathology is VISIBLE.
+- **Why.** Containment of *action* was already strong (egress allowlist, the efferent gate,
+  bounded queues); the gap was containment of *cost/compute*. A hot loop or a percept flood
+  could burn unbounded API spend with no brake and no operator signal. The governor counts
+  deep ops rather than wall-clock/tokens so it is deterministic and testable offline (the
+  same ops run free under the stub) yet bounds real cost online. Throttling slows, never
+  stops — cheap heartbeat cognition continues, so the agent stays alive while shedding the
+  expensive work; and because withheld work defers, nothing is silently lost.
+- **Rules out / bounds.** Not a token-accurate budget (a coarse deep-op proxy). Not a kill
+  switch. The substrate-size ceiling and the fixation watchdog (their config knobs land
+  here, inert by default — `node_ceiling = 0`, `fixation_ttl_ticks`) are implemented in the
+  containment slice (D33). A bare `Meno` with no driver is unchanged: `throttled` is False
+  and `cost_units` simply counts.

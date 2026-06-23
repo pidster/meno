@@ -161,11 +161,14 @@ class Synthesiser(Processor):
                 or event.surprise >= mind.cfg.tier3_min)
 
     def triggers(self, event: Event, mind) -> bool:
-        return self.wants(event, mind) and mind.deep_budget > 0
+        # a tripped cost governor (D32) withholds Tier-3 too — the want defers (below),
+        # building pressure, and resumes when the throttle lifts. Not discarded.
+        return self.wants(event, mind) and mind.deep_budget > 0 and not mind.throttled
 
     def run(self, event: Event, mind) -> List[Event]:
         event.seen_by.add(self.name)
         mind.deep_budget -= 1
+        mind.cost_units += 1                        # Tier-3 synthesis: a deep op (D32)
         stream = mind.streams.get(event.stream_id)
         occasion = stream.summary if stream and stream.summary else event.content[:60]
         node_ids = list(stream.node_ids) if stream else ([event.node_id] if event.node_id else [])

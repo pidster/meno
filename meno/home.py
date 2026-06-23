@@ -278,10 +278,38 @@ class Instance:
             "cognition_provider": getattr(models, "name", "?"),
             "cognition_real_fraction": getattr(models, "real_fraction", None),
             "errors": getattr(self.driver, "errors", 0),
+            "health": self._health(models),
         }
         tmp = self.status_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(status, indent=2))
         os.replace(tmp, self.status_path)
+
+    def _health(self, models) -> dict:
+        """The operational health surface (D32): the signals an operator watches to SEE
+        pathology — load and backpressure, degraded cognition, and the cost breaker.
+        Pulled from the driver's counters and the mind's snapshot (both already
+        maintained); additive, so older readers that only read the top-level fields are
+        unaffected."""
+        tel = self.driver.telemetry() if hasattr(self.driver, "telemetry") else {}
+        snap = self.mind.snapshot() if hasattr(self.mind, "snapshot") else {}
+        cycles = tel.get("cycles", 0) or 0
+        return {
+            "idle_fraction": round(tel.get("idle_cycles", 0) / cycles, 3) if cycles else None,
+            "pending_input": tel.get("pending_input", 0),
+            "dropped_input": tel.get("dropped_input", 0),
+            "dropped_outbound": tel.get("dropped_outbound", 0),
+            "egress_denied": tel.get("egress_denied", 0),
+            "hot": snap.get("hot"),                       # working-set depth
+            "streams_active": snap.get("streams_active"),
+            "streams_warm": snap.get("streams_warm"),
+            "curiosities": snap.get("curiosities"),
+            "edges": snap.get("edges"),
+            "node_ceiling": self.mind.cfg.node_ceiling or None,
+            "cognition_degraded": getattr(models, "degraded", False),
+            "throttled": tel.get("throttled", False),
+            "cost": tel.get("cost"),
+            "last_error": tel.get("last_error"),
+        }
 
 
 def build_instance(home) -> Instance:

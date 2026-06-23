@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Optional
 
 from .event import Kind
+from .governor import CostGovernor
 
 
 @dataclass
@@ -79,6 +80,11 @@ class Driver:
         self.egress_denied = 0                     # outbound intents refused by the egress allowlist
         self.last_error: Optional[str] = None
         self._backoff = 0.0
+        # cost governor (D32): a circuit-breaker on expensive cognition. Samples the mind's
+        # deep-op delta each cycle; while tripped the loop throttles (skips dreams; the mind
+        # suppresses the outward reach + Tier-3). Disabled by default budget=0 -> never trips.
+        self.governor = CostGovernor(mind.cfg)
+        self._last_cost = getattr(mind, "cost_units", 0)
 
     # --- thread-safe ingress (callable from any thread / sensor) --------------
     def feed(self, text: str, source: str = "sensor", kind: Kind = Kind.SENSE, **payload) -> None:
@@ -234,6 +240,7 @@ class Driver:
     # --- one autonomous cycle -------------------------------------------------
     def step(self) -> CycleReport:
         self.cycles += 1
+        self.mind.throttled = self.governor.tripped   # apply the breaker state for this cycle (D32)
         if (self.sensors or self.adapters) and self.cycles % self.sense_every == 0:
             self._poll_sensors()
         ingested = 0
@@ -255,8 +262,8 @@ class Driver:
             while self.drain_outbox_once():
                 pass
         dreamed = None
-        if self.dream_every and self.cycles % self.dream_every == 0:
-            dreamed = self.mind.dream()
+        if self.dream_every and self.cycles % self.dream_every == 0 and not self.mind.throttled:
+            dreamed = self.mind.dream()               # the dream is expensive; skip it while throttled (D32)
             self.dreams += 1
         # a dream that consolidated nothing doesn't count as activity, so a truly
         # quiescent mind can still back off across circadian beats.
@@ -264,6 +271,11 @@ class Driver:
                 and not _dream_did_something(dreamed))
         if idle:
             self.idle_cycles += 1
+        # feed this cycle's deep-op count to the governor; it sets the throttle for next
+        # cycle (self-regulating: throttling suppresses the ops it counts, so it resets).
+        cost_now = getattr(self.mind, "cost_units", 0)
+        self.governor.observe(cost_now - self._last_cost)
+        self._last_cost = cost_now
         return CycleReport(self.cycles, ingested, reactive, quiet, dreamed, idle)
 
     # --- the loop -------------------------------------------------------------
@@ -368,4 +380,5 @@ class Driver:
                 "errors": self.errors, "dropped_input": self.dropped_input,
                 "dropped_outbound": self.dropped_outbound,
                 "egress_denied": self.egress_denied,
+                "throttled": self.governor.tripped, "cost": self.governor.health(),
                 "last_error": self.last_error, "running": self.running}
