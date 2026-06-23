@@ -43,6 +43,43 @@ def test_an_at_mention_is_directed():
     assert payload["reply_to"]["channel"] == "C_t" and payload["reply_to"]["user"] == "U_a"
 
 
+def test_a_directed_percept_resolves_the_speakers_display_name():
+    class FakeUsers:
+        def users_info(self, user):
+            return {"user": {"profile": {"display_name": "Pid"}, "real_name": "Pidster"}}
+    ad = SlackAdapter(client=FakeUsers(), channels=(), bot_user_id="U_bot", name="meno")
+    ad._driver = FakeDriver()
+    ad._handle_event({"type": "app_mention", "channel": "C_t", "user": "U01ABC",
+                      "text": "<@U_bot> hi", "ts": "1.0"})
+    assert ad._driver.fed[0][2]["reply_to"]["user_name"] == "Pid"   # name, not the raw id
+
+
+def test_name_resolution_falls_back_to_the_mention_token_without_the_scope():
+    class NoScope:
+        def users_info(self, user):
+            raise RuntimeError("missing_scope: users:read")
+    ad = SlackAdapter(client=NoScope(), channels=(), bot_user_id="U_bot", name="meno")
+    ad._driver = FakeDriver()
+    ad._handle_event({"type": "app_mention", "channel": "C_t", "user": "U01ABC",
+                      "text": "<@U_bot> hi", "ts": "1.0"})
+    # <@id> renders as the person's name in Slack, so a reply still addresses a name
+    assert ad._driver.fed[0][2]["reply_to"]["user_name"] == "<@U01ABC>"
+
+
+def test_ambient_messages_do_not_trigger_a_name_lookup():
+    calls = []
+    class CountingUsers:
+        def users_info(self, user):
+            calls.append(user); return {"user": {"name": "x"}}
+        def conversations_members(self, channel, limit=100, cursor=None):
+            return {"members": ["U_bot", "U_a", "U_b"]}     # busy channel -> not 1:1
+    ad = SlackAdapter(client=CountingUsers(), channels=(), bot_user_id="U_bot", name="meno")
+    ad._driver = FakeDriver()
+    ad._handle_event({"type": "message", "channel": "C_t", "user": "U01ABC",
+                      "text": "just chatting", "ts": "1.0"})       # ambient
+    assert calls == []                                # no lookup for ambient traffic
+
+
 def test_a_named_question_without_an_at_is_possibly():
     ad = _adapter()
     ad._handle_event({"type": "message", "channel": "C_t", "user": "U_a",

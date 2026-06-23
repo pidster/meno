@@ -386,7 +386,8 @@ class Engagement(Processor):
         decision = mind.models.respond({
             "name": getattr(mind, "name", "meno"),
             "addressed": event.payload["addressed"],
-            "text": msg, "actor": rt.get("user"),
+            "text": msg,
+            "actor": rt.get("user_name") or rt.get("user"),   # the human NAME, not the raw id
             "memory": (recalled or {}).get("text", "")})
         mind.cost_units += 1                             # a respond judgment is a deep op (D32)
         if not isinstance(decision, dict) or not decision.get("speak") or not decision.get("text"):

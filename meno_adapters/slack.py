@@ -106,6 +106,7 @@ class SlackAdapter(Adapter):
         self._joined_cache: Optional[set] = None
         self._joined_at = 0.0
         self._one_to_one_cache: dict = {}            # channel -> (is_1to1, fetched_at): I3 1:1 detection
+        self._user_name_cache: dict = {}             # user id -> display name (I3 reply-by-name)
         # Socket Mode (push afferent): real-time Events API over an OUTBOUND WebSocket —
         # no public Request URL. OFF by default; needs an app-level token ($SLACK_APP_TOKEN,
         # scope connections:write) distinct from the bot token. Supersedes polling when on.
@@ -306,9 +307,33 @@ class SlackAdapter(Adapter):
         if content is None or self._driver is None:
             return
         band, reply_to = self._addressing(etype, channel, event)   # I3: how directed at me?
+        if band in ("directed", "possibly"):         # resolve the speaker's NAME only when we
+            reply_to["user_name"] = self._user_name(event.get("user"))   # might actually reply
         self.events += 1
         self._driver.feed(content, source=self.source, channel=channel, ts=event.get("ts"),
                           user=event.get("user"), addressed=band, reply_to=reply_to)
+
+    def _user_name(self, user_id):
+        """Resolve a Slack user id to a human display name (cached). Falls back to the
+        `<@id>` mention token — which Slack RENDERS as the person's name — when `users:read`
+        isn't granted or the lookup fails, so a reply always addresses a name, never a raw
+        id. With the scope, the plain display name is used (nicer, and better context for a
+        real model than a mention token)."""
+        if not user_id:
+            return None
+        if user_id in self._user_name_cache:
+            return self._user_name_cache[user_id]
+        name = f"<@{user_id}>"                        # default: renders as the name in Slack
+        if self.available:
+            try:
+                prof = (self._client.users_info(user=user_id) or {}).get("user") or {}
+                p = prof.get("profile") or {}
+                name = (p.get("display_name") or p.get("real_name")
+                        or prof.get("real_name") or prof.get("name") or name)
+            except Exception as exc:                  # missing scope / API blip -> keep the mention form
+                self._record(exc, "users_info")
+        self._user_name_cache[user_id] = name
+        return name
 
     # --- App Home: a window INTO meno (its state of mind), not a percept it senses ---- #
     def _publish_home(self, user, tab=None) -> None:

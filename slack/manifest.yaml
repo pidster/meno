@@ -41,6 +41,7 @@ oauth_config:
       - app_mentions:read    # receive app_mention events (when someone @meno's)
       - im:read              # identify DM (im) channels — every DM message is 'directed' (I3)
       - im:history           # read DM messages (message.im events)
+      - users:read           # resolve a speaker's id -> display name, to reply by NAME (I3)
       # efferent (act) — posting is OFF by default in adapters/slack.toml and gated
       # (scope/rate/dry-run); this scope only makes it POSSIBLE, not automatic:
       - chat:write           # chat.postMessage — post as the bot to channels it joined
