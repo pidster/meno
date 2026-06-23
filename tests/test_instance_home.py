@@ -1,10 +1,10 @@
 """Phase I0b — the instance home: meno init, the config loader, the egress policy,
 and the home-bound daemon (D21/D22).
 
-Offline and deterministic. The OCI image BUILD/RUN smoke is the one external
-dependency (a container runtime + network) — flagged and skipped here, like R1's
-"needs a model".
+Offline and deterministic. The OCI image build/run smoke is opt-in (needs a container
+runtime + network) — set MENO_DOCKER_SMOKE=1 to run it; validated manually otherwise.
 """
+import os
 import shutil
 import tomllib
 from pathlib import Path
@@ -196,7 +196,30 @@ def test_containerfile_declares_the_safety_boundary():
     assert "ENTRYPOINT" in cf and "meno" in cf
 
 
-@pytest.mark.skipif(not (shutil.which("podman") or shutil.which("docker")),
-                    reason="no container runtime — image build/run smoke is deferred (D21)")
-def test_image_builds_and_runs__deferred():
-    pytest.skip("image build/run smoke requires a container runtime + network (deferred, D21)")
+@pytest.mark.skipif(
+    not (shutil.which("podman") or shutil.which("docker")) or not os.environ.get("MENO_DOCKER_SMOKE"),
+    reason="opt-in OCI smoke: needs a container runtime + network; set MENO_DOCKER_SMOKE=1")
+def test_image_builds_and_runs_in_a_hardened_container(tmp_path):
+    """Build the image and run a hardened container against a mounted home: non-root,
+    read-only rootfs, dropped caps. `meno init` + `meno run` write only to the volume,
+    and a restart resumes (sleep, not amnesia, D12). Opt-in (heavy: pulls a base image
+    + builds); validated manually 2026-06-23, this makes it reproducible in CI."""
+    import subprocess
+    rt = shutil.which("docker") or shutil.which("podman")
+    repo = Path(__file__).resolve().parent.parent
+    tag = "meno:pytest-smoke"
+    subprocess.run([rt, "build", "-t", tag, "-f", "Containerfile", "."],
+                   cwd=repo, check=True, capture_output=True, timeout=600)
+    home = tmp_path / "ctr"
+    home.mkdir()
+    safe = [rt, "run", "--rm", "--read-only", "--cap-drop=ALL",
+            "--security-opt=no-new-privileges:true", "--tmpfs", "/tmp",
+            "-u", "10001:10001", "-v", f"{home}:/home/meno/.meno:rw", tag]
+    subprocess.run(safe + ["init", "/home/meno/.meno/inst"], check=True, capture_output=True, timeout=120)
+    subprocess.run(safe + ["run", "/home/meno/.meno/inst", "--cycles", "3"],
+                   check=True, capture_output=True, timeout=120)
+    import json
+    status = json.loads((home / "inst" / "run" / "status.json").read_text())
+    assert status["cycles"] >= 3 and (home / "inst" / "substrate" / "graph.json").exists()
+    subprocess.run(safe + ["run", "/home/meno/.meno/inst", "--cycles", "2"],
+                   check=True, capture_output=True, timeout=120)   # a fresh container resumes the home
