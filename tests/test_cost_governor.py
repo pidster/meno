@@ -88,15 +88,17 @@ def test_a_cost_burst_throttles_the_loop_then_it_self_recovers():
     mind.cost_units += 20                            # simulate a deep-op burst this cycle
     driver.step()
     assert driver.governor.tripped is True           # the burst tripped the breaker
-    dreams_at_trip = driver.dreams
     driver.step()                                    # next cycle applies the throttle
     assert mind.throttled is True
-    assert driver.dreams == dreams_at_trip           # the (expensive) dream was skipped
-    # quiet cycles drain the window; the breaker resets and the dream resumes
+    # while throttled the dream still runs (forgetting stays enforced) but CHEAPLY: it
+    # makes no model calls, so deep-op cost stays flat and the window can drain.
+    cost_before = mind.cost_units
+    driver.step()
+    assert mind.cost_units == cost_before            # throttled cognition costs ~nothing
+    # quiet cycles drain the window; the breaker resets
     for _ in range(6):
         driver.step()
     assert driver.governor.tripped is False and mind.throttled is False
-    assert driver.dreams > dreams_at_trip            # dreaming resumed after recovery
 
 
 def test_the_governor_is_inert_by_default_so_ordinary_runs_never_throttle():

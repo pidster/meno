@@ -32,6 +32,13 @@ class Controller:
                        kind=Kind.SELF, source="initiative", stream_id=sid,
                        activation=max(0.6, stream.pressure))
             ev.payload["role"] = "wake"
+            if stream.forced_wake:                       # fixation take-up (D33): an impulse
+                ev.payload["forced"] = True              # starved past the TTL is FINALLY taken
+                self.mind.fixations += 1                 # up — even while throttled — so it can
+                stream.forced_wake = False               # discharge instead of pushing forever.
+                # NB: deferred_ticks is reset only on CONFIRMED discharge (Synthesiser.run),
+                # not here — so if a forced take-up somehow fails to synthesise, the clock
+                # stays armed and retries rather than silently abandoning the impulse.
             stream.deferred = False
             stream.pressure = 0.0
             emitted.append(ev)

@@ -162,8 +162,12 @@ class Synthesiser(Processor):
 
     def triggers(self, event: Event, mind) -> bool:
         # a tripped cost governor (D32) withholds Tier-3 too — the want defers (below),
-        # building pressure, and resumes when the throttle lifts. Not discarded.
-        return self.wants(event, mind) and mind.deep_budget > 0 and not mind.throttled
+        # building pressure, and resumes when the throttle lifts. Not discarded. A FORCED
+        # wake (D33 fixation take-up) is the one exception: an impulse starved past the TTL
+        # is taken up even while throttled, so it can finally discharge instead of looping.
+        if not (self.wants(event, mind) and mind.deep_budget > 0):
+            return False
+        return (not mind.throttled) or bool(event.payload.get("forced"))
 
     def run(self, event: Event, mind) -> List[Event]:
         event.seen_by.add(self.name)
@@ -181,6 +185,7 @@ class Synthesiser(Processor):
                                    conclusion=text, journal=False, material=synth_material)
         if stream is not None:
             stream.deferred = False
+            stream.deferred_ticks = 0             # genuinely discharged: the fixation clock resets (D33)
             stream.pressure = 0.0
             stream.refractory = True              # F6: rest until the next dream clears it
             stream.fatigue += mind.cfg.fatigue_gain

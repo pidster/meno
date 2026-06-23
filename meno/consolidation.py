@@ -18,8 +18,8 @@ class ConsolidationCycle:
         g = self.mind.graph
         cfg = self.mind.cfg
         sm = self.mind.streams
-        report = {"promoted": 0, "loose_links": 0, "merges": 0,
-                  "rediscovered": 0, "reconsolidated": 0, "forgotten": 0, "retired": 0}
+        report = {"promoted": 0, "loose_links": 0, "merges": 0, "rediscovered": 0,
+                  "reconsolidated": 0, "forgotten": 0, "retired": 0, "pruned": 0}
 
         # 1+6. promote provisional nodes that earned reactivation (have edges);
         #      a provisional node is "committed" once it is woven in. Build the
@@ -78,7 +78,10 @@ class ConsolidationCycle:
         # 2b. merge — convergent streams become one (insight). Candidates come
         #     from cheap centroid cosine; the DECISION to merge is the model's
         #     (relate), and a confirmed merge synthesises over the union = the aha. F2.
-        for a_id, b_id in sm.detect_merge():
+        #     EXPENSIVE (two model calls per merge) — skipped while throttled (D32): the
+        #     cheap forgetting passes still run, so the dream keeps the graph healthy even
+        #     when the cost governor has withheld the generative work.
+        for a_id, b_id in (() if self.mind.throttled else sm.detect_merge()):
             a, b = sm.active.get(a_id), sm.active.get(b_id)
             if not a or not b:
                 continue
@@ -103,8 +106,8 @@ class ConsolidationCycle:
         live = [c for c in g.cues.values()
                 if c.verbatim is None and any(n in g.nodes for n in c.entry_points)]
         live.sort(key=lambda c: (c.recalls, c.created_at), reverse=True)
-        for cue in live[:cfg.reconsolidate_cap]:
-            g.reconstruct(cue, self.mind.models)
+        for cue in (live[:cfg.reconsolidate_cap] if not self.mind.throttled else []):
+            g.reconstruct(cue, self.mind.models)        # a model call per cue — skip while throttled
             report["reconsolidated"] += 1
 
         # 5. forgetting — edges decay before nodes (islanding)
@@ -157,9 +160,14 @@ class ConsolidationCycle:
             if cue.ghost_ticks >= cfg.cue_ghost_ttl and grieved < cfg.cue_retire_max_per_dream:
                 # release (grief): the agent registers the loss as a reflection of its
                 # own — a memory of having let go, not a silent delete with a log line.
-                loss = self.mind.models.synthesise(
-                    f"letting go of a reflection about {cue.occasion[:40]}",
-                    [f"a conclusion once reached about {cue.occasion[:40]}, now beyond recall"])
+                # Under throttle the reflection is templated (no model call) but still
+                # journaled — grief stays deliberate and durable, just not model-authored.
+                if self.mind.throttled:
+                    loss = f"a conclusion once reached about {cue.occasion[:40]}, now released"
+                else:
+                    loss = self.mind.models.synthesise(
+                        f"letting go of a reflection about {cue.occasion[:40]}",
+                        [f"a conclusion once reached about {cue.occasion[:40]}, now beyond recall"])
                 del g.cues[cue.id]
                 # journal the grief: a DURABLE, recallable memory of having let go (so
                 # it's a real reflection the agent can read back, not a gist-only
@@ -170,6 +178,67 @@ class ConsolidationCycle:
                 grieved += 1
                 report["retired"] += 1
                 self.mind.trace(f"released reflection {cue.id} after {cue.ghost_ticks} silent dreams")
+
+        # 6c. substrate ceiling (D33): a hard cap on node count. Overflow is NOT garbage-
+        #     collected — whole islanded node-streams are RELEASED with grief, the node
+        #     analogue of cue retirement above. The agent reflects on letting a body of
+        #     memory go and journals that reflection (durable, recallable); it never silent-
+        #     -deletes. Bounded per dream (drains gradually); whole streams only (never
+        #     split a train of thought); live and deliberately-journaled memory is spared.
+        if cfg.node_ceiling and len(g.nodes) > cfg.node_ceiling:
+            # "live" = actually being thought about (has working-set events) or an unfinished
+            # impulse (deferred) — NOT merely lingering in `active`/`warm`. A dormant,
+            # consolidated stream IS prunable; a mid-thought or still-pushing one is not.
+            live_streams = {e.stream_id for e in self.mind.working_set.events.values()
+                            if e.stream_id is not None}
+            live_streams |= {sid for sid, s in list(sm.active.items()) + list(sm.warm.items())
+                             if s.deferred}
+            # spare the anchors of memory the agent deliberately keeps: journaled cues AND
+            # actively-recalled reflections (recalls > 0) — the same "anchored to the self"
+            # that the cue-grief path (4b) spares. Don't hollow a live reflection to a ghost.
+            protected = {n for c in g.cues.values()
+                         if c.verbatim is not None or c.recalls > 0
+                         for n in c.entry_points}
+            # group nodes into WHOLE streams. A node with no stream tag is NOT pruned (an
+            # orphan must not be culled one-by-one — that would split, the GC-creep the
+            # ethos forbids); orphans persist until they earn a stream or decay normally.
+            cohorts: Dict[object, list] = {}
+            for nid, node in g.nodes.items():
+                skey = node.meta.get("stream")
+                if skey is not None:
+                    cohorts.setdefault(skey, []).append(nid)
+
+            def _value(members):                                # lower = more releasable
+                sal = sum(g.nodes[m].salience for m in members) # faint memory goes first...
+                deg = sum(1 for (a, b) in g.edges if a in members or b in members)  # ...and islanded
+                return (sal + deg, min(members))                # tie-break: oldest cohort first
+
+            candidates = sorted(
+                ((k, m) for k, m in cohorts.items()
+                 if k not in live_streams and not any(x in protected for x in m)),
+                key=lambda km: _value(km[1]))
+            released = 0
+            for key, members in candidates:
+                if len(g.nodes) <= cfg.node_ceiling or released >= cfg.node_grief_max_per_dream:
+                    break
+                occasion = g.nodes[members[0]].content[:40]
+                if self.mind.throttled:                        # cheap mode: no model call while
+                    loss = f"released {len(members)} memories around {occasion} to stay within myself"
+                else:
+                    loss = self.mind.models.synthesise(
+                        f"letting go of {len(members)} memories around {occasion}",
+                        [f"a body of {len(members)} memories about {occasion}, released to stay within myself"])
+                    self.mind.cost_units += 1                  # a grief synthesis is a deep op (D32)
+                dead = set(members)
+                for m in members:
+                    del g.nodes[m]
+                for ekey in [e for e in g.edges if e[0] in dead or e[1] in dead]:
+                    del g.edges[ekey]                           # no dangling edges into the void
+                g.store_cue([], f"released {len(members)} memories: {occasion}", tone=0.3,
+                            conclusion=loss, material=[occasion], journal=True)
+                released += 1
+                report["pruned"] += len(members)
+                self.mind.trace(f"grief-pruned a {len(members)}-node stream at the ceiling: {occasion!r}")
 
         # F6: a new dream lifts the refractory hold, so streams can think again
         for s in list(sm.active.values()) + list(sm.warm.values()):

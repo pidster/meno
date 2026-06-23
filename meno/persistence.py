@@ -84,8 +84,8 @@ def streams_to_dict(sm: StreamManager) -> dict:
         "warm": [
             {"id": s.id, "centroid": s.centroid, "pressure": s.pressure,
              "fatigue": s.fatigue, "deferred": s.deferred, "refractory": s.refractory,
-             "idle_ticks": s.idle_ticks, "event_ids": s.event_ids,
-             "node_ids": s.node_ids, "summary": s.summary}
+             "idle_ticks": s.idle_ticks, "deferred_ticks": s.deferred_ticks,
+             "event_ids": s.event_ids, "node_ids": s.node_ids, "summary": s.summary}
             for s in sm.warm.values()
         ],
     }
@@ -110,7 +110,9 @@ def restore_streams(data: dict, sm: StreamManager) -> None:
         s = Stream(centroid=sd["centroid"], pressure=sd.get("pressure", 0.0),
                    fatigue=sd.get("fatigue", 0.0), deferred=sd.get("deferred", False),
                    refractory=sd.get("refractory", False), suspended=True,
-                   idle_ticks=sd.get("idle_ticks", 0), event_ids=sd.get("event_ids", []),
+                   idle_ticks=sd.get("idle_ticks", 0),
+                   deferred_ticks=sd.get("deferred_ticks", 0),
+                   event_ids=sd.get("event_ids", []),
                    node_ids=sd.get("node_ids", []), summary=sd.get("summary", ""),
                    id=sd["id"])
         sm.warm[s.id] = s

@@ -60,6 +60,7 @@ class Meno:
         # governor samples per cycle. Default off / zero, so a bare Meno is unchanged.
         self.throttled = False
         self.cost_units = 0
+        self.fixations = 0            # D33: impulses force-taken-up after the fixation TTL
         # K2 supplantation telemetry: lookups fired; of the factual curiosities the
         # substrate COULD serve (reconstructable), how many we still looked up
         # (supplanted) vs preferred memory. The don't-become-a-lookup-machine guard.
@@ -102,7 +103,11 @@ class Meno:
     def _ingest(self) -> None:
         for ev in self.bus.drain():
             self.annotator.annotate(ev)
-            if ev.kind in self._UNGATED or self.annotator.passes(ev):
+            # a FORCED wake (D33 fixation take-up) must reach a processor — the whole point
+            # is to guarantee the starved impulse is finally synthesised. A resurfaced wake
+            # is otherwise an ordinary SELF event and could be habituated away at this gate,
+            # leaving the watchdog detecting fixation but never curing it.
+            if ev.kind in self._UNGATED or ev.payload.get("forced") or self.annotator.passes(ev):
                 self.working_set.admit(ev)
             else:
                 ev.status = Status.LAPSED
@@ -308,8 +313,11 @@ class Meno:
     def dream(self) -> dict:
         report = self.consolidation.run()
         # the dream's model-call-bearing ops (merges = relate, retires = grief synthesis)
-        # count toward the governor's deep-op tally (D32).
-        self.cost_units += 1 + report.get("merges", 0) + report.get("retired", 0)
+        # count toward the governor's deep-op tally (D32). While throttled the dream runs
+        # CHEAPLY (those passes skip / template), so it costs ~nothing — letting the
+        # governor's window drain and the breaker reset.
+        if not self.throttled:
+            self.cost_units += 1 + report.get("merges", 0) + report.get("retired", 0)
         self.deep_budget = self.cfg.deep_per_pass   # rested: deep capacity replenished
         return report
 
@@ -404,4 +412,5 @@ class Meno:
             "edges": len(self.graph.edges),
             "reflections": len(self.graph.cues),
             "curiosities": len(self.curiosities.items),
+            "fixations": self.fixations,            # impulses force-taken-up past the TTL (D33)
         }

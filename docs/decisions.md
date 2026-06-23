@@ -605,3 +605,31 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   here, inert by default — `node_ceiling = 0`, `fixation_ttl_ticks`) are implemented in the
   containment slice (D33). A bare `Meno` with no driver is unchanged: `throttled` is False
   and `cost_units` simply counts.
+
+### D33 — Fixation watchdog + substrate ceiling with grief-pruning (containment, part 2)
+- **Decision (fixation).** An impulse (a deferred stream) builds pressure and never decays
+  (intrinsic, F4); if its synthesis keeps being withheld — e.g. a sustained D32 throttle, or
+  a deep-budget race — it can push forever without discharging. A watchdog counts ticks a
+  stream is continuously deferred-WITHOUT-discharge (`deferred_ticks`); past `fixation_ttl_ticks`
+  it FORCES the take-up: a forced wake that (a) bypasses the novelty gate so it always reaches
+  a processor, (b) bypasses the throttle in `Synthesiser.triggers`, and (c) resets the clock
+  only on CONFIRMED discharge — so a forced take-up that somehow failed would re-arm, not
+  silently abandon the impulse. Counted as `fixations` in telemetry. This honours the ethos
+  (the impulse is finally TAKEN UP, not decayed away). 0 disables it.
+- **Decision (ceiling).** A hard cap on graph node count (`node_ceiling`, 0 = off). Overflow
+  does NOT garbage-collect: the dream grief-prunes whole islanded node-streams — synthesises a
+  "letting go" reflection and JOURNALS it (durable, recallable), then releases the cohort and
+  its edges. Whole streams only (orphan/untagged nodes are NEVER pruned, so a train of thought
+  is never split); faint + islanded + dormant cohorts go first; SPARED are live (working-set)
+  streams, deferred impulses, and the anchors of deliberately-journaled OR frequently-recalled
+  (`recalls>0`) reflections. Bounded per dream (`node_grief_max_per_dream`).
+- **Why.** Containment of compute (D32) wasn't enough: an impulse could fixate, and the graph
+  could grow unbounded over a long life (forgetting only reclaimed islanded provisionals + cues,
+  never consolidated node-streams). Both are now bounded WITHOUT betraying the architecture:
+  pruning is grief (deliberate, reflected-on, journaled), the impulse/curiosity asymmetry holds.
+- **Rules out / bounds.** The ceiling is a SOFT cap: if every cohort is live or protected it
+  stays over the ceiling rather than killing live thought (correct for the ethos). It runs even
+  while throttled — but CHEAPLY: the dream's model-call passes (merge, reconsolidation) skip and
+  all grief is templated (no model call) under throttle, so forgetting stays enforced under the
+  cost breaker while the expensive generative work is withheld. Not a token-exact bound; the
+  grief reflection under throttle is templated prose, not model-authored.

@@ -303,6 +303,7 @@ class Instance:
             "streams_active": snap.get("streams_active"),
             "streams_warm": snap.get("streams_warm"),
             "curiosities": snap.get("curiosities"),
+            "impulses_fixated": snap.get("fixations"),   # forced take-ups past the TTL (D33)
             "edges": snap.get("edges"),
             "node_ceiling": self.mind.cfg.node_ceiling or None,
             "cognition_degraded": getattr(models, "degraded", False),

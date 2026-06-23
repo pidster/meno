@@ -262,8 +262,12 @@ class Driver:
             while self.drain_outbox_once():
                 pass
         dreamed = None
-        if self.dream_every and self.cycles % self.dream_every == 0 and not self.mind.throttled:
-            dreamed = self.mind.dream()               # the dream is expensive; skip it while throttled (D32)
+        if self.dream_every and self.cycles % self.dream_every == 0:
+            # the dream still runs while throttled, but CHEAPLY: consolidation skips its
+            # model-call passes (merge/reconsolidation) and templates its grief, so the
+            # forgetting work — including the substrate ceiling (D33) — stays enforced even
+            # under the cost breaker, while the expensive generative work is withheld (D32).
+            dreamed = self.mind.dream()
             self.dreams += 1
         # a dream that consolidated nothing doesn't count as activity, so a truly
         # quiescent mind can still back off across circadian beats.

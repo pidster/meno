@@ -19,6 +19,8 @@ class Stream:
     pressure: float = 0.0           # deferred-impulse pressure (builds while unattended-but-wanted)
     fatigue: float = 0.0            # lateral inhibition (rises when worked hard)
     deferred: bool = False          # wanted deep work but couldn't afford it
+    deferred_ticks: int = 0         # ticks continuously deferred-without-DISCHARGE (fixation, D33)
+    forced_wake: bool = False       # transient: this wake is a fixation take-up (bypasses throttle)
     refractory: bool = False        # just synthesised — can't re-fire until the next dream (F6)
     suspended: bool = False
     idle_ticks: int = 0             # ticks spent cold in `warm` -> reaped past a TTL (D19/A2)
@@ -144,17 +146,26 @@ class StreamManager:
         thinking it produced isn't lost, only the idle thread object."""
         woke = []
         wake = self.cfg.pressure_wake
+        ttl = self.cfg.fixation_ttl_ticks               # 0 disables the fixation watchdog
         for sid, s in list(self.active.items()):
             s.fatigue *= self.cfg.fatigue_decay
             if s.deferred:
+                s.deferred_ticks += 1                   # counts ticks deferred-without-discharge
                 s.pressure = min(s.pressure + self.cfg.pressure_growth, wake)
-                if s.pressure >= wake:
+                fixated = bool(ttl) and s.deferred_ticks >= ttl
+                if s.pressure >= wake or fixated:
+                    if fixated:                         # starved too long -> force the take-up
+                        s.forced_wake = True
                     woke.append(sid)
         for sid, s in list(self.warm.items()):
             if s.deferred:                                  # deferred warm streams insist
                 s.idle_ticks = 0
+                s.deferred_ticks += 1
                 s.pressure = min(s.pressure + self.cfg.pressure_growth, wake)
-                if s.pressure >= wake:
+                fixated = bool(ttl) and s.deferred_ticks >= ttl
+                if s.pressure >= wake or fixated:
+                    if fixated:
+                        s.forced_wake = True
                     woke.append(sid)
             else:                                           # cold (not wanted) -> age out
                 s.idle_ticks += 1
