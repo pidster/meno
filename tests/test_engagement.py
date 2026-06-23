@@ -6,6 +6,7 @@ graded: structural cues (an @mention) are 'directed' (certain); a lexical cue (i
 a question) is a soft 'possibly'; everything else is 'ambient' (sensed, never replied).
 A reply is an outward POST intent through the gated effector. Offline/deterministic.
 """
+import json
 import tempfile
 
 from meno import Config, Driver, Meno, StubModelProvider
@@ -92,6 +93,50 @@ def test_a_message_that_at_mentions_us_is_skipped_so_we_dont_react_twice():
     ad._handle_event({"type": "message", "channel": "C_t", "user": "U_a",
                       "text": "<@U_bot> hi there", "ts": "1.0"})
     assert ad._driver.fed == []
+
+
+# --- App Home: a window INTO meno's state of mind (not a percept) ----------------- #
+def test_home_view_renders_menos_state():
+    mind = _mind()
+    mind.feed("otters raft together", source="test")
+    mind.run_until_quiescent()
+    ad = SlackAdapter(channels=(), name="meno", bot_user_id="U_bot")
+    driver = Driver(mind, sleep=lambda _: None)
+    driver.add_adapter(ad)                            # gives the adapter its driver/mind
+    view = ad._home_view()
+    assert view["type"] == "home" and view["blocks"][0]["type"] == "header"
+    blob = json.dumps(view)
+    assert "meno" in blob and "Memories" in blob and "Talk to me" in blob
+
+
+def test_home_view_degrades_gracefully_with_no_driver():
+    ad = SlackAdapter(channels=(), name="meno")       # no driver attached
+    view = ad._home_view()                            # must still render (no crash)
+    assert view["type"] == "home"
+    assert "—" in json.dumps(view, ensure_ascii=False)   # state fields degrade to a dash
+
+
+def test_app_home_opened_publishes_the_home_view_and_is_not_a_percept():
+    published = {}
+
+    class _Client:
+        available = True
+        def views_publish(self, user_id, view):
+            published["user"], published["view"] = user_id, view
+    ad = SlackAdapter(client=_Client(), channels=("C_t",), name="meno", bot_user_id="U_bot")
+    drv = FakeDriver()
+    ad._driver = drv
+
+    class _Req:
+        type = "events_api"; envelope_id = "e1"
+        payload = {"event_id": "Ev1",
+                   "event": {"type": "app_home_opened", "user": "U_a", "tab": "home"}}
+
+    class _Ack:
+        def send_socket_mode_response(self, resp): pass
+    ad._on_request(_Ack(), _Req())
+    assert published.get("user") == "U_a" and published["view"]["type"] == "home"
+    assert drv.fed == []                              # the home-open is NOT sensed as a message
 
 
 # --- the respond judgment (stub): may-not-must ------------------------------------ #

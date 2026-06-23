@@ -26,7 +26,7 @@ features:
     display_name: meno
     always_online: true        # show a presence dot whenever the Socket Mode link is up
   app_home:
-    home_tab_enabled: false
+    home_tab_enabled: true                  # the App Home page — a window into meno's state of mind
     messages_tab_enabled: true              # makes meno appear in the workspace Apps list
     messages_tab_read_only_enabled: false   # allow DMs — users can message meno (I3 DM ingestion)
 
@@ -57,3 +57,4 @@ settings:
       - message.groups            # real-time private-channel messages
       - message.im                # DMs to meno — every one is 'directed' (I3)
       - app_mention               # when someone @meno's (app_mentions:read)
+      - app_home_opened           # a user opened meno's App Home -> publish its state-of-mind view

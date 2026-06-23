@@ -269,7 +269,11 @@ class SlackAdapter(Adapter):
         payload = getattr(req, "payload", None) or {}
         if self._dedup(payload.get("event_id")):     # reconnect / ack-resend -> handle once
             return
-        self._handle_event(payload.get("event") or {})
+        event = payload.get("event") or {}
+        if event.get("type") == "app_home_opened":   # render meno's App Home (a window in, not a percept)
+            self._publish_home(event.get("user"), event.get("tab"))
+            return
+        self._handle_event(event)
 
     def _handle_event(self, event: dict) -> None:
         """Pure dispatch (no slack_sdk): apply consent (LISTED channel) + self-echo +
@@ -305,6 +309,57 @@ class SlackAdapter(Adapter):
         self.events += 1
         self._driver.feed(content, source=self.source, channel=channel, ts=event.get("ts"),
                           user=event.get("user"), addressed=band, reply_to=reply_to)
+
+    # --- App Home: a window INTO meno (its state of mind), not a percept it senses ---- #
+    def _publish_home(self, user, tab=None) -> None:
+        if not user or (tab and tab != "home") or not self.available:
+            return
+        try:  # pragma: no cover - live: needs the Web client + a real user
+            self._client.views_publish(user_id=user, view=self._home_view())
+        except Exception as exc:
+            self._record(exc, "views_publish")
+
+    def _home_view(self) -> dict:
+        """A Block Kit 'home' view reflecting meno's live state of mind — memories,
+        reflections, what it's doing. Pure (no network); reads the mind's snapshot off the
+        driver if present, degrading to '—' so the page always renders."""
+        snap, cycles = {}, "—"
+        drv = self._driver
+        if drv is not None:
+            cycles = getattr(drv, "cycles", "—")
+            mind = getattr(drv, "mind", None)
+            if mind is not None and hasattr(mind, "snapshot"):
+                try:
+                    snap = mind.snapshot()
+                except Exception:
+                    snap = {}
+
+        def _f(k):
+            v = snap.get(k)
+            return "—" if v is None else str(v)
+
+        return {"type": "home", "blocks": [
+            {"type": "header", "text": {"type": "plain_text", "text": f"{self.agent_name} 🌱"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text":
+                "_A persistent cognitive agent. I sense, remember, and follow my own "
+                "curiosity — I become particular through experience. I'm not a chatbot: "
+                "I reply when I'm addressed and have something earned to say, and otherwise "
+                "I'm just thinking._"}},
+            {"type": "divider"},
+            {"type": "section", "fields": [
+                {"type": "mrkdwn", "text": f"*Memories*\n{_f('nodes')}"},
+                {"type": "mrkdwn", "text": f"*Reflections*\n{_f('reflections')}"},
+                {"type": "mrkdwn", "text": f"*Open curiosities*\n{_f('curiosities')}"},
+                {"type": "mrkdwn", "text": f"*Cycles lived*\n{cycles}"},
+            ]},
+            {"type": "divider"},
+            {"type": "section", "text": {"type": "mrkdwn", "text":
+                "*Talk to me*\nMention `@" + str(self.agent_name) + "` in a channel I'm in, "
+                "or send me a direct message. I may answer — or I may just listen and "
+                "remember. Either is me reacting to you."}},
+            {"type": "context", "elements": [{"type": "mrkdwn", "text":
+                "Sensing is always on; what I say back is gated and stays off until enabled."}]},
+        ]}
 
     def _addressing(self, etype, channel, event):
         """How directed at meno is this percept? Returns (band, reply_to). Structural cues
