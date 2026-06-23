@@ -202,14 +202,24 @@ def library_key_candidates(query: str) -> List[str]:
     # strip a leading question frame, keep the salient term
     term = low
     for frame in ("what is the definition of ", "what is the meaning of ",
-                  "what is a ", "what is ", "what does ", "define ", "definition of ",
-                  "the definition of ", "meaning of ", "a synonym for ", "synonym for "):
+                  "what is a ", "what is ", "what are ", "what does ", "define ",
+                  "definition of ", "the definition of ", "meaning of ",
+                  "a synonym for ", "synonym for "):
         if term.startswith(frame):
             term = term[len(frame):]
             break
+    # strip a trailing 'mean'/'means'/'defined' tail so 'what does X mean' -> X (so a
+    # later 'what is X' resolves to the SAME def: key — a repeat lookup must be a hit)
     term = term.strip().strip("?.!").strip()
+    for tail in (" mean", " means", " mean?", " defined", " explained"):
+        if term.endswith(tail):
+            term = term[: -len(tail)].strip()
+            break
     if term:
         cands += [f"def:{term}", f"syn:{term}", term]
+        last = term.split()[-1] if term.split() else ""
+        if last and last != term:                  # a single-token repeat of a multi-word term
+            cands.append(f"def:{last}")
     # de-dup, preserve order
     seen, out = set(), []
     for c in cands:
@@ -257,24 +267,30 @@ class Effector(Processor):
         """Resolve a fact against the self's Library (exact-key, K1) and re-enter it
         as a REFERENCE. The result informs cognition but is never encoded as a node
         (the Appraiser appraises REFERENCE without encoding it) — so a looked-up fact
-        cannot contaminate the identity substrate (K2). K3 will fall through to a
-        network authority on a miss; here a miss is just an honest miss."""
+        cannot contaminate the identity substrate (K2). On a Library MISS it falls
+        through to an external network authority (K3): an outbound, egress-gated
+        knowledge intent the KnowledgeAdapter resolves off-thread, curating the result
+        back into the Library so a repeat is a local hit. With no authority configured,
+        the driver feeds back an honest miss."""
         query = event.payload.get("key") or event.payload.get("term") or event.payload.get("query", "")
-        ref = None
-        for key in library_key_candidates(query):
+        candidates = library_key_candidates(query)
+        for key in candidates:
             ref = mind.library.get(key)
             if ref is not None:
-                break
-        if ref is not None:
-            body, src = ref.body, f"reference:{ref.key}"
-        else:
-            body, src = f"(no reference for {query!r})", "reference:miss"
-        out = event.child(body, inherit=mind.cfg.activation_inherit,
-                          kind=Kind.REFERENCE, source="reference")
-        out.payload.update({"role": "reference", "action": None,
-                            "key": ref.key if ref else None, "hit": ref is not None,
-                            "provenance": src, "external": True})
-        return [out]
+                out = event.child(ref.body, inherit=mind.cfg.activation_inherit,
+                                  kind=Kind.REFERENCE, source="reference")
+                out.payload.update({"role": "reference", "action": None, "key": ref.key,
+                                    "hit": True, "provenance": f"reference:{ref.key}",
+                                    "external": True})
+                return [out]
+        # K3: miss -> route OUTWARD to a network authority (if one is configured).
+        curate_key = next((c for c in candidates if c.startswith("def:")),
+                          candidates[0] if candidates else query)
+        intent = event.child(f"intent: knowledge {query}", inherit=mind.cfg.activation_inherit,
+                             kind=Kind.INTENT, source="curiosity")
+        intent.payload.update({"action": "knowledge", "key": query,
+                               "curate_key": curate_key, "egress": True})
+        return [intent]
 
 
 class OutboundRelay(Processor):
@@ -304,4 +320,33 @@ class OutboundRelay(Processor):
         return []                             # the adapter feeds the result back, async
 
 
-DEFAULT_PROCESSORS = [Appraiser(), Associator(), Synthesiser(), Effector(), OutboundRelay()]
+class Curator(Processor):
+    """K3: curate a looked-up fact into the self's Library, on the mind thread. A
+    network authority result re-enters as a REFERENCE tagged `curate=True`; the Curator
+    retains it (D25 'decide to retain') so a repeat lookup is a LOCAL hit — the agent
+    learns what it looked up. The same REFERENCE is appraised-but-not-encoded by the
+    Appraiser, so it informs cognition without contaminating the substrate. Running
+    here (a kernel processor on the mind thread) keeps Library writes off the worker
+    thread that fetched the fact."""
+    name = "curator"
+    tier = 1
+
+    def triggers(self, event: Event, mind) -> bool:
+        return (event.kind == Kind.REFERENCE and self.name not in event.seen_by
+                and bool(event.payload.get("curate")) and bool(event.payload.get("key"))
+                and getattr(mind, "library", None) is not None)
+
+    def run(self, event: Event, mind) -> List[Event]:
+        event.seen_by.add(self.name)
+        from .library import Reference
+        try:
+            mind.library.put(Reference(key=event.payload["key"], body=event.content,
+                                       source=event.payload.get("provenance", "lookup:authority"),
+                                       kind="reference"))
+        except Exception:                             # a malformed result is not retained; never fatal
+            pass
+        return []
+
+
+DEFAULT_PROCESSORS = [Appraiser(), Associator(), Synthesiser(), Effector(),
+                      OutboundRelay(), Curator()]

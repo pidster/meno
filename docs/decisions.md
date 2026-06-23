@@ -469,3 +469,27 @@ Authoritative design: `redesign.md` (logical kernel) and `system-design.md`
   (it would block on a network deliver) — it is the deterministic/test path. SIGKILL still
   loses work since the last periodic save (unavoidable; the floor is the last snapshot).
   The lock is POSIX (`fcntl`); a no-op where unavailable.
+
+### D28 — Allowlisted knowledge authorities are TRUSTED; the allowlist is the boundary
+- **Decision.** A K3 external authority's response is curated into the Library verbatim
+  (after redaction + size-bounding), with no content-truthfulness validation. The
+  `[egress] allow` list (and `knowledge.toml hosts`) is therefore the **trust
+  boundary**: an operator must only allowlist authorities they trust, exactly as D26
+  makes the operator responsible for which Slack channels are listed. Curated entries
+  record the **actual host** in their provenance (`authority:<kind>:<host>`), are the
+  **lowest-trust** class, and are the **first evicted** when the Library hits its cap
+  (operator seeds and the self-model are protected).
+- **Why.** There is no general way to verify a looked-up fact is true; a hostile or
+  low-quality authority on the allowlist could otherwise write a permanent false belief
+  (the Library is non-decaying, and a curated hit is not re-fetched). Three mitigations
+  bound the blast radius rather than eliminate it: (1) a curated reference is **never
+  encoded into the substrate** (K2 guard) — a falsehood can poison the *shelf*, never
+  the *self*; (2) redaction + `max_chars` stop a credential or unbounded blob entering
+  permanent reference (D26 hygiene, now shared inbound/outbound); (3) the host-named
+  provenance + the durable outbound audit (`journal/traces/outbound.jsonl`) make a bad
+  fact attributable after the fact, and the eviction order makes authority knowledge
+  prunable as a class.
+- **Rules out / bounds.** NOT a fact-checker. The agent can "know" a looked-up falsehood
+  as stable reference until evicted/overwritten — accepted, contained to the shelf. A
+  re-verification/TTL policy on authority entries is deferred (the live network client
+  is deferred); the cap + eviction + audit are the v1 floor.

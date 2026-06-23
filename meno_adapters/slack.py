@@ -38,31 +38,14 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from collections import deque
 from pathlib import Path
 from typing import List, Optional
 
+from ._redact import redact as _redact
 from .base import Adapter, DeliveryResult, Percept
 
-# Redact obvious secrets/PII before a message becomes a percept. Blunt and best-effort
-# by design (D26): a channel must not bleed a pasted credential or PII into the
-# substrate, where it would be encoded as a near-permanent node. Over-redaction is the
-# safe direction.
-_SECRET_RE = re.compile(
-    r"(xox[baprs]-[A-Za-z0-9-]{8,}"                                  # slack tokens
-    r"|sk-[A-Za-z0-9_\-]{16,}"                                       # openai-style keys
-    r"|AKIA[0-9A-Z]{16}"                                             # aws access key id
-    r"|gh[posru]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"      # github tokens
-    r"|eyJ[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{6,}"  # jwt
-    r"|(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S+"    # key=value secrets
-    r"|[\w.+-]+@[\w-]+\.[\w.-]+"                                     # email (PII)
-    r"|\b\d{3}-\d{2}-\d{4}\b"                                        # us ssn (PII)
-    r")", re.IGNORECASE)
-# private-key blocks span lines, so they need their own DOTALL pass
-_PRIVKEY_RE = re.compile(r"-----BEGIN[^-]*PRIVATE KEY-----.*?-----END[^-]*PRIVATE KEY-----",
-                         re.DOTALL | re.IGNORECASE)
 
 
 class SlackAdapter(Adapter):
@@ -121,7 +104,7 @@ class SlackAdapter(Adapter):
         return self._client is not None
 
     def redact(self, text: str) -> str:
-        return _SECRET_RE.sub("[redacted]", _PRIVKEY_RE.sub("[redacted-key]", text))
+        return _redact(text)
 
     def _record(self, exc: Exception, where: str) -> None:
         self.errors += 1

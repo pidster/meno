@@ -75,6 +75,16 @@ slack = false
 
 [efferent]                   # outward action is opt-in, gated, and behind the egress allowlist
 slack = false
+knowledge = false            # K3: external lookup authority (network)
+"""
+
+_KNOWLEDGE_TOML = """\
+# knowledge.toml — external lookup authority (Roadmap K3). Consulted when the Library
+# misses a factual lookup. A network call, so it is behind the egress allowlist.
+enabled = false              # off by default
+kind    = "web"              # "web" | "dictionary" | "mcp"
+hosts   = []                 # the authority's host(s) — MUST also be in meno.toml [egress]
+# credential = "WEB_SEARCH_KEY"   # a REFERENCE; the secret is in the environment
 """
 
 
@@ -100,6 +110,7 @@ def init_home(path, handle: Optional[str] = None) -> Path:
 
     _create(home / "meno.toml", _MENO_TOML.format(handle=handle))
     _create(home / "adapters" / "adapters.toml", _ADAPTERS_TOML)
+    _create(home / "adapters" / "knowledge.toml", _KNOWLEDGE_TOML)
     _create(home / ".gitignore", _GITIGNORE)
     if not (home / "library" / "index.json").exists():      # never wipe a grown/curated library
         seed_library().save(home / "library" / "index.json")
@@ -279,5 +290,6 @@ def build_instance(home) -> Instance:
     driver = Driver(mind, dream_every=_int(driver_conf, "dream_every", 8),
                     heartbeat_ticks=_int(driver_conf, "heartbeat_ticks", 8),
                     sense_every=_int(driver_conf, "sense_every", 1),
-                    egress=egress)                    # the boundary is enforced on the outbound path
+                    egress=egress,                    # the boundary is enforced on the outbound path
+                    audit_path=home / "journal" / "traces" / "outbound.jsonl")   # the outward-action trail
     return Instance(mind=mind, driver=driver, egress=egress, home=home, conf=conf)

@@ -71,13 +71,16 @@ def test_effector_lookup_resolves_against_the_library_and_tags_provenance():
     assert ref.content == m.library.get("def:memory").body   # the curated reference body
 
 
-def test_effector_lookup_miss_is_an_honest_miss():
+def test_effector_lookup_miss_routes_outward_to_a_knowledge_authority():
+    # K3: a Library miss no longer dead-ends as a local "(no reference)" — it routes
+    # outward as an egress-gated knowledge intent (resolved by a network authority, or
+    # an honest miss at the driver if none is configured).
     m = _meno()
     intent = Event(content="intent: lookup zzz", kind=Kind.INTENT,
                    payload={"action": "lookup", "key": "nonexistent-term-xyz"})
-    ref = Effector().run(intent, m)[0]
-    assert ref.kind == Kind.REFERENCE and ref.payload["hit"] is False
-    assert "no reference" in ref.content.lower()
+    out = Effector().run(intent, m)[0]
+    assert out.kind == Kind.INTENT and out.payload["action"] == "knowledge"
+    assert out.payload["egress"] is True
 
 
 # --- discrimination: factual curiosity looks up; experiential reconstructs -------- #

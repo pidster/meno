@@ -501,9 +501,16 @@ a candidate substrate (Slack/Discord/web MCP) — async client in the adapter la
 (≥3.11), never in the kernel.
 
 **Outcomes (assertable).** A Library miss on a factual key routes to the network
-authority; the result re-enters as `Kind.REFERENCE` (not encoded as experience),
-audited like any outbound call; egress to a non-allowlisted authority is refused;
-the supplantation ratio (K2) still holds with network lookups counted.
+authority; the result re-enters as `Kind.REFERENCE` (not encoded as experience) and
+is curated into the Library so a repeat is a local hit; every outbound decision is
+durably audited (the driver's `journal/traces/outbound.jsonl`); egress to a
+non-allowlisted authority is refused before any call; the curated body is
+redacted+bounded and the Library is capped. The **supplantation guard still governs
+the lookup decision** — it runs once at discharge (reconstruct-vs-lookup, K2), and K3
+resolves a *miss* downstream of it, so the network fall-through neither bypasses the
+guard nor inflates `supplanted` (a miss the substrate genuinely couldn't serve is the
+opposite of supplantation). *(As-built: the K3 review corrected the earlier wording
+"network lookups counted" — the guard is about the decision, not the resolution.)*
 
 **Entry.** After I2 (egress gate + off-thread efferent exist). **Exit.** Network
 lookup + provenance + egress + supplantation tests green.

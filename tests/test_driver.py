@@ -44,9 +44,13 @@ def test_queued_input_is_ingested_on_the_next_cycle():
     d = Driver(m, sleep=_noop_sleep)
     d.feed("a fresh percept about volcanoes")
     assert d.pending_input == 1
+    n0 = d.pending_input
     rep = d.step()
-    assert rep.ingested == 1 and d.pending_input == 0
-    assert m.graph.nodes                 # the percept was encoded by the loop
+    # the queued percept was pulled and processed this cycle (the loop may re-queue its
+    # OWN outbound feedback — e.g. a knowledge-lookup miss — so the inbox need not be
+    # empty afterward; what matters is the input was consumed, not that nothing followed)
+    assert rep.ingested == 1 and d.pending_input < n0 + 1
+    assert any("volcano" in n.content for n in m.graph.nodes.values())   # the percept was encoded
 
 
 def test_dreams_fire_on_the_circadian_beat():

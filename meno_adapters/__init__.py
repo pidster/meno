@@ -7,7 +7,8 @@ seam — `driver.feed(...)` inbound, and the outbox/`deliver` hand-off outbound,
 slow network call never blocks cognition.
 """
 from .base import Adapter, DeliveryResult
+from .knowledge import KnowledgeAdapter
 from .loopback import LoopbackAdapter
 from .slack import SlackAdapter
 
-__all__ = ["Adapter", "DeliveryResult", "LoopbackAdapter", "SlackAdapter"]
+__all__ = ["Adapter", "DeliveryResult", "KnowledgeAdapter", "LoopbackAdapter", "SlackAdapter"]

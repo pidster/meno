@@ -206,6 +206,34 @@
       "i_exit_gate": "DEFERRED — the full live meno.zombie_run with own_outputs=adapter.sent_texts (self-echo) + real Slack posting need a funded key + a Slack token. Offline: the gate's every-layer-refuses + self-echo mark + off-thread property are all tested.",
       "live_safety_posture": "Nothing posts live until BOTH a SLACK_BOT_TOKEN is present AND an operator sets enabled=True with post_channels; confirm-first then still requires per-post approval. Default = silence."
     }
+    },
+    "K3": {
+      "name": "External knowledge authorities",
+      "status": "complete",
+      "modules": ["meno_adapters/knowledge.py (KnowledgeAdapter)", "meno_adapters/_redact.py (shared inbound/outbound redaction)", "meno/processors.py (Effector._lookup miss->knowledge intent; Curator)", "meno/driver.py (reference re-entry + outbound audit)", "meno/library.py (cap+eviction)", "meno/runtime.py (_UNGATED gate bypass)"],
+      "tests": "tests/test_knowledge_k3.py (20)",
+      "deliverable": "A Library miss falls OUT to a network authority (off-thread, egress-gated, audited); the result re-enters as Kind.REFERENCE (read, never encoded) and is curated back into the Library (D25 retain) so a repeat — even differently phrased — is a local hit. The authority client (web/dictionary/MCP) lives in meno_adapters; with none configured a miss is honest.",
+      "decision": "D28 (allowlisted authorities are trusted; the allowlist is the boundary)",
+      "adversarial_review": {
+        "lenses": "safety/data-semantics + runtime/kernel-fit (2-agent panel)",
+        "verdict": "data-semantics core (no contamination, egress-before-call) verified solid; two P0s vs stated outcomes + P1s fixed",
+        "p0_closed": [
+          "no audit of network lookups ('audited like any outbound call' unmet) -> driver-level durable outbound audit (journal/traces/outbound.jsonl) covering every adapter+outcome, wired in build_instance",
+          "'supplantation ratio counts network lookups' was FALSE-as-worded -> reworded: the guard governs the lookup DECISION at discharge; K3 resolves a miss downstream, neither bypassing nor inflating it (+ test)"
+        ],
+        "p1_closed": [
+          "curated falsehood / hostile-authority body -> redact + max_chars bound (shared _redact with Slack); host-named provenance (authority:kind:host); D28 trust-boundary",
+          "unbounded non-decaying Library growth (K1 watch-item, K3 made live) -> max_references cap + eviction (authority-curated first, seeds/self-model protected) + evicted telemetry",
+          "curation-key round-trip brittle (phrasing variants re-fetch forever) -> strip trailing mean/means + def:<last-token> candidate (+ test: 'what does X mean' then 'what is X' is a local hit)",
+          "'audited'/refused-feedback untested -> tests added"
+        ],
+        "p2_closed": ["curate ONLY on delivered status (not a refused result)", "Curator broadened catch (never fatal)"],
+        "self_caught_bug": "INTENT (a committed action) and REFERENCE (a looked-up fact) were being HABITUATED away by the novelty gate — a knowledge lookup whose text echoed its curiosity got silently dropped. Fixed: _UNGATED bypasses the gate for INTENT/REFERENCE (they're commitments, not percepts to triage).",
+        "p2_open": ["driver no-adapter miss-feedback is encoded as experience (noise when no authority configured; self-cleans via decay)", "authority-entry TTL/re-verification deferred with the live network client"],
+        "final_state": "2 P0 + 5 P1 + P2s + 1 self-caught kernel bug closed; offline suite 224 passed / 5 skipped."
+      }
+    }
   },
-  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "210 passed, 5 skipped"}
+  "roadmap_ii_status": "ALL PHASES COMPLETE (S, K1, K2, I0a, I0b, I1, I2, K3), each through a multi-lens adversarial gate. Remaining for a fully config-driven instance: the adapter loader (meno run attaches channels/authorities from adapters/*.toml). Live gates (zombie_run, cache smoke, real Slack/authority) remain key+token+runtime deferred.",
+  "validation": {"command": ".venv/bin/python -m pytest -q", "last_result": "224 passed, 5 skipped"}
 }

@@ -86,10 +86,17 @@ class Meno:
         return event
 
     # --- the gate at ingress: discard (habituate) or admit ---
+    # A few kinds bypass the novelty gate: an INTENT is a *committed decision to act*
+    # and a REFERENCE is a *looked-up fact that must inform/curate* — neither is a
+    # percept to triage, and habituating one (e.g. a knowledge lookup whose text echoes
+    # the curiosity that spawned it) would silently drop the action. Senses/derived
+    # thoughts are still gated (that is where habituation belongs).
+    _UNGATED = (Kind.INTENT, Kind.REFERENCE)
+
     def _ingest(self) -> None:
         for ev in self.bus.drain():
             self.annotator.annotate(ev)
-            if self.annotator.passes(ev):
+            if ev.kind in self._UNGATED or self.annotator.passes(ev):
                 self.working_set.admit(ev)
             else:
                 ev.status = Status.LAPSED

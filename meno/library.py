@@ -73,8 +73,16 @@ class Library:
     """A keyed reference store. Exact-key get/put, JSON save/load. No dynamics — no
     decay, no islanding, no reconstruction. The anti-substrate."""
 
-    def __init__(self) -> None:
+    # Reference doesn't decay, so a long-lived agent looking up many things would grow
+    # it without bound (K1 review's watch-item, made live by K3 curation). Bound it,
+    # evicting the OLDEST authority/lookup-curated entry first — never an operator seed
+    # or the self-model (the lowest-trust, most-replaceable knowledge goes first).
+    _PROTECTED_SOURCE_PREFIXES = ("seed:", "meno:type", "operator", "dictionary")
+
+    def __init__(self, max_references: int = 4096) -> None:
         self._refs: Dict[str, Reference] = {}
+        self.max_references = max_references
+        self.evicted = 0                            # observability: curated facts dropped at the cap
 
     # --- reads ---
     def get(self, key: str) -> Optional[Reference]:
@@ -109,8 +117,24 @@ class Library:
             raise WritebackRejected(
                 "a curated reference must record its provenance (source) — where it "
                 "came from (a lookup, an operator seed, the agent's own curation)")
+        if ref.key not in self._refs and len(self._refs) >= self.max_references:
+            self._evict_one()
         self._refs[ref.key] = ref
         return ref
+
+    def _evict_one(self) -> None:
+        """Drop the oldest evictable (non-protected) entry to stay under the cap. Dicts
+        preserve insertion order, so the first matching key is the oldest."""
+        for key, r in self._refs.items():
+            if not str(r.source).lower().startswith(self._PROTECTED_SOURCE_PREFIXES):
+                del self._refs[key]
+                self.evicted += 1
+                return
+        # everything is protected (operator/seed only) — drop the oldest outright
+        oldest = next(iter(self._refs), None)
+        if oldest is not None:
+            del self._refs[oldest]
+            self.evicted += 1
 
     # --- persistence (its own home: <instance>/library/index.json) ---
     def save(self, path) -> None:

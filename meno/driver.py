@@ -22,10 +22,12 @@ under live sensors. `run(max_cycles=...)` is the deterministic, testable core;
 """
 from __future__ import annotations
 
+import json
 import queue
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from .event import Kind
@@ -49,9 +51,11 @@ class Driver:
     def __init__(self, mind, *, dream_every: int = 8, heartbeat_ticks: int = 8,
                  sense_every: int = 1, idle_backoff: float = 0.02, max_backoff: float = 1.0,
                  max_inbox: int = 10000, on_error: str = "continue",
-                 max_consecutive_errors: int = 5, sleep=time.sleep, egress=None) -> None:
+                 max_consecutive_errors: int = 5, sleep=time.sleep, egress=None,
+                 audit_path=None) -> None:
         self.mind = mind
         self.egress = egress                       # D21 egress allowlist; gates outbound to a host
+        self.audit_path = Path(audit_path) if audit_path else None   # outbound-action audit trail
         self.dream_every = dream_every
         self.heartbeat_ticks = heartbeat_ticks
         self.sense_every = sense_every             # poll afferent sensors every N cycles
@@ -138,6 +142,7 @@ class Driver:
         action = payload.get("action")
         for ad in self.adapters:
             if ad.handles(action):
+                name = getattr(ad, "name", "adapter")
                 # D21 egress boundary, enforced on the ADAPTER'S declared reach (not a
                 # mind-authored payload field): an adapter that reaches a non-allowlisted
                 # host is refused BEFORE deliver() runs — the boundary precedes the send.
@@ -151,28 +156,60 @@ class Driver:
                     except Exception as exc:
                         self.egress_denied += 1
                         self.last_error = f"egress: {exc}"
+                        self._audit_outbound(name, action, "refused", "egress", str(exc))
                         self.feed(f"(egress denied: {exc})", source="driver",
                                   kind=Kind.FEEDBACK, action=None, refused="egress")
                         return False
                 try:
                     result = ad.deliver(payload)          # the slow part, off the mind thread
-                    if getattr(result, "feeds_back", True):
+                    status = getattr(result, "status", "delivered")
+                    ref = getattr(result, "reference", None)
+                    self._audit_outbound(name, action, status,
+                                         getattr(result, "reason", ""), getattr(result, "detail", ""))
+                    if ref and status == "delivered":     # curate ONLY a genuinely delivered reference
+                        # K3: a looked-up fact re-enters as a REFERENCE (read, NEVER
+                        # encoded as experience) tagged for curation into the Library —
+                        # the result of a network authority is reference, not feedback.
+                        self.feed(ref.get("body", getattr(result, "detail", "")),
+                                  source="reference", kind=Kind.REFERENCE, action=None,
+                                  curate=True, key=ref.get("key"),
+                                  provenance=ref.get("source", "lookup"), external=True)
+                    elif getattr(result, "feeds_back", True):
                         fb = {"action": None, "outbound": action}
-                        if getattr(result, "status", "delivered") == "refused":
+                        if status == "refused":
                             fb["refused"] = getattr(result, "reason", "")
                         self.feed(getattr(result, "detail", str(result)),
-                                  source=getattr(ad, "name", "adapter"), kind=Kind.FEEDBACK, **fb)
+                                  source=name, kind=Kind.FEEDBACK, **fb)
                 except Exception as exc:                  # an effector must not be blind/fatal
                     self.errors += 1
-                    self.last_error = f"adapter {getattr(ad, 'name', '?')}: {type(exc).__name__}: {exc}"
+                    self.last_error = f"adapter {name}: {type(exc).__name__}: {exc}"
+                    self._audit_outbound(name, action, "error", type(exc).__name__, str(exc))
                     self.feed(f"(action {action!r} failed: {type(exc).__name__})",
-                              source=getattr(ad, "name", "adapter"), kind=Kind.FEEDBACK, action=None)
+                              source=name, kind=Kind.FEEDBACK, action=None)
                 return True
         # no adapter handled it: don't let the act vanish silently — feed back a miss
         self.dropped_outbound += 1
+        self._audit_outbound("driver", action, "refused", "no-adapter", "")
         self.feed(f"(no adapter for action {action!r})", source="driver",
                   kind=Kind.FEEDBACK, action=None)
         return False
+
+    def _audit_outbound(self, adapter: str, action, outcome: str, reason: str, detail: str) -> None:
+        """Durable, append-only audit of EVERY outbound decision across all adapters —
+        delivered, refused (scope/rate/egress/no-adapter), error. The single outward-
+        action trail the safety review weights highest; best-effort (a write failure
+        never blocks a send, which can't be un-sent). Runs on the worker thread."""
+        if self.audit_path is None:
+            return
+        try:
+            self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+            rec = {"ts": time.time(), "adapter": adapter, "action": action,
+                   "outcome": outcome, "reason": reason, "detail": (detail or "")[:200]}
+            with open(self.audit_path, "a") as f:
+                f.write(json.dumps(rec) + "\n")
+        except Exception as exc:
+            self.errors += 1
+            self.last_error = f"outbound audit: {type(exc).__name__}: {exc}"
 
     def drain_outbox_once(self, timeout: float = 0.0) -> bool:
         """Deliver at most one queued outbound intent (deterministic test seam)."""
@@ -211,8 +248,10 @@ class Driver:
         quiet = self.mind.heartbeat(ticks=self.heartbeat_ticks)
         # No background worker (deterministic run() mode)? Drain the outbox inline so a
         # run()-only deployment can still act outward — synchronous here BY DESIGN
-        # (one thread, reproducible); the off-thread worker is the start() path.
-        if self.adapters and not self._outbound_worker_running:
+        # (one thread, reproducible); the off-thread worker is the start() path. Drain
+        # regardless of adapters so an unhandled outbound action feeds back its miss
+        # (a no-op when the outbox is empty).
+        if not self._outbound_worker_running:
             while self.drain_outbox_once():
                 pass
         dreamed = None
