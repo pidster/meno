@@ -27,8 +27,8 @@ features:
     always_online: true        # show a presence dot whenever the Socket Mode link is up
   app_home:
     home_tab_enabled: false
-    messages_tab_enabled: true             # makes meno appear in the workspace Apps list
-    messages_tab_read_only_enabled: true   # read-only for now (no DM ingestion yet)
+    messages_tab_enabled: true              # makes meno appear in the workspace Apps list
+    messages_tab_read_only_enabled: false   # allow DMs — users can message meno (I3 DM ingestion)
 
 oauth_config:
   scopes:
